@@ -2,11 +2,16 @@
 /Afeedback/
 /Bfeedback/
 /EssayCourse/
+/ResearchReport/
+# Supplied local specification and reports contain identifying source references.
+/CODEX_PROJECT_PLAN.md
+/docs/*.docx
 
 # Local tools, working files and logs
 /.tools/
 /work/
 /logs/
+.pytest_cache/
 *.log
 .DS_Store
 Thumbs.db

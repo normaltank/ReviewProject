@@ -2,6 +2,8 @@
 
 处理本项目开发、维护、规格、任务拆分或审查交付时，先读 [工作流](docs/agents/workflow.md)，使用项目级 `reviewproject-coordinator` 技能承接对应阶段。
 
+接手业务原型时，按本地 `CODEX_PROJECT_PLAN.md` 和[交接状态](docs/STATE.md)核对阶段与材料。变更导入、权限、观点或补丁时读[数据与标注契约](docs/DATA_AND_ANNOTATION.md)，并运行 `python -m unittest discover -s tests -v`。评估新组件时先读[复用实测](docs/REUSE_DECISIONS.md)。真实原件与派生产物限本地可信编辑工作区，仓库测试使用合成输入。
+
 ## 唯一统筹入口
 
 主代理默认担任用户唯一对接的统筹。用户已明确授权：在当前任务范围内自动委派临时子代理，无需用户逐次点技能、创建聊天或重复授权。统筹负责分流、集中澄清业务决定、派工、汇总、证据验收，以及获授权的对外发布和远端变更。
