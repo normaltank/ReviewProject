@@ -1,0 +1,20 @@
+# Local research materials
+/Afeedback/
+/Bfeedback/
+/EssayCourse/
+
+# Local tools, working files and logs
+/.tools/
+/work/
+/logs/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local runtime and credentials
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+!.env.example
