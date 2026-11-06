@@ -2,6 +2,12 @@
 
 处理需求、规格、任务拆分、实现或代码审查时，先读 `docs/agents/workflow.md`，按当前任务选择对应工程技能。
 
+## Subagent defaults
+
+需要调用子代理时，默认显式设置 `model="gpt-6.1-sol"`、`reasoning_effort="high"`。用户为具体任务指定的参数优先。
+
+当前协作接口覆盖模型参数时使用 `fork_turns="none"`，并在子任务说明中提供必要的目标、上下文、文件位置和验收要求。
+
 ## Agent skills
 
 ### Issue tracker
