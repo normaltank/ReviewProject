@@ -2,8 +2,7 @@
 
 import argparse
 from collections import Counter
-from hashlib import sha256
-from io import BytesIO
+from hashlib import file_digest
 import json
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -14,9 +13,13 @@ W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 KEYWORDS = ("创新性", "工作量", "学术范式", "语言表达")
 
 
-def screen_document(data):
-    with ZipFile(BytesIO(data)) as archive:
-        root = ET.fromstring(archive.read("word/document.xml"))
+def screen_document(source):
+    with ZipFile(source) as archive:
+        part = archive.getinfo("word/document.xml")
+        if part.file_size > 100_000_000:
+            return "xml_size_limit", ()
+        with archive.open(part) as xml:
+            root = ET.parse(xml).getroot()
     matches = []
     for table in root.iter(W + "tbl"):
         labels = {term: [] for term in KEYWORDS}
@@ -49,13 +52,18 @@ def inventory(root):
         extensions[extension] += 1
         if extension != ".docx":
             continue
-        data = path.read_bytes()
-        key = sha256(data).digest()
-        if key not in unique:
-            try:
-                unique[key] = screen_document(data)
-            except (ET.ParseError, BadZipFile, KeyError):
-                unique[key] = "xml_or_package_error", ()
+        try:
+            with path.open("rb") as source:
+                key = file_digest(source, "sha256").digest()
+                if key not in unique:
+                    source.seek(0)
+                    try:
+                        unique[key] = screen_document(source)
+                    except (ET.ParseError, BadZipFile, KeyError, RuntimeError):
+                        unique[key] = "xml_or_package_error", ()
+        except OSError:
+            occurrences["unreadable_file"] += 1
+            continue
         occurrences[unique[key][0]] += 1
     candidates = [scores for status, scores in unique.values() if status == "four_label_table"]
     return {

@@ -5,15 +5,25 @@ import copy
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
+import shutil
+import subprocess
 import sys
 import uuid
 from datetime import datetime, timezone
 from docx import __version__ as docx_version
 
 from . import __version__
-from .core import SCHEMA, EXTRACTOR, ReviewError, digest, extract, parse_docx, require, validate_candidate, EDIT_FIELDS
+from .core import SCHEMA, PARSER, EXTRACTOR, ReviewError, digest, extract, parse_docx, require, validate_candidate, EDIT_FIELDS
+
+PRIVATE_IGNORE = b"*\n# Managed private reviewproto workspace; never commit local data.\n"
+
+
+def linklike(path):
+    """Windows directory junctions are not necessarily reported as symlinks."""
+    return path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction())
 
 
 def now():
@@ -71,30 +81,39 @@ class Workspace:
     APPLICATION_ID = 0x52565031
 
     def __init__(self, path):
+        require(not linklike(Path(path).absolute()), "E_WORKSPACE_LINK")
         self.path = Path(path).resolve()
+        require(self.path.parent != self.path and not (self.path / ".git").exists(), "E_WORKSPACE_NOT_DEDICATED")
         self.path.mkdir(parents=True, exist_ok=True)
         # Reject managed symlinks, including projections, so trusted local output
         # cannot silently write through a link to another location.
         reserved = {"review.sqlite3", "source.docx", "state.json", "report.html", "runs", "patches"}
         for entry in self.path.iterdir():
-            if entry.name.casefold() in reserved or entry.name.casefold().startswith("review.sqlite3"):
-                require(not entry.is_symlink(), "E_WORKSPACE_LINK")
+            if entry.name.casefold() in reserved | {".gitignore"} or entry.name.casefold().startswith("review.sqlite3"):
+                require(not linklike(entry) and entry.resolve().parent == self.path, "E_WORKSPACE_LINK")
+        ignore = self.path / ".gitignore"
+        if ignore.exists():
+            require(ignore.is_file() and read_input(ignore, 4096) == PRIVATE_IGNORE, "E_WORKSPACE_IGNORE_EXISTS")
         db_path = self.path / "review.sqlite3"
+        managed_source = None
         if not db_path.exists():
             require(not any(e.name.casefold() in reserved or e.name.casefold().startswith("review.sqlite3")
                             for e in self.path.iterdir()), "E_WORKSPACE_UNMANAGED")
+            require(not any(e.name != ".gitignore" for e in self.path.iterdir()), "E_WORKSPACE_NOT_DEDICATED")
         else:
             # Inspect read-only before any DDL can mutate an unrelated database.
             check = None
             try:
                 check = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
                 application_id = check.execute("PRAGMA application_id").fetchone()[0]
+                names = {r[0] for r in check.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                require({"state", "runs", "patches"} <= names, "E_WORKSPACE_UNMANAGED")
+                row = check.execute("SELECT payload FROM state WHERE id=1").fetchone()
+                if row:
+                    managed_source = json.loads(row[0])["source"]["source_id"]
                 if application_id != self.APPLICATION_ID:
                     # Migration for this prototype's earlier local workspaces.
                     require(application_id == 0, "E_WORKSPACE_UNMANAGED")
-                    names = {r[0] for r in check.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-                    require({"state", "runs", "patches"} <= names, "E_WORKSPACE_UNMANAGED")
-                    row = check.execute("SELECT payload FROM state WHERE id=1").fetchone()
                     require(row is not None, "E_WORKSPACE_UNMANAGED")
                     old = json.loads(row[0])
                     require(old.get("schema_version") == SCHEMA and digest(read_input(self.path / "source.docx", 40_000_000)) == old["source"]["sha256"], "E_WORKSPACE_UNMANAGED")
@@ -105,6 +124,46 @@ class Workspace:
             finally:
                 if check is not None:
                     check.close()
+        if not ignore.exists():
+            # Legacy migrations may hide only recognised tool artifacts, not
+            # unrelated source code or an existing user's directory contents.
+            for entry in self.path.iterdir():
+                name = entry.name.casefold()
+                if name in {"runs", "patches"}:
+                    require(entry.is_dir(), "E_WORKSPACE_NOT_DEDICATED")
+                    for child in entry.iterdir():
+                        require(child.is_file() and not linklike(child) and child.resolve().parent == entry.resolve(), "E_WORKSPACE_NOT_DEDICATED")
+                        pattern = r"[0-9a-f]{32}\.json" if name == "runs" else r"[0-9a-f]{64}\.json"
+                        require(re.fullmatch(pattern, child.name) is not None, "E_WORKSPACE_NOT_DEDICATED")
+                        try:
+                            value = json.loads(read_input(child, 10_000_000))
+                            recognised = (isinstance(value, dict) and value.get("run_id") == child.stem and "status" in value) if name == "runs" else (isinstance(value, dict) and value.get("source_id") == managed_source and "edits" in value)
+                            require(recognised, "E_WORKSPACE_NOT_DEDICATED")
+                        except Exception:
+                            raise ReviewError("E_WORKSPACE_NOT_DEDICATED") from None
+                    continue
+                if name in (reserved - {"runs", "patches"}) | {"review.sqlite3-journal", "review.sqlite3-wal", "review.sqlite3-shm"}:
+                    require(entry.is_file(), "E_WORKSPACE_NOT_DEDICATED")
+                    continue
+                require(entry.is_file() and not linklike(entry), "E_WORKSPACE_NOT_DEDICATED")
+                try:
+                    value = json.loads(read_input(entry, 10_000_000))
+                    require(isinstance(value, dict) and value.get("schema_version") == SCHEMA and
+                            value.get("source_id") == managed_source and "edits" in value, "E_WORKSPACE_NOT_DEDICATED")
+                except Exception:
+                    raise ReviewError("E_WORKSPACE_NOT_DEDICATED") from None
+            # An ignore file cannot protect artifacts already in a Git index.
+            # Git is optional outside repositories; never untrack user files.
+            if any((directory / ".git").exists() for directory in self.path.parents):
+                require(shutil.which("git") is not None, "E_WORKSPACE_GIT_CHECK")
+                tracked = subprocess.run(["git", "-C", str(self.path), "ls-files", "-z", "--", "."],
+                                         capture_output=True, timeout=10, check=False)
+                require(tracked.returncode == 0, "E_WORKSPACE_GIT_CHECK")
+                require(not tracked.stdout, "E_WORKSPACE_TRACKED")
+            with ignore.open("xb") as stream:
+                stream.write(PRIVATE_IGNORE)
+                stream.flush()
+                os.fsync(stream.fileno())
         self.db = sqlite3.connect(self.path / "review.sqlite3", timeout=10, isolation_level=None)
         self.db.execute(f"PRAGMA application_id={self.APPLICATION_ID}")
         self.db.execute("PRAGMA foreign_keys=ON")
@@ -120,7 +179,17 @@ class Workspace:
         require(row is not None, "E_WORKSPACE_EMPTY")
         state = json.loads(row[0])
         require(state.get("schema_version") == SCHEMA, "E_SCHEMA_VERSION")
-        require(digest(read_input(self.path / "source.docx", 40_000_000)) == state["source"]["sha256"], "E_SOURCE_CHANGED")
+        data = read_input(self.path / "source.docx", 40_000_000)
+        fingerprint = digest(data)
+        try:
+            require(fingerprint == state["source"]["sha256"], "E_SOURCE_CHANGED")
+            # Recheck current support rules on every use, including old caches.
+            # Never regenerate candidates or overwrite human decisions here.
+            verified = parse_docx(data)
+            require(verified["scores"] == state["scores"] and verified["sections"] == state["sections"], "E_REIMPORT_REQUIRED")
+        except ReviewError as error:
+            error.source_fingerprint = fingerprint
+            raise
         return state
 
     def save(self, state):
@@ -133,7 +202,7 @@ class Workspace:
         context = input_context if input_context is not None else {}
         record = {"run_id": uuid.uuid4().hex, "command": command, "started_at": now(), "status": "running",
                   "software": __version__, "python": sys.version.split()[0], "dependencies": {"python-docx": docx_version},
-                  "config": {"offline": True, "audience": "trusted_editors", "extractor": EXTRACTOR},
+                  "config": {"offline": True, "audience": "trusted_editors", "extractor": EXTRACTOR, "support_policy": PARSER},
                   "cost": {"network_calls": 0, "model_calls": 0}, "input_id": None, "input_fingerprint": input_fingerprint, "outputs": {}}
         self._record(record)
         committed = False
@@ -156,6 +225,11 @@ class Workspace:
             if self.db.in_transaction:
                 self.db.execute("ROLLBACK")
             record.update(context)
+            if hasattr(error, "source_fingerprint"):
+                record["source_fingerprint"] = error.source_fingerprint
+                record["input_id"] = error.source_fingerprint
+                if record.get("input_fingerprint") is None:
+                    record["input_fingerprint"] = error.source_fingerprint
             if command == "run":
                 record["input_id"] = record.get("input_fingerprint")
             record.update({"status": "output_failed" if committed else "failed", "finished_at": now(),

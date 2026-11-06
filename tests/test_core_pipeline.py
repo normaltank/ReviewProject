@@ -3,6 +3,8 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+import os
+import subprocess
 import tempfile
 import concurrent.futures
 import unittest
@@ -34,6 +36,68 @@ def fixture(text="相同短句😀。\n相同短句😀。有条件补案例，�
     table.cell(10, 0).text = text
     table.cell(11, 0).text = "其他意见（作者不可见）"
     table.cell(12, 0).text = private
+    stream = io.BytesIO()
+    doc.save(stream)
+    return stream.getvalue()
+
+
+def native_variant(kind, target="comment"):
+    """Native Word XML regressions, not text approximations of these features."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from lxml import etree
+    doc = Document(io.BytesIO(fixture()))
+    cell = doc.tables[0].cell(5, 3) if target == "score" else doc.tables[0].cell(10, 0)
+    paragraph = cell.paragraphs[0]._p
+    if target == "score":
+        for node in list(paragraph):
+            if node.tag != qn("w:pPr"):
+                paragraph.remove(node)
+    if kind in {"moveTo", "moveFrom"}:
+        node = OxmlElement("w:" + kind)
+        run = OxmlElement("w:r")
+        text = OxmlElement("w:t")
+        text.text = "4" if target == "score" else "SYNTHETIC_MOVED_COMMENT"
+        run.append(text)
+        node.append(run)
+        paragraph.append(node)
+    elif kind in {"oMath", "oMathPara"}:
+        equation = OxmlElement("m:oMath")
+        run = OxmlElement("m:r")
+        text = OxmlElement("m:t")
+        text.text = "4" if target == "score" else "SYNTHETIC_FORMULA"
+        run.append(text)
+        equation.append(run)
+        if kind == "oMathPara":
+            outer = OxmlElement("m:oMathPara")
+            outer.append(equation)
+            equation = outer
+        paragraph.append(equation)
+    elif kind == "AlternateContent":
+        ns = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+        node = etree.Element(ns + "AlternateContent")
+        choice = etree.SubElement(node, ns + "Choice", Requires="w14")
+        run = OxmlElement("w:r")
+        text = OxmlElement("w:t")
+        text.text = "4" if target == "score" else "SYNTHETIC_ALTERNATE"
+        run.append(text)
+        choice.append(run)
+        paragraph.append(node)
+    elif kind == "numPr":
+        properties = paragraph.get_or_add_pPr()
+        node = OxmlElement("w:numPr")
+        number = OxmlElement("w:numId")
+        number.set(qn("w:val"), "1")
+        node.append(number)
+        properties.append(node)
+    else:
+        run = OxmlElement("w:r")
+        node = OxmlElement("w:" + kind)
+        if kind == "sym":
+            node.set(qn("w:font"), "Symbol")
+            node.set(qn("w:char"), "F061")
+        run.append(node)
+        paragraph.append(run)
     stream = io.BytesIO()
     doc.save(stream)
     return stream.getvalue()
@@ -361,6 +425,183 @@ class CoreTests(unittest.TestCase):
                 self.assertFalse((ws.path / "source.docx").exists())
             finally:
                 ws.close()
+
+    def test_native_moved_text_and_equations_fail_closed_in_scores_and_comments(self):
+        for kind in ("moveTo", "moveFrom", "oMath", "oMathPara"):
+            for target in ("score", "comment"):
+                with self.subTest(kind=kind, target=target):
+                    data = native_variant(kind, target)
+                    source = self.root / (kind + target + ".docx")
+                    source.write_bytes(data)
+                    ws = Workspace(self.root / (kind + target + "-workspace"))
+                    try:
+                        with self.assertRaisesRegex(ReviewError, "E_UNSUPPORTED_FEATURE"):
+                            ws.run(source, "synthetic")
+                        self.assertFalse((ws.path / "state.json").exists())
+                        self.assertFalse((ws.path / "report.html").exists())
+                        self.assertIsNone(ws.db.execute("SELECT payload FROM state WHERE id=1").fetchone())
+                        raw = next((ws.path / "runs").glob("*.json")).read_text(encoding="utf-8")
+                        record = json.loads(raw)
+                        self.assertEqual(record["input_fingerprint"], digest(data))
+                        self.assertEqual(record["error_code"], "E_UNSUPPORTED_FEATURE")
+                        self.assertNotIn("SYNTHETIC_", raw)
+                    finally:
+                        ws.close()
+
+    def test_unmapped_native_content_is_rejected_instead_of_dropped(self):
+        for kind in ("AlternateContent", "sym", "softHyphen", "noBreakHyphen", "separator", "annotationRef", "fldChar", "ruby", "numPr"):
+            for target in ("score", "comment"):
+                with self.subTest(kind=kind, target=target):
+                    with self.assertRaisesRegex(ReviewError, "E_UNSUPPORTED_FEATURE"):
+                        parse_docx(native_variant(kind, target))
+
+    def test_native_formatting_tabs_breaks_bookmarks_and_hyperlink_text_survive(self):
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        from docx.opc.constants import RELATIONSHIP_TYPE
+        doc = Document(io.BytesIO(fixture()))
+        paragraph = doc.tables[0].cell(10, 0).paragraphs[0]
+        run = paragraph.add_run("原生格式😀")
+        run.bold, run.italic = True, True
+        run.add_tab()
+        run.add_break()
+        run.add_text("换行后")
+        bookmark = OxmlElement("w:bookmarkStart")
+        bookmark.set(qn("w:id"), "99")
+        bookmark.set(qn("w:name"), "synthetic")
+        paragraph._p.append(bookmark)
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("r:id"), doc.part.relate_to("https://invalid.example/never-fetched", RELATIONSHIP_TYPE.HYPERLINK, is_external=True))
+        linked_run, text = OxmlElement("w:r"), OxmlElement("w:t")
+        text.text = "超链接原文"
+        linked_run.append(text)
+        hyperlink.append(linked_run)
+        paragraph._p.append(hyperlink)
+        bookmark_end = OxmlElement("w:bookmarkEnd")
+        bookmark_end.set(qn("w:id"), "99")
+        paragraph._p.append(bookmark_end)
+        stream = io.BytesIO()
+        doc.save(stream)
+        state = parse_docx(stream.getvalue())
+        self.assertTrue(state["sections"][0]["text"].endswith("原生格式😀\t\n换行后超链接原文"))
+
+    def test_cached_unsupported_source_cannot_bypass_current_checks_or_erase_history(self):
+        from reviewproto.store import atomic, encoded
+        data = native_variant("oMath", "comment")
+        cached = copy.deepcopy(self.state)
+        source_id = digest(data)
+        cached["source"]["source_id"] = cached["source"]["sha256"] = source_id
+        cached["review"]["review_id"] = source_id
+        for section in cached["sections"]:
+            section["source_id"] = source_id
+        cached["candidates"] = extract(cached)
+        cached["versions"]["parser"] = "verified-two-cell-v1"
+        decision = copy.deepcopy(cached["candidates"][0])
+        decision.update(status="confirmed", origin="human_decision", object="SYNTHETIC_SAVED_HUMAN_VALUE")
+        cached["revision"] = 1
+        cached["decisions"] = [{"candidate_id": decision["candidate_id"], "value": decision, "actor": "synthetic-editor", "reason": "prior verified edit", "at": "synthetic-prior-time", "revision": 1}]
+        ws = Workspace(self.root / "cached-legacy")
+        try:
+            atomic(ws.path / "source.docx", data)
+            ws.save(cached)
+            raw_state = encoded(cached)
+            atomic(ws.path / "state.json", raw_state)
+            atomic(ws.path / "report.html", b"synthetic historic artifact")
+            patch_value = template(cached)
+            patch_value.update(actor="synthetic-editor", reason="must not bypass safety")
+            for action in (lambda: ws.run(ws.path / "source.docx", "synthetic"),
+                           lambda: ws.operation("render", ws.state),
+                           lambda: ws.operation("recover", ws.state),
+                           lambda: ws.apply(patch_value)):
+                with self.assertRaisesRegex(ReviewError, "E_UNSUPPORTED_FEATURE"):
+                    action()
+            self.assertEqual(json.loads(ws.db.execute("SELECT payload FROM state WHERE id=1").fetchone()[0]), cached)
+            self.assertEqual((ws.path / "state.json").read_bytes(), raw_state)
+            self.assertEqual((ws.path / "report.html").read_bytes(), b"synthetic historic artifact")
+            records = [json.loads(p.read_text(encoding="utf-8")) for p in (ws.path / "runs").glob("*.json")]
+            self.assertEqual(len(records), 4)
+            self.assertTrue(all(r["status"] == "failed" and r.get("outputs") == {} for r in records))
+            self.assertTrue(all(r.get("source_fingerprint") == source_id for r in records))
+        finally:
+            ws.close()
+
+    def test_private_workspace_gitignore_covers_arbitrary_names_and_preserves_other_code(self):
+        git_root = self.root / "synthetic-repository"
+        git_root.mkdir()
+        subprocess.run(["git", "init", "--quiet", str(git_root)], check=True, capture_output=True)
+        (git_root / "keep.py").write_text("# synthetic user code\n", encoding="utf-8")
+        with self.assertRaisesRegex(ReviewError, "E_WORKSPACE_NOT_DEDICATED"):
+            Workspace(git_root)
+        self.assertFalse((git_root / ".gitignore").exists())
+        ws = Workspace(git_root / "custom-private-dir")
+        try:
+            ws.run(self.source, "synthetic")
+            patch_file = ws.path / "arbitrary-patch-name.custom"
+            patch_value = template(ws.state())
+            patch_value.update(actor="synthetic-editor", reason="private patch")
+            patch_file.write_text(json.dumps(patch_value, ensure_ascii=False), encoding="utf-8")
+            ws.apply(input_path=patch_file)
+            paths = ["custom-private-dir/" + name for name in ("source.docx", "review.sqlite3", "state.json", "report.html", "arbitrary-patch-name.custom", ".gitignore")]
+            ignored = subprocess.run(["git", "-C", str(git_root), "check-ignore", "--stdin", "-z"],
+                                     input=b"\0".join(p.encode() for p in paths) + b"\0", capture_output=True, check=True)
+            self.assertCountEqual([p.decode() for p in ignored.stdout.split(b"\0") if p], paths)
+            subprocess.run(["git", "-C", str(git_root), "add", "."], check=True, capture_output=True)
+            staged = subprocess.run(["git", "-C", str(git_root), "diff", "--cached", "--name-only"],
+                                    check=True, capture_output=True, text=True)
+            self.assertEqual(staged.stdout.splitlines(), ["keep.py"])
+        finally:
+            ws.close()
+        unrelated = git_root / "existing-code"
+        unrelated.mkdir()
+        (unrelated / "module.py").write_text("# keep visible", encoding="utf-8")
+        with self.assertRaisesRegex(ReviewError, "E_WORKSPACE_NOT_DEDICATED"):
+            Workspace(unrelated)
+        self.assertFalse((unrelated / ".gitignore").exists())
+        existing_ignore = unrelated / ".gitignore"
+        existing_ignore.write_text("*.cache\n", encoding="utf-8")
+        with self.assertRaisesRegex(ReviewError, "E_WORKSPACE_IGNORE_EXISTS"):
+            Workspace(unrelated)
+        self.assertEqual(existing_ignore.read_text(encoding="utf-8"), "*.cache\n")
+
+    def test_managed_legacy_workspace_migrates_without_losing_human_edits(self):
+        self.ws.apply(self.patch_for())
+        old = self.ws.state()
+        self.ws.close()
+        (self.root / "work" / ".gitignore").unlink()
+        self.ws = Workspace(self.root / "work")
+        self.assertTrue((self.ws.path / ".gitignore").read_bytes().startswith(b"*\n"))
+        self.assertEqual(self.ws.run(self.source, "synthetic"), old)
+        # A legacy tool database must not justify hiding unrelated code.
+        self.ws.close()
+        (self.root / "work" / ".gitignore").unlink()
+        (self.root / "work" / "unrelated.py").write_text("# user code", encoding="utf-8")
+        with self.assertRaisesRegex(ReviewError, "E_WORKSPACE_NOT_DEDICATED"):
+            Workspace(self.root / "work")
+        self.assertFalse((self.root / "work" / ".gitignore").exists())
+        # Restore the known workspace for tearDown without modifying user code.
+        (self.root / "work" / "unrelated.py").unlink()
+        self.ws = Workspace(self.root / "work")
+
+    @unittest.skipUnless(os.name == "nt", "junction regression needs Windows")
+    def test_windows_junction_output_directory_is_rejected(self):
+        directory = self.root / "junction-workspace"
+        initial = Workspace(directory)
+        initial.close()
+        target = self.root / "outside-junction-target"
+        target.mkdir()
+        sentinel = target / "sentinel.txt"
+        sentinel.write_text("synthetic untouched content", encoding="utf-8")
+        junction = directory / "runs"
+        created = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(target)], capture_output=True)
+        if created.returncode != 0:
+            self.skipTest("local junction creation unavailable")
+        try:
+            with self.assertRaisesRegex(ReviewError, "E_WORKSPACE_LINK"):
+                Workspace(directory)
+            self.assertEqual(list(target.iterdir()), [sentinel])
+        finally:
+            # Remove only the junction itself, never recurse into its target.
+            junction.rmdir()
 
 
 if __name__ == "__main__":

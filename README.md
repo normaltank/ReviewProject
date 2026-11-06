@@ -13,7 +13,7 @@ python -m reviewproto run work/demo-input.docx --workspace work/demo --origin sy
 Invoke-Item .\work\demo\report.html
 ```
 
-每份表使用单独的本地工作目录。处理获准的真实样本时，将输入换成实际 DOCX 路径，使用 `--origin original_review`。冻结原件、数据库、HTML 和补丁都只供可信编辑使用。工作目录放在 Git 忽略的 `work/` 内，且只有获准人员可访问。
+每份表使用新建的专用空目录或该表已有的工作目录。处理获准的真实样本时，将输入换成实际 DOCX 路径，使用 `--origin original_review`。冻结原件、数据库、HTML 和补丁都只供可信编辑使用。建议放在 `work/` 内，并由操作系统限制人员访问。工具会在专用工作目录写入仅对该目录生效的 Git 忽略规则。
 
 ## 编辑一条观点
 
@@ -27,7 +27,7 @@ python -m reviewproto run work/demo-input.docx --workspace work/demo --origin sy
 Invoke-Item .\work\demo\report.html
 ```
 
-也可在工作目录内直接生成补丁，再用文本编辑器填写。将下面的 `ID` 换成报告中的候选 ID，使用新的文件名即可保留草稿。
+浏览器无法将补丁另存到受控位置时，可在工作目录内直接生成补丁，再用文本编辑器填写。将下面的 `ID` 换成报告中的候选 ID，使用新的文件名即可保留草稿。
 
 ```powershell
 python -m reviewproto review --workspace work/demo --candidate ID --output work/demo/edit-02.json
@@ -38,7 +38,7 @@ python -m reviewproto apply work/demo/edit-02.json --workspace work/demo
 
 ## 首轮范围与验证
 
-当前支持已核实的单表四评分、双意见分区 DOCX。先以完整段落建立待复核候选，再为少数明确的成对条件句标出两路证据。跨段指代、一般语义判断、评分理由及论文事实仍需编辑核对。所有报告均为内部版。
+当前支持已核实的单表四评分、双意见分区 DOCX。遇到 Word 原生公式、移动修订或无法映射的内容时会拒收并记录原因。重新使用历史工作目录时，先成功运行 `run` 或 `recover`，再打开报告。提取以完整段落建立待复核候选，再为少数明确的成对条件句标出两路证据。跨段指代、一般语义判断、评分理由及论文事实仍需编辑核对。所有报告均为内部版。
 
 - [交接状态、真实样本入口与限制](docs/STATE.md)
 - [原文定位、评分、权限和复核字段](docs/DATA_AND_ANNOTATION.md)

@@ -38,7 +38,7 @@ def main(argv=None):
             require(target.is_relative_to(workspace.path) and target != workspace.path, "E_OUTPUT_SCOPE")
             name = target.name.casefold()
             parts = [p.casefold() for p in target.relative_to(workspace.path).parts]
-            require(name not in {"source.docx", "state.json", "report.html"} and not name.startswith("review.sqlite3") and not ({"runs", "patches"} & set(parts)), "E_OUTPUT_RESERVED")
+            require(name not in {"source.docx", "state.json", "report.html", ".gitignore"} and not name.startswith("review.sqlite3") and not ({"runs", "patches", ".git"} & set(parts)), "E_OUTPUT_RESERVED")
             require(not target.is_symlink(), "E_WORKSPACE_LINK")
             require(not target.exists(), "E_OUTPUT_EXISTS")
             patch = workspace.review_template()
