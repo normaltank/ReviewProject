@@ -42,6 +42,8 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
     for clause in state.get('clauses', []):
         parts.append(f'<details><summary>A 候选 {esc(clause["clause_id"])} · {esc(clause["source_kind"])} · pending_source_review</summary><pre>{esc(json.dumps(clause, ensure_ascii=False, indent=2))}</pre></details>')
     parts.append('</section>')
+    from .framework_render import render_frameworks
+    parts.append(render_frameworks(state))
     conditional = [c for c in state["candidates"] if c["alternatives"] or (c["candidate_id"] in previous and previous[c["candidate_id"]]["value"]["alternatives"])]
     parts.append('<nav aria-label="复核入口"><p><a href="#editor">进入单条人工复核表单</a></p>')
     if conditional:

@@ -89,7 +89,7 @@ class Workspace:
         self.path.mkdir(parents=True, exist_ok=True)
         # Reject managed symlinks, including projections, so trusted local output
         # cannot silently write through a link to another location.
-        reserved = {"review.sqlite3", "source.docx", "source.json", "source.csv", "state.json", "report.html", "runs", "patches", "imports"}
+        reserved = {"review.sqlite3", "source.docx", "source.json", "source.csv", "state.json", "report.html", "runs", "patches", "imports", "frameworks"}
         for entry in self.path.iterdir():
             if entry.name.casefold() in reserved | {".gitignore"} or entry.name.casefold().startswith("review.sqlite3"):
                 require(not linklike(entry) and entry.resolve().parent == self.path, "E_WORKSPACE_LINK")
@@ -178,6 +178,7 @@ class Workspace:
         self.db.execute("CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS patches (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
         self.db.execute("CREATE TABLE IF NOT EXISTS imports (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS framework_sources (id TEXT PRIMARY KEY, data BLOB NOT NULL)")
 
     def close(self):
         self.db.close()
@@ -199,7 +200,33 @@ class Workspace:
         except ReviewError as error:
             error.source_fingerprint = fingerprint
             raise
-        return state
+        self._framework_files(state, restore_missing=False)
+        from .framework import refresh_reviews
+        return refresh_reviews(state)
+
+    def _framework_files(self, state, restore_missing=False):
+        """Database bytes are recovery authority; changed existing sources fail closed."""
+        from .framework import checked_path, validate_book, framework_digest, SOURCE_LIMIT
+        for framework in state.get("frameworks", []):
+            require(framework_digest(framework["book"]) == framework["sha256"], "E_FRAMEWORK_SOURCE_HASH")
+            root = self.path / "frameworks" / framework["sha256"]
+            require(not linklike(root.parent) and not linklike(root), "E_FRAMEWORK_LINK")
+            book_path = root / "book.json"
+            require(not linklike(book_path), "E_FRAMEWORK_LINK")
+            if not book_path.exists() and restore_missing:
+                atomic(book_path, encoded(framework["book"]))
+            require(book_path.is_file(), "E_FRAMEWORK_SOURCE_MISSING")
+            require(digest(read_input(book_path, 10_000_000)) == framework["sha256"], "E_FRAMEWORK_SOURCE_HASH")
+            sources = {}
+            for source in framework["book"]["sources"]:
+                row = self.db.execute("SELECT data FROM framework_sources WHERE id=?", (source["sha256"],)).fetchone()
+                require(row is not None and digest(row[0]) == source["sha256"], "E_FRAMEWORK_SOURCE_HASH")
+                target = checked_path(root, source["file"])
+                if not target.exists() and restore_missing:
+                    atomic(target, row[0])
+                require(target.is_file(), "E_FRAMEWORK_SOURCE_MISSING")
+                sources[source["source_id"]] = read_input(target, SOURCE_LIMIT)
+            validate_book(framework["book"], sources)
 
     def save(self, state):
         self.db.execute("INSERT OR REPLACE INTO state VALUES (1, ?)", (encoded(state).decode(),))
@@ -218,13 +245,18 @@ class Workspace:
         try:
             self.db.execute("BEGIN IMMEDIATE")
             state = callback()
+            # Derived review validity must describe the post-mutation candidate
+            # view in the transaction, API result and every published projection.
+            from .framework import refresh_reviews
+            refresh_reviews(state)
             record.update(context)
             self.save(state)
             record.update({"status": "committed", "input_id": state["source"]["source_id"], "origin": state["source"]["origin"], "revision": state["revision"],
                            "versions": state["versions"], "config_sha256": digest(encoded(record["config"]))})
             record["replay"] = {"entrypoint": "python -m reviewproto", "command": command,
                                 "input": ("patches/" + context.get("patch_sha256", input_fingerprint) + ".json") if command == "apply" else
-                                         ("imports/" + context["import_sha256"] + ".json") if command in {"ingest-candidates", "ingest-clauses"} else source_filename(state),
+                                         ("frameworks/" + context["import_sha256"] + "/book.json") if command == "ingest-framework" else
+                                         ("imports/" + context["import_sha256"] + ".json") if command in {"ingest-candidates", "ingest-clauses", "ingest-framework", "apply-framework-review"} else source_filename(state),
                                 "origin": state["source"]["origin"], "workspace": "."}
             if command == "run":
                 record["replay"]["source_format"] = {"native_docx": "docx", "structured_json": "json", "structured_csv": "csv"}[state["source"]["kind"]]
@@ -278,6 +310,15 @@ class Workspace:
         except Exception:
             self.db.execute("ROLLBACK")
             raise
+
+    def recover(self):
+        # Restore only absent A copies. Never overwrite a modified existing copy.
+        def action():
+            row = self.db.execute("SELECT payload FROM state WHERE id=1").fetchone()
+            require(row is not None, "E_WORKSPACE_EMPTY")
+            self._framework_files(json.loads(row[0]), restore_missing=True)
+            return self.state()
+        return self.operation("recover", action)
 
     def run(self, source, origin="unknown", source_format="docx"):
         # Read bytes before freezing; do not retain filename, path, identity guesses.
@@ -432,6 +473,68 @@ class Workspace:
     def review_template(self):
         state = self.state()
         return template(state)
+
+    def import_framework(self, input_path):
+        from .framework import checked_path, framework_digest, load_json, validate_book, SOURCE_LIMIT, PACKAGE_LIMIT
+        context = {}
+        def action():
+            state = self.state()
+            path = Path(input_path).absolute()
+            require(all(not linklike(p) for p in [path, *path.parents]), "E_FRAMEWORK_LINK")
+            book = load_json(read_input(path, 10_000_000, context=context))
+            require(isinstance(book, dict) and isinstance(book.get("sources"), list) and len(book["sources"]) <= 100, "E_FRAMEWORK_SHAPE")
+            sources, total = {}, 0
+            for source in book["sources"]:
+                require(isinstance(source, dict) and {"source_id", "file"} <= set(source) and isinstance(source["source_id"], str), "E_FRAMEWORK_SOURCE")
+                data = read_input(checked_path(path.parent, source["file"]), SOURCE_LIMIT)
+                total += len(data)
+                require(total <= PACKAGE_LIMIT, "E_FRAMEWORK_PACKAGE_LIMIT")
+                sources[source["source_id"]] = data
+            validate_book(book, sources)
+            fingerprint = framework_digest(book)
+            context["import_sha256"] = fingerprint
+            for existing in state.get("frameworks", []):
+                if existing["book"]["framework_id"] == book["framework_id"] and existing["book"]["version"] == book["version"]:
+                    require(existing["sha256"] == fingerprint, "E_FRAMEWORK_VERSION_CONFLICT")
+                    return state
+            root = self.path / "frameworks" / fingerprint
+            book_path = root / "book.json"
+            require(not linklike(root.parent) and not linklike(root) and not linklike(book_path), "E_FRAMEWORK_LINK")
+            if book_path.exists():
+                require(digest(read_input(book_path, 10_000_000)) == fingerprint, "E_FRAMEWORK_SOURCE_HASH")
+            else:
+                atomic(book_path, encoded(book))
+            for source in book["sources"]:
+                data = sources[source["source_id"]]
+                self.db.execute("INSERT OR IGNORE INTO framework_sources VALUES (?, ?)", (source["sha256"], data))
+                target = checked_path(root, source["file"])
+                if target.exists():
+                    require(digest(read_input(target, SOURCE_LIMIT)) == source["sha256"], "E_FRAMEWORK_SOURCE_HASH")
+                else:
+                    atomic(target, data)
+            state.setdefault("frameworks", []).append(dict(book=copy.deepcopy(book), sha256=fingerprint, status="candidate", authority="unconfirmed",
+                                                           source_status="pending", formal_version="unknown", imported_at=now()))
+            self.db.execute("INSERT OR IGNORE INTO imports VALUES (?, ?)", (fingerprint, encoded(book).decode()))
+            state["revision"] += 1
+            return state
+        return self.operation("ingest-framework", action, input_context=context)
+
+    def apply_framework_review(self, payload=None, *, input_path=None):
+        from .framework import apply_review, framework_digest, load_json
+        context = {}
+        def action():
+            nonlocal payload
+            if input_path is not None:
+                payload = load_json(read_input(input_path, 10_000_000, context=context))
+            state = apply_review(self.state(), payload, now())
+            context["import_sha256"] = framework_digest(payload)
+            self.db.execute("INSERT OR IGNORE INTO imports VALUES (?, ?)", (context["import_sha256"], encoded(payload).decode()))
+            return state
+        return self.operation("apply-framework-review", action, input_context=context)
+
+    def framework_template(self, framework_sha256=None, candidate_id=None, rule_id=None):
+        from .framework import review_template
+        return review_template(self.state(), framework_sha256, candidate_id, rule_id)
 
 
 def template(state):

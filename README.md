@@ -1,6 +1,6 @@
 # ReviewProject
 
-ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.3.1 提供意见理解与复核流程：规则基线、本地模型、获明确授权的 Flash 对照、观点修正历史和候选概念并存。正式条款修订仍需专业判断、独立试评及出版社授权。
+ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.4.0 在意见复核流程上接入了有原文证据的 A 候选规则、B 对照与修订讨论草案。正式条款修订仍需专业判断、独立试评及出版社授权。
 
 ## 跑一份合成审稿表
 
@@ -71,6 +71,25 @@ python -m reviewproto apply work/demo/edit-02.json --workspace work/demo
 模型每次运行追加候选和原始输出，不能覆盖人工决定。相同运行重放幂等；同一运行 ID 改内容会拒收。基线、不同模型运行和当前已确认观点分别显示，不相加充当业务意见总数。若生成报告中断，运行 `python -m reviewproto recover --workspace work/demo` 重建可读文件。更换送审版本另建工作目录。
 
 页面新增复核成本记录：填写修改人、选择自报角色与对照方法后显式开始计时，可暂停、继续、结束并下载独立旁车 JSON。隐藏标签会暂停，返回后手动继续；未下载的记录刷新会丢失。计时不会改变补丁，输入/点击次数仅为尝试计数，不表示修改已应用。只有真实编辑完成任务后才能据此记录人工时间，自动化演练或代理计时均不能代替专业人工成本。
+
+## 查看 A 规则并讨论修订
+
+本机已经将首讲课程整理为 24 条候选规则，涵盖已有 13 个维度的局部内容；每条包含适用范围、例外、未知项、检查提示与逐字来源。PPT 原生文字和未听校机器转写分别标记。它们没有正式标准效力、评分锚点或统一合格线。
+
+直接打开[综述类型与证据责任讨论页](work/framework-20261108/b-workspaces-final/trial-02-long/report.html#frameworks)或[局限与替代动作讨论页](work/framework-20261108/b-workspaces-final/trial-03-praise_and_revision/report.html#frameworks)。两页含真实评语，仅供本机可信编辑；[本轮索引](work/framework-20261108/README.md)记录来源、开发回放和限制。
+
+将本地规则包接入另一份已导入的审稿工作区：
+
+```powershell
+python -m reviewproto ingest-framework work/framework-20261108/a-package/book.json --workspace work/demo
+# 将 CANDIDATE_ID 替换为页面中需要对照的观点 ID。
+python -m reviewproto framework-template --workspace work/demo --candidate CANDIDATE_ID --rule A01-R018 --output work/demo/framework-edit-01.json
+# 填写 actor、reason、rationale 及关系；也可按数据契约填写 proposals。
+python -m reviewproto apply-framework-review work/demo/framework-edit-01.json --workspace work/demo
+Invoke-Item .\work\demo\report.html
+```
+
+该入口全程本地，不调用模型。包导入会核验来源文件字节、引文及位置，并冻结规则版本与来源；来源缺失可从数据库恢复，已改动文件会拒绝覆盖。草案保存修改前后、支持与反例、验证计划和回退条件，不改原分或正式标准。草案增补单独标为编辑提案，原引文只证明修改前来源。任何观点新增、修正或撤销后，既有对照与草案会标 `needs_revalidation`。当前通过 JSON 草稿修改，页面用于查看与回溯，尚无规则图形编辑器。`current` 只表示仍对应当前观点快照，不代表专业认可。
 
 ## 首轮范围与验证
 

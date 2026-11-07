@@ -1,4 +1,4 @@
-# 数据与标注契约 · 0.3.1
+# 数据与标注契约 · 0.4.0
 
 一份 DOCX、CSV 或契约 JSON 对应一个可信编辑工作目录。目录整体继承原件权限。打开 HTML 的人可以读取其中的私密意见，隐藏或折叠界面元素不提供身份隔离。权限控制依赖本地目录访问控制。复核、备份和恢复时按整份受控材料管理。`actor` 是审计声明，不是经过身份认证的账号。
 
@@ -53,6 +53,27 @@ JSON 的证据位置除字符偏移外保留 JSON pointer。作者不可见标�
 
 观点的 `clause_links` 记录 `clause_id/relation/provenance/evidence_indices`；关系可为 covered、partial、condition_difference、potential_conflict 或 pending_comparison。目标仍是候选来源时不能据该关联发布正式要求。
 
+## 有原文证据的候选规则包
+
+`ingest-framework BOOK` 在现有单份 B 工作区中导入本地规则包。包顶层严格为 `schema_version=1 / framework_id / version / title / coverage_notes / sources / rules`。来源文件相对路径仅允许 `sources/<文件名>`；拒绝绝对路径、目录穿越、链接、重复 JSON 字段、超限来源与 ZIP 解压膨胀。当前复用 `python-docx` 已有的 lxml 和标准库 ZIP/JSON/SQLite，不新增文档服务或外部请求。
+
+- `sources` 每项为 `source_id/kind/file/sha256/verification`。`pptx_native` 固定 `native_text`，`transcript_json` 固定 `machine_unchecked`。导入检查真实文件 SHA，数据库保存来源 bytes，`frameworks/<内容指纹>/sources/` 再保存冻结副本。原始包的美化 JSON 文件 SHA 可不同于 canonical 内容指纹；后者由 `framework_digest()` 计算并绑定对照。
+- `rules` 每项为 `rule_id/dimension_id/title/requirement/rule_type/strength/strength_provenance/applicable_when/exceptions/unknowns/checks/derivation/evidence`。类型区分 `evaluation_question / recommendation / requirement_candidate`；强度为 `unknown / recommended / mandatory / optional`，依据为 `explicit / inferred / unknown`。`derivation` 区分来源转述 `source_paraphrase` 和整理者操作化 `editorial_operationalization`。mandatory 可记录来源自身措辞，绝不等于出版社正式效力。
+- 每处证据为 `source_id/locator/start/end/quote`，逐字校验 Unicode 切片。PPT `locator={page,paragraph}` 使用 `ppt/slides/slideN.xml` 的页号与零基 `a:p` 段号；段内文字拼接 `a:t`，`a:br` 为换行，不验证图像或备注。转写 `locator={pointer}` 可加 `segment_id/time_range/ppt_page`，均与实际 JSON 记录核验。语音识别错误仍须回听，字节或切片通过不能消除它。
+- 导入统一强制 `status=candidate / authority=unconfirmed / source_status=pending / formal_version=unknown`。同 framework_id、version、内容重复幂等；同版本不同内容拒绝，新内容必须另起版本。`recover` 只能补回缺失的冻结文件，不能静默覆盖被改动的规则或来源。
+
+旧 `ingest-clauses` 仍兼容旧记录，其声明型来源校验不等于新包的真实来源文件校验；两者不会自动转换或冒称同一正式版本。
+
+## B 对照与修订讨论草案
+
+`framework-template` 可指定一个 `--candidate` 和 `--rule`，产生一条 `pending_comparison/unknown` 草稿，不生成全体观点与条款的笛卡尔积。`apply-framework-review` 的 payload 严格包含 `schema_version/source_id/base_revision/actor/reason/framework_sha256/alignments/proposals`，至少一条对照或提案；需填写真实声明，不能直接应用空模板。
+
+每条 `alignments` 为 `candidate_id/rule_id/relation/provenance/evidence_indices/rationale`；relation 为 `covered / partial / condition_difference / potential_conflict / uncovered / pending_comparison`。uncovered 仅说当前候选包未覆盖，不能推出完整 A 标准没有此项，更不能凭主题相同确认覆盖或冲突。
+
+每条 `proposals` 为 `proposal_id/rule_id/kind/after/rationale/support_candidate_ids/counter_candidate_ids/validation_plan/rollback_condition/unknowns`。`kind` 区分 `source_interpretation`（解释或操作化）和 `publisher_requirement_change`（业务要求变更建议）。`after` 只能修改 `requirement/applicable_when/exceptions/strength/strength_provenance/checks`，至少有一处真实变化；完整 before 由系统从绑定规则冻结，调用者不能伪造。输出 after 固定 `derivation=editorial_operationalization`，提案标 `after_provenance=editorial_proposal / evidence_scope=baseline_only`；原来源引文仅支持修改前规则，不能为草案新增文字冒认课程出处。支持与反例不能重复，合计至少一项，全部来自同一来源、同一分区和权限区。当前不支持跨稿合并提案证据；专业观点可以相反，不作同主题去重。
+
+系统冻结所用观点、最新决定 ID 与候选视图指纹；提案统一 `draft / needs_professional_review / baseline_confirmation_required / authority=unconfirmed`。观点变更后整份工作区历史对照与提案保守标 `needs_revalidation`，即使改的是无关观点也先复核；新对照记录追加而不改旧证据，提案 ID 不重用。`current` 只说明观点快照未变。规则版本通过 SHA 显式绑定，导入新版本不会自动替换旧提案依据。概念调整、模型调参、课程解释和出版社要求变更分别留证，均无自动正式发布路径。
+
 ## 合成条件示例
 
 演示表中有一句“若能取得逐周记录，可补一张对照表；否则请说明资料的覆盖范围。”这两路可以引用同一句中的不同片段。第一路以能取得记录为条件，动作是“可补一张对照表”。第二路以不能取得记录为条件，动作是“说明资料的覆盖范围”。它们在 `alternatives` 内属于同一组 `conditional_branches`，每支都写自己的 `evidence_indices`。这份合成输入也演示了较宽泛句式需要人工填写的情形。新的手工字段与机器候选分别保留。
@@ -73,4 +94,4 @@ JSON 的证据位置除字符偏移外保留 JSON pointer。作者不可见标�
 
 ## 进入 Framework 修订的条件
 
-后续对齐应使用经确认的 A 条款版本、原句、来源页码或时间戳，并记录覆盖、部分覆盖、条件差异或待核。候选提案需要修改前后文字、支持与反例、独立稿件与审稿人分母、作者和编辑负担、独立试评及回退条件。出版社授权人员负责正式发布。从候选观点到制度变更之间的这些判断分别留证。
+当前允许用待核课程包做探索性对照和草案，但必须显式保留现行基线待确认；课程解释不能冒充对正式 A 要求的已确认修改。进入正式决策前仍需确认 A 有效版本与适用范围，核验稿件事实、独立稿件与审稿人分母、作者和编辑负担，并完成独立试评及回退设计。出版社授权人员负责正式发布。从候选观点到制度变更之间的这些判断分别留证。
