@@ -15,7 +15,7 @@
 3. 导入来源核验的 A 包，保存 14 条推断性对照：部分覆盖 7、条件差异 1、未覆盖 3、待对照 3。不是对 6 份评语的穷尽覆盖，也不是冲突率；没有确认 A/B 冲突。
 4. 保存两个 draft：一条讨论不同综述定位的证据责任（`publisher_requirement_change`），一条讨论局限说明与替代动作的解释护栏（`source_interpretation`）。均冻结 before、after、支持与反例、验证计划、回退条件及未知，状态 `needs_professional_review / baseline_confirmation_required / authority=unconfirmed`。没有修改正式 A 标准。
 
-候选规则、对照和修改前后已在原有页面可查看、回溯。入口：[综述讨论页](../work/framework-20261108/b-workspaces-final/trial-02-long/report.html#frameworks)、[局限讨论页](../work/framework-20261108/b-workspaces-final/trial-03-praise_and_revision/report.html#frameworks)、[本轮索引](../work/framework-20261108/README.md)。修改暂用 JSON 草稿加 CLI，未做图形规则编辑器。支持来源冻结与缺失恢复、版本冲突拒绝、同权限区证据限制；观点变化后历史对照/提案标需重新验证，不覆盖旧快照。`current` 不表示专业确认。
+候选规则、对照和修改前后已在原有页面可查看、回溯。入口：[综述讨论页](../work/framework-20261108/b-workspaces-final/trial-02-long/report.html#proposal-P-A01-METHOD-TYPE-01)、[局限讨论页](../work/framework-20261108/b-workspaces-final/trial-03-praise_and_revision/report.html#proposal-P-A01-LIMITATION-SCOPE-01)、[本轮索引](../work/framework-20261108/README.md)。修改暂用 JSON 草稿加 CLI，未做图形规则编辑器。支持来源冻结与缺失恢复、版本冲突拒绝、同权限区证据限制；观点变化后历史对照/提案标需重新验证，不覆盖旧快照。`current` 不表示专业确认。
 
 ### 开发回放与验证边界
 
@@ -23,11 +23,17 @@
 
 解盲后 6 次比较为：修改后仅在复核导航上获有限偏好 2 次，3 次双方不适用，1 次证据不足。三份新材料均未触发明确的局限二择一；没有观察到误加要求或遗漏减少，不能把偏好当成效果。21 个选定观点、46 处逐字引文已另行核验。代理开发回放墙钟 200.164 秒，不是人类工时。原 packet 留存草案继承来源性质的问题，后续返修只修来源标识，不改影子回放文字或重新包装成绩。
 
-核心实现接入后已实际运行系统 Python + Chrome 全套 105 项，零失败、零跳过，46.328 秒，日志为 `work/framework-20261108/integration-tests.txt/json`。随后隔离真实副本发现状态一致性缺口：修改观点后 apply 返回值和数据库快照可能保留旧 validity，而 HTML/read 刷新才变为 needs_revalidation；代理回放还发现 after 继承 source_paraphrase 会把新增操作误标课程转述。两项已统一返修：事务保存前刷新状态，提案 after 固定编辑操作化，并明确原引文只支持 baseline。返修前副本与失败记录保留，最终另从旧 trial 干净续接，不静默改写历史。最终全套及独立两轴审查仍在进行，旧 105 项通过不能替代返修后的验证。
+核心实现接入后已实际运行系统 Python + Chrome 全套 105 项，零失败、零跳过，46.328 秒，日志为 `work/framework-20261108/integration-tests.txt/json`。随后隔离真实副本发现状态一致性缺口：修改观点后 apply 返回值和数据库快照可能保留旧 validity，而 HTML/read 刷新才变为 needs_revalidation；代理回放还发现 after 继承 source_paraphrase 会把新增操作误标课程转述。两项已统一返修：事务保存前刷新状态，提案 after 固定编辑操作化，并明确原引文只支持 baseline。返修前副本与失败记录保留，最终另从旧 trial 干净续接，不静默改写历史。首次固定代码 `0c9d3ca` 全套 107 项通过（46.938 秒，零跳过），记录在 `final-tests.txt/json`；该结果未覆盖下一项独立审查发现，不能当作最终验收。
+
+独立 Standards 在 `0c9d3ca` 复现 P1：紧凑规则 JSON 9,967,034 bytes 可导入，canonical 却达 10,016,178 bytes，保存后超出读取上限，state/recover 均失败。实际合成探针未涉及真实材料。已在 `803de3b9e2f4c2edafb841705aaaaa151e09e4bb` 统一 book/review 的 canonical 预检及读写限制；新增回归先在旧版复现 3 个失败，再验证拒收不改业务状态、来源表及 imports，且仍可恢复。真实 24 条包未发生该锁死。
+
+最终代码验收为 `803de3b`：系统 Python 3.12.10 + Chrome 156 执行 `python -B -m unittest discover -s tests -v`，**109 项通过、零失败、零跳过**，48.813 秒；实际命令、版本及日志为 `final-repaired-tests.json/txt`。独立 Standards 用原 book 及 review 文件/内存探针关闭 P1，4 项定向测试通过；独立 Spec 复核 15 项无浏览器测试通过、未发现新增阻断或范围蔓延。总比较基线为 `3a6b00d`，首次受审 `0c9d3ca`，修复复审 `803de3b`；结果保存在 `review-results.json`。仅本地提交，未推送或发布。随后文档提交仅补记录，不改运行代码。
 
 `delivery-verification.json` 已实际核查最终 6 份原分、分区、旧候选/决定及模型结果不变、来源/观点引用有效、导入与对照重放幂等；独立生命周期副本修改观点后返回值已立即为 needs_revalidation，冻结证据不变。4 项 A 既有产物和 25 项旧审计指纹保持不变；旧 Flash 账本仍为 12 次，没有本轮新调用。全部测试是合成/Mock；真实材料核验与代理诊断不构成专业效果证据。
 
 工程链路可运行；观点理解、规则解释和正式修订效果分别验证。当前仍无专业双人裁决、独立新旧标准试评、真实作者负担或审稿质量改善证据。完整 A 有效版本、送审稿版本、可靠匿名审稿人交叉结构仍缺，不能据候选规则数或测试数报总完成比例。
+
+下一步优先三件事：先对高影响的课程强度/适用范围做有时间戳的专业核对，确认少量现行基线；使用现有页面让可信编辑复核选定 B 观点并记录真实修正成本；再冻结一条收窄后的提案，用明确命中条件分支及不适用对照的新材料做独立试评。新三例说明词语线索取样不保证命中具体规则情境，不能继续把未触发案例算收益。缺版本/交叉数据时继续单篇证据，不猜配、不过早做审稿人校准或跨稿结论。
 
 ## 上一轮：0.3.1 新样本端到端试运行
 

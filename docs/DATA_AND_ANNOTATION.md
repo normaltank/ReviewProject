@@ -62,6 +62,8 @@ JSON 的证据位置除字符偏移外保留 JSON pointer。作者不可见标�
 - 每处证据为 `source_id/locator/start/end/quote`，逐字校验 Unicode 切片。PPT `locator={page,paragraph}` 使用 `ppt/slides/slideN.xml` 的页号与零基 `a:p` 段号；段内文字拼接 `a:t`，`a:br` 为换行，不验证图像或备注。转写 `locator={pointer}` 可加 `segment_id/time_range/ppt_page`，均与实际 JSON 记录核验。语音识别错误仍须回听，字节或切片通过不能消除它。
 - 导入统一强制 `status=candidate / authority=unconfirmed / source_status=pending / formal_version=unknown`。同 framework_id、version、内容重复幂等；同版本不同内容拒绝，新内容必须另起版本。`recover` 只能补回缺失的冻结文件，不能静默覆盖被改动的规则或来源。
 
+book 与 framework-review payload 的输入 bytes 和 canonical 编码各受 10,000,000 bytes 上限约束；文件入口与内存入口同样执行 canonical 预检。紧凑输入变为带缩进的规范 JSON 后可能增大，须在冻结文件或修改业务状态前拒收，保证后续读取、恢复与重放不会因自身输出超限锁死工作区。失败仍可留下运行错误记录，不添加规则、来源或对照。
+
 旧 `ingest-clauses` 仍兼容旧记录，其声明型来源校验不等于新包的真实来源文件校验；两者不会自动转换或冒称同一正式版本。
 
 ## B 对照与修订讨论草案

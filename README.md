@@ -76,7 +76,7 @@ python -m reviewproto apply work/demo/edit-02.json --workspace work/demo
 
 本机已经将首讲课程整理为 24 条候选规则，涵盖已有 13 个维度的局部内容；每条包含适用范围、例外、未知项、检查提示与逐字来源。PPT 原生文字和未听校机器转写分别标记。它们没有正式标准效力、评分锚点或统一合格线。
 
-直接打开[综述类型与证据责任讨论页](work/framework-20261108/b-workspaces-final/trial-02-long/report.html#frameworks)或[局限与替代动作讨论页](work/framework-20261108/b-workspaces-final/trial-03-praise_and_revision/report.html#frameworks)。两页含真实评语，仅供本机可信编辑；[本轮索引](work/framework-20261108/README.md)记录来源、开发回放和限制。
+直接打开[综述类型与证据责任讨论页](work/framework-20261108/b-workspaces-final/trial-02-long/report.html#proposal-P-A01-METHOD-TYPE-01)或[局限与替代动作讨论页](work/framework-20261108/b-workspaces-final/trial-03-praise_and_revision/report.html#proposal-P-A01-LIMITATION-SCOPE-01)。两页含真实评语，仅供本机可信编辑；[本轮索引](work/framework-20261108/README.md)记录来源、开发回放和限制。
 
 将本地规则包接入另一份已导入的审稿工作区：
 
