@@ -45,8 +45,16 @@ v3 使用 600 字窗口和较简单的引用列表协议。四例共 8 次真实
 - `work/development-20261107/runtime/`：官方资源指纹与许可、安装、真实本地推理、结构约束失败、容量探针、启停脚本保护校验。
 - `work/development-20261107/pilot/*/model-artifacts/`：真实响应与定位产物；Mock 探针仍在旧 `work/langextract-probe/`，两者不混报。
 - `work/development-20261107/current-smoke/`：最终入口经新启停脚本执行的一次真实本地合成输入抽取，3 个待核候选；不是业务效果验证。新服务真实启动、停止和再次停止均成功，交付时服务已停止。
+- `work/development-20261107/delivery-verification.json`：12 个原件、8 份冻结副本及其原分/分区重解析检查通过，25 项先前审计产物指纹不变；真实材料的模型请求共 13 次，包含失败和不同协议，不能按候选数合并统计。
+- `work/development-20261107/review-results.json`：固定版本的双轴发现、返修及独立复核结论。
 
-最终全量测试和固定版本双轴审查在本轮交付前补记。本机浏览器测试需要测试所用 Python 安装 Playwright，且 `REVIEW_BROWSER_BINARY` 指向 Chrome；仅模型环境不包含浏览器测试依赖。
+代码验收版本为 `c829e2f7190f43ff5d72940e8e7df3dd68bfce62`（首个实现 `9b7f459` 后集中返修）。系统 Python 3.12 与 Chrome 执行 `python -B -m unittest discover -s tests -v`，**62 项通过、零失败、零跳过**，27.482 秒。原始日志与命令元数据为 `work/development-20261107/final-tests.txt/json`。浏览器覆盖拆分/补录、下载、apply 和刷新保存。测试均为合成输入；不据此宣称真实语义准确率。
+
+Standards 独立审查发现两项 P2：模型入口绕过冻结原件复核、正常空回应误记 failed；Spec 独立审查发现一项 P2：按同句/同主题去重会删掉不同动作与强度。已统一修复，原审查者用各自无网探针复验关闭，新增适配回归独立 21/21 通过，未发现新增阻断。正常空结果为 zero_candidates；有错误的空结果保留 failed；同句独立观点完整保留。四份旧 v3 grounding 离线诊断未发现该旧去重键的实际碰撞，旧输出未改写，此诊断不是新推理。
+
+最终修复版本又通过实际本地模型入口完成合成 smoke（`current-smoke/model-artifacts/final-reviewed-c829`），3 条待核、0 处理错误，已导入展示并停止模型。真实材料历史输出的各自代码/提示指纹继续保留，没有伪装成最终版本重新推理。
+
+曾在仅装模型依赖的隔离环境运行当时 51 项，49 通过、2 个浏览器用例因缺 Playwright 报错，原始日志 `semantic-env-tests.txt` 留存。最终完整验证使用已有 Playwright 的系统 Python。本机浏览器测试需要测试所用 Python 安装 Playwright，且 `REVIEW_BROWSER_BINARY` 指向 Chrome；模型依赖不是测试依赖全集。
 
 ## 尚未验证与下一步
 
