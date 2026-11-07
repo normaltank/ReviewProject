@@ -272,18 +272,27 @@ def main():
     if not 256 <= args.max_output_tokens <= 8192:
         parser.error("max-output-tokens must be between 256 and 8192")
     sys.path.insert(0, str(ROOT))
+    from reviewproto.core import ReviewError
+    from reviewproto.store import Workspace
+    # Workspace's constructor can create an empty store. An extraction input
+    # must already exist; validate its frozen bytes and current parser policy
+    # through the shared boundary before creating artifacts or loading a model.
+    if not (args.workspace / "review.sqlite3").is_file():
+        raise ValueError("E_WORKSPACE_EMPTY")
+    try:
+        store = Workspace(args.workspace)
+        try:
+            state = store.state()
+            workspace = store.path
+        finally:
+            store.close()
+    except ReviewError as error:
+        raise ValueError(str(error)) from None
     import langextract as lx
     from langextract.core import base_model, tokenizer, types
     # Alignment diagnostics can contain verbatim private input. Keep them in
     # the trusted artifacts, never in console output or a public test log.
     logging.getLogger("absl").setLevel(logging.ERROR)
-    workspace = args.workspace.resolve()
-    db = sqlite3.connect((workspace / "review.sqlite3").as_uri() + "?mode=ro", uri=True)
-    try:
-        row = db.execute("SELECT payload FROM state WHERE id=1").fetchone()
-        state = json.loads(row[0])
-    finally:
-        db.close()
     sections = [s for s in state["sections"] if not args.section or s["section_id"] in args.section]
     if not sections:
         raise ValueError("E_SECTION_SELECTION")
@@ -356,11 +365,12 @@ def main():
                 code = str(error) if isinstance(error, ValueError) and str(error).startswith("E_") else "E_LOCAL_EXTRACTION_FAILED"
                 errors.append(code)
                 outcome.update(status="failed", errors=[code], error_type=type(error).__name__, error_detail=str(error))
-    # Overlap may rediscover the exact same opinion. Keep distinct stances/attributes.
+    # Overlap may rediscover an identical opinion. A shared sentence or topic
+    # does not establish equivalence: retain every differing semantic field,
+    # evidence span and warning. Only the window-local external ID is ignored.
     unique, seen = [], set()
     for candidate in candidates:
-        first = candidate["evidence"][0]
-        key = (candidate["section_id"], first["start"], first["end"], candidate["object"], candidate["direction"], tuple(candidate["attributes"]))
+        key = json.dumps({k: v for k, v in candidate.items() if k != "external_id"}, ensure_ascii=False, sort_keys=True)
         if key not in seen:
             seen.add(key)
             unique.append(candidate)
@@ -375,13 +385,13 @@ def main():
                          "window_chars": args.window_chars, "context_boundary_review_required": True,
                          "model_requests": len(calls), "external_model_requests": 0, "started_at": started_at},
               "sections": [{"section_id": s["section_id"], "text_sha256": digest(s["text"])} for s in sections],
-              "candidates": unique, "status": "complete" if unique else "failed", "errors": errors}
+              "candidates": unique, "status": "complete" if unique or not errors else "failed", "errors": errors}
     (folder / "candidates.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (folder / "concept-suggestions.json").write_text(json.dumps(concepts, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (folder / "grounding.json").write_text(json.dumps(raw_extractions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (folder / "windows.json").write_text(json.dumps(outcomes, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"run_id": run_id, "model_requests": len(calls), "candidates": len(unique), "errors": len(errors), "status": result["status"]}))
-    return 0 if unique else 2
+    return 0 if result["status"] == "complete" else 2
 
 
 if __name__ == "__main__":

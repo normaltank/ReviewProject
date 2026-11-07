@@ -1,14 +1,19 @@
 """Synthetic transport/grounding regressions, not model accuracy tests."""
 import importlib.util
+from contextlib import contextmanager
 import json
 from pathlib import Path
-import sqlite3
+import subprocess
 import sys
 import tempfile
 from types import ModuleType
 from types import SimpleNamespace as Obj
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+
+from reviewproto.core import digest
+from reviewproto.store import Workspace
+from test_core_pipeline import native_variant
 
 
 PATH = Path(__file__).resolve().parents[1] / "experiments" / "extract_local.py"
@@ -18,6 +23,35 @@ SPEC.loader.exec_module(adapter)
 
 
 class LocalExtractionTests(unittest.TestCase):
+    def workspace(self, root, text='合成测试原文'):
+        source = root / 'input.json'
+        source.write_text(json.dumps({'scores': [], 'sections': [{'section_id': 'one', 'label': '评审意见', 'text': text}]}, ensure_ascii=False), encoding='utf-8')
+        directory = root / 'workspace'
+        store = Workspace(directory)
+        try:
+            store.run(source, 'synthetic', 'json')
+        finally:
+            store.close()
+        return directory
+
+    @contextmanager
+    def fake_provider(self, workspace, extract_response, run_id='synthetic-run'):
+        lx, core = ModuleType('langextract'), ModuleType('langextract.core')
+        core.base_model = Obj(BaseLanguageModel=object)
+        core.tokenizer = Obj(UnicodeTokenizer=lambda: None)
+        core.types = Obj()
+        lx.extract = Mock(side_effect=extract_response)
+        with patch.dict(sys.modules, {'langextract': lx, 'langextract.core': core}), \
+             patch.object(adapter, 'examples', return_value=[]), \
+             patch.object(adapter, 'version', return_value='synthetic'), \
+             patch.object(sys, 'argv', ['adapter', '--workspace', str(workspace), '--run-id', run_id]), \
+             patch('urllib.request.OpenerDirector.open', side_effect=AssertionError('network forbidden')), \
+             patch('builtins.print'):
+            yield lx.extract
+
+    def artifact(self, workspace, run_id='synthetic-run'):
+        return json.loads((workspace / 'model-artifacts' / run_id / 'candidates.json').read_text(encoding='utf-8'))
+
     def test_endpoint_only_literal_loopback(self):
         self.assertEqual(adapter.local_endpoint("http://127.0.0.1:8766/v1/"),
                          "http://127.0.0.1:8766/v1/chat/completions")
@@ -128,34 +162,156 @@ class LocalExtractionTests(unittest.TestCase):
     def test_run_hash_is_frozen_before_extraction_even_if_adapter_file_changes(self):
         # The fake extraction changes what is on disk while the run is in
         # flight. No model, socket, or optional package is used by this test.
-        lx, core = ModuleType('langextract'), ModuleType('langextract.core')
-        core.base_model = Obj(BaseLanguageModel=object)
-        core.tokenizer = Obj(UnicodeTokenizer=lambda: None)
-        core.types = Obj()
         phase = {'value': b'adapter-at-start'}
         def extract(**kwargs):
             phase['value'] = b'adapter-replaced-during-run'
             return Obj(extractions=[])
-        lx.extract = extract
         with tempfile.TemporaryDirectory() as directory:
-            workspace = Path(directory)
-            db = sqlite3.connect(workspace / 'review.sqlite3')
-            db.execute('CREATE TABLE state (id INTEGER PRIMARY KEY, payload TEXT)')
-            state = {'source': {'source_id': 'synthetic'}, 'sections': [
-                {'section_id': 'one', 'source_id': 'synthetic', 'text': '合成测试原文', 'paragraphs': [{'start': 0, 'end': 6}]}]}
-            db.execute('INSERT INTO state VALUES (1, ?)', (json.dumps(state),))
-            db.commit()
-            db.close()
-            with patch.dict(sys.modules, {'langextract': lx, 'langextract.core': core}), \
-                 patch.object(adapter, 'examples', return_value=[]), \
-                 patch.object(adapter, 'version', return_value='synthetic'), \
+            workspace = self.workspace(Path(directory))
+            with self.fake_provider(workspace, extract, 'startup-hash'), \
                  patch.object(Path, 'read_bytes', side_effect=lambda: phase['value']), \
-                 patch.object(sys, 'argv', ['adapter', '--workspace', str(workspace), '--run-id', 'startup-hash']), \
                  patch('builtins.print'):
-                self.assertEqual(adapter.main(), 2)
-            payload = json.loads((workspace / 'model-artifacts' / 'startup-hash' / 'candidates.json').read_text(encoding='utf-8'))
+                self.assertEqual(adapter.main(), 0)
+            payload = self.artifact(workspace, 'startup-hash')
             self.assertEqual(payload['config']['adapter_sha256'], adapter.digest(b'adapter-at-start'))
             self.assertNotEqual(payload['config']['adapter_sha256'], adapter.digest(phase['value']))
+
+    def test_frozen_source_change_is_rejected_before_model_or_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory))
+            (workspace / 'source.json').write_text('{}', encoding='utf-8')
+            with self.fake_provider(workspace, lambda **kwargs: Obj(extractions=[])) as model:
+                with self.assertRaisesRegex(ValueError, '^E_SOURCE_CHANGED$'):
+                    adapter.main()
+                model.assert_not_called()
+            self.assertFalse((workspace / 'model-artifacts').exists())
+
+    def test_changed_source_cli_reports_only_safe_error_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory))
+            (workspace / 'source.json').write_text('{}', encoding='utf-8')
+            result = subprocess.run([sys.executable, str(PATH), '--workspace', str(workspace)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stderr.strip(), 'E_SOURCE_CHANGED')
+            self.assertEqual(result.stdout, '')
+            self.assertFalse((workspace / 'model-artifacts').exists())
+
+    def test_unsafe_cached_source_is_rechecked_before_model_or_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory))
+            # Simulate a pre-policy cache whose source hash matches an unsafe
+            # original. Current shared source validation must still reject it.
+            data = native_variant('oMath', 'comment')
+            store = Workspace(workspace)
+            try:
+                state = store.state()
+                state['source'].update(kind='native_docx', storage_file='source.docx', source_id=digest(data), sha256=digest(data))
+                (workspace / 'source.docx').write_bytes(data)
+                store.save(state)
+            finally:
+                store.close()
+            with self.fake_provider(workspace, lambda **kwargs: Obj(extractions=[])) as model:
+                with self.assertRaisesRegex(ValueError, '^E_UNSUPPORTED_FEATURE$'):
+                    adapter.main()
+                model.assert_not_called()
+            self.assertFalse((workspace / 'model-artifacts').exists())
+
+    def test_missing_or_empty_directory_is_not_initialized(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for workspace in (root / 'missing', root / 'empty'):
+                if workspace.name == 'empty':
+                    workspace.mkdir()
+                with self.fake_provider(workspace, lambda **kwargs: Obj(extractions=[])) as model:
+                    with self.assertRaisesRegex(ValueError, '^E_WORKSPACE_EMPTY$'):
+                        adapter.main()
+                    model.assert_not_called()
+                self.assertFalse((workspace / 'review.sqlite3').exists())
+                self.assertFalse((workspace / 'model-artifacts').exists())
+                self.assertFalse((workspace / '.gitignore').exists())
+            self.assertFalse((root / 'missing').exists())
+
+    def test_legitimate_empty_response_imports_as_zero_candidates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory))
+            with self.fake_provider(workspace, lambda **kwargs: Obj(extractions=[])) as model:
+                self.assertEqual(adapter.main(), 0)
+                model.assert_called_once()
+            payload = self.artifact(workspace)
+            self.assertEqual((payload['status'], payload['candidates'], payload['errors']), ('complete', [], []))
+            store = Workspace(workspace)
+            try:
+                result = store.import_extractions(payload)
+                self.assertEqual(result['extraction_runs'][-1]['status'], 'zero_candidates')
+            finally:
+                store.close()
+
+    def test_failed_empty_response_stays_failed_with_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory))
+            def failure(**kwargs):
+                raise ValueError('E_MODEL_TRUNCATED')
+            with self.fake_provider(workspace, failure):
+                self.assertEqual(adapter.main(), 2)
+            payload = self.artifact(workspace)
+            self.assertEqual((payload['status'], payload['candidates'], payload['errors']), ('failed', [], ['E_MODEL_TRUNCATED']))
+            store = Workspace(workspace)
+            try:
+                self.assertEqual(store.import_extractions(payload)['extraction_runs'][-1]['status'], 'failed')
+            finally:
+                store.close()
+
+    def test_partial_response_preserves_error_and_valid_opinion(self):
+        text = '建议修改标题。'
+        def response(**kwargs):
+            return Obj(extractions=[Obj(extraction_class='opinion', extraction_text=quote, char_interval=None, attributes={})
+                                    for quote in [text, '合成不存在引文']])
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.fake_provider(workspace, response):
+                self.assertEqual(adapter.main(), 0)
+            payload = self.artifact(workspace)
+            self.assertEqual(payload['status'], 'complete')
+            self.assertEqual(payload['errors'], ['E_QUOTE_NOT_FOUND'])
+            self.assertEqual(len(payload['candidates']), 1)
+            store = Workspace(workspace)
+            try:
+                result = store.import_extractions(payload)
+                self.assertEqual(result['extraction_runs'][-1]['status'], 'partial')
+                self.assertEqual(len(result['extraction_runs'][-1]['accepted_ids']), 1)
+            finally:
+                store.close()
+
+    def test_same_sentence_independent_requirements_survive_main_deduplication(self):
+        text = '章节顺序可保持，标题应修改。'
+        def response(**kwargs):
+            return Obj(extractions=[Obj(extraction_class='opinion', extraction_text=text, char_interval=None,
+                       attributes={'object': '篇章', 'attribute_labels': ['章节安排'], 'direction': 'neutral',
+                                   'action': action, 'requirement_strength': strength}) for action, strength in
+                       [('顺序可保持', 'optional'), ('标题应修改', 'mandatory')]])
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.fake_provider(workspace, response):
+                self.assertEqual(adapter.main(), 0)
+            payload = self.artifact(workspace)
+            self.assertEqual(payload['errors'], [])
+            self.assertEqual([(c['action'], c['requirement_strength']) for c in payload['candidates']],
+                             [('顺序可保持', 'optional'), ('标题应修改', 'mandatory')])
+
+    def test_fully_identical_overlapping_opinions_are_deduplicated(self):
+        text = '建议修改标题。'
+        def response(**kwargs):
+            return Obj(extractions=[Obj(extraction_class='opinion', extraction_text=text, char_interval=None,
+                       attributes={'object': '标题', 'attribute_labels': ['表达'], 'direction': 'neutral', 'action': '修改标题'})])
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.fake_provider(workspace, response) as model, \
+                 patch.object(adapter, 'windows', return_value=iter([(0, text, 'paragraph_window'), (0, text, 'paragraph_window')])):
+                self.assertEqual(adapter.main(), 0)
+                self.assertEqual(model.call_count, 2)
+            payload = self.artifact(workspace)
+            self.assertEqual(len(payload['candidates']), 1)
+            self.assertEqual(payload['errors'], [])
 
 
 if __name__ == "__main__":
