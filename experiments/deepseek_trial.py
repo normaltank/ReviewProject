@@ -35,6 +35,7 @@ INPUT_MISS = 2_000
 INPUT_HIT = 40
 OUTPUT = 8_000
 CHAT_BYTE_ALLOWANCE = 16_384
+LEDGER_FILENAME = "deepseek-budget.sqlite3"
 
 
 def require(condition, code):
@@ -55,6 +56,19 @@ def money(value):
         raise ValueError("E_BUDGET") from None
 
 
+def approval_ledger_identity(plan_hash, ledger_path):
+    """Bind an approval to one canonical ledger, independently of its location.
+
+    This digest detects inconsistent approval fields; the local approval file
+    remains the authorization record, not a cryptographic signature.
+    """
+    value = str(ledger_path)
+    path = Path(value)
+    require(path.is_absolute() and path.name == LEDGER_FILENAME, "E_APPROVAL_LEDGER_PATH")
+    require(value == str(path.resolve()), "E_APPROVAL_LEDGER_PATH")
+    return local.digest(plan_hash + "\n" + value)
+
+
 def validate_plan(plan_path, approval_path, alias):
     """Approval is checked before loading a workspace, a model, or a secret."""
     plan_path = Path(plan_path).resolve()
@@ -65,6 +79,10 @@ def validate_plan(plan_path, approval_path, alias):
     require(isinstance(approval, dict) and approval.get("schema_version") == 1
             and approval.get("approved") is True, "E_APPROVAL_REQUIRED")
     require(approval.get("plan_sha256") == plan_hash, "E_APPROVAL_PLAN_CHANGED")
+    require(isinstance(approval.get("ledger_path"), str), "E_APPROVAL_LEDGER_PATH")
+    ledger_path = Path(approval["ledger_path"])
+    ledger_identity = approval_ledger_identity(plan_hash, approval["ledger_path"])
+    require(approval.get("ledger_identity") == ledger_identity, "E_APPROVAL_LEDGER_IDENTITY")
     require(isinstance(approval.get("approved_at"), str) and approval["approved_at"].strip()
             and isinstance(approval.get("user_approval_reference"), str)
             and approval["user_approval_reference"].strip(), "E_APPROVAL_REFERENCE")
@@ -120,14 +138,14 @@ def validate_plan(plan_path, approval_path, alias):
         require(section["text"][cursor:span["start"]] == item["text"][cursor:span["start"]], "E_REDACTION_OUTSIDE")
         cursor = span["end"]
     require(section["text"][cursor:] == item["text"][cursor:], "E_REDACTION_OUTSIDE")
-    return plan, item, section, workspace, plan_hash, cap
+    return plan, item, section, workspace, plan_hash, cap, ledger_path, ledger_identity
 
 
 class Ledger:
     """One transactionally reserved budget for every item/process in a plan."""
 
-    def __init__(self, directory, plan_hash, cap, max_calls):
-        self.path = Path(directory) / "deepseek-budget.sqlite3"
+    def __init__(self, path, plan_hash, cap, max_calls):
+        self.path = Path(path)
         self.plan_hash, self.cap, self.max_calls = plan_hash, cap, max_calls
         with self.connect() as db:
             db.execute("CREATE TABLE IF NOT EXISTS meta (id INTEGER PRIMARY KEY CHECK(id=1), plan_hash TEXT, cap INTEGER, max_calls INTEGER)")
@@ -251,7 +269,7 @@ def mask_filter(candidates, section, redactions):
 
 def run(plan_path, approval_path, alias, run_id, window_chars=600, *, transport=None, key_getter=None):
     started_at = datetime.now(timezone.utc).isoformat()
-    plan, item, original, workspace, fingerprint, cap = validate_plan(plan_path, approval_path, alias)
+    plan, item, original, workspace, fingerprint, cap, ledger_path, ledger_identity = validate_plan(plan_path, approval_path, alias)
     require(re.fullmatch(r"[A-Za-z0-9_-]{1,100}", run_id) is not None, "E_RUN_ID")
     require(type(window_chars) is int and 300 <= window_chars <= 6000, "E_WINDOW_SIZE")
     adapter_hash = local.digest(Path(__file__).read_bytes())
@@ -261,7 +279,7 @@ def run(plan_path, approval_path, alias, run_id, window_chars=600, *, transport=
     logging.getLogger("absl").setLevel(logging.ERROR)
     folder = workspace / "model-artifacts" / run_id
     folder.mkdir(parents=True, exist_ok=False)
-    ledger = Ledger(Path(plan_path).resolve().parent, fingerprint, cap, plan["max_calls"])
+    ledger = Ledger(ledger_path, fingerprint, cap, plan["max_calls"])
     instruction = local.INSTRUCTION + "\nOutput json conforming to this JSON schema:\n" + json.dumps(local.schema(), ensure_ascii=False)
     calls, candidates, errors, outcomes, grounding = [], [], [], [], []
     scope = {}
@@ -278,6 +296,7 @@ def run(plan_path, approval_path, alias, run_id, window_chars=600, *, transport=
                 # Do not rely on a stale approval/source after a long model call.
                 current = validate_plan(plan_path, approval_path, alias)
                 require(current[4] == fingerprint and current[5] == cap, "E_APPROVAL_PLAN_CHANGED")
+                require(current[6] == ledger_path and current[7] == ledger_identity, "E_APPROVAL_LEDGER_CHANGED")
                 require(not stopped, "E_USAGE_UNKNOWN_STOP")
                 payload = {"model": MODEL, "temperature": 0, "max_tokens": plan["max_output_tokens"],
                            "thinking": {"type": "disabled"}, "response_format": {"type": "json_object"},
@@ -371,6 +390,7 @@ def run(plan_path, approval_path, alias, run_id, window_chars=600, *, transport=
               "status": status, "errors": errors, "candidates": list(unique.values()),
               "sections": [{"section_id": original["section_id"], "text_sha256": item["source_text_sha256"]}],
               "config": {"plan_sha256": fingerprint, "alias": alias, "endpoint": ENDPOINT,
+                         "ledger_identity": ledger_identity,
                          "prompt_version": local.PROMPT_VERSION, "prompt_sha256": local.digest(instruction),
                          "schema_sha256": local.digest(json.dumps(local.schema(), sort_keys=True)),
                          "adapter_sha256": adapter_hash, "local_adapter_sha256": local_hash,

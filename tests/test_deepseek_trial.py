@@ -1,5 +1,5 @@
 """Synthetic approval, score-blind transport, grounding and budget regressions."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import io
 import json
 from pathlib import Path
@@ -53,8 +53,11 @@ class DeepSeekTrialTests(unittest.TestCase):
         self.plan = self.root / "outbound-plan.json"
         self.plan.write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")
         self.approval = self.root / "approval.json"
-        self.approval.write_text(json.dumps({"schema_version": 1, "plan_sha256": trial.local.digest(self.plan.read_bytes()),
+        fingerprint = trial.local.digest(self.plan.read_bytes())
+        ledger_path = str((self.root / trial.LEDGER_FILENAME).resolve())
+        self.approval.write_text(json.dumps({"schema_version": 1, "plan_sha256": fingerprint,
              "approved": True, "approved_at": "2026-11-08T00:00:00Z", "user_approval_reference": "synthetic-test-only",
+             "ledger_path": ledger_path, "ledger_identity": trial.approval_ledger_identity(fingerprint, ledger_path),
              "max_cost_cny": changes.get("budget_cny", 5)}), encoding="utf-8")
         return plan
 
@@ -92,6 +95,17 @@ class DeepSeekTrialTests(unittest.TestCase):
         self.transport = transport or Mock(return_value=answer if answer is not None else self.answer())
         with self.fake_langextract():
             return trial.run(self.plan, self.approval, alias, run_id, transport=self.transport, key_getter=self.key)
+
+    def copy_plan_and_approval(self):
+        original_plan, original_approval = self.plan.read_bytes(), self.approval.read_bytes()
+        directory = self.root / "copied-approval"
+        directory.mkdir()
+        self.plan, self.approval = directory / self.plan.name, directory / self.approval.name
+        self.plan.write_bytes(original_plan)
+        self.approval.write_bytes(original_approval)
+        self.assertEqual(self.plan.read_bytes(), original_plan)
+        self.assertEqual(self.approval.read_bytes(), original_approval)
+        return directory
 
     def test_approval_gate_precedes_key_model_and_network(self):
         self.approve([self.fixture()])
@@ -246,23 +260,105 @@ class DeepSeekTrialTests(unittest.TestCase):
         self.transport.assert_not_called()
         directory = self.root / "independent-budget"
         directory.mkdir()
-        ledger = trial.Ledger(directory, "synthetic-plan", 150_000_000, 20)
+        ledger = trial.Ledger(directory / trial.LEDGER_FILENAME, "synthetic-plan", 150_000_000, 20)
         ident, reserved = ledger.reserve("one", "a", 10, 8192)
         self.assertEqual(reserved, (10 + trial.CHAT_BYTE_ALLOWANCE) * 2000 + 8192 * 8000)
         self.assertGreater(reserved, 90_000_000)
         ledger.settle(ident, {"prompt_tokens": 15_000, "completion_tokens": 8192})
         with self.assertRaisesRegex(ValueError, "E_BUDGET_EXHAUSTED"):
-            trial.Ledger(directory, "synthetic-plan", 150_000_000, 20).reserve("two", "b", 10, 8192)
+            trial.Ledger(directory / trial.LEDGER_FILENAME, "synthetic-plan", 150_000_000, 20).reserve("two", "b", 10, 8192)
 
     def test_pending_transaction_blocks_second_process_and_unknown_usage(self):
-        ledger = trial.Ledger(self.root, "synthetic-plan", 5 * trial.NANO, 20)
+        ledger = trial.Ledger(self.root / trial.LEDGER_FILENAME, "synthetic-plan", 5 * trial.NANO, 20)
         ident, reserved = ledger.reserve("one", "a", 10, 8192)
-        second = trial.Ledger(self.root, "synthetic-plan", 5 * trial.NANO, 20)
+        second = trial.Ledger(self.root / trial.LEDGER_FILENAME, "synthetic-plan", 5 * trial.NANO, 20)
         with self.assertRaisesRegex(ValueError, "E_USAGE_UNKNOWN_STOP"):
             second.reserve("two", "b", 10, 8192)
         self.assertEqual(ledger.settle(ident, None), ("unknown", None))
         with self.assertRaisesRegex(ValueError, "E_USAGE_UNKNOWN_STOP"):
             second.reserve("two", "b", 10, 8192)
+
+    def test_copied_plan_approval_reuses_exhausted_call_ledger(self):
+        self.approve([self.fixture()], max_calls=1)
+        self.assertEqual(self.execute()["status"], "complete")
+        copied = self.copy_plan_and_approval()
+        result = self.execute(run_id="copied-run")
+        self.assertIn("E_MAX_CALLS", result["errors"])
+        self.transport.assert_not_called()
+        self.key.assert_not_called()
+        self.assertFalse((copied / trial.LEDGER_FILENAME).exists())
+        with closing(sqlite3.connect(self.root / trial.LEDGER_FILENAME)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM calls").fetchone()[0], 1)
+
+    def test_copied_plan_approval_cannot_reset_unknown_usage_stop(self):
+        self.approve([self.fixture()])
+        first = self.execute(self.answer(usage=False))
+        self.assertIn("E_USAGE_UNKNOWN_STOP", first["errors"])
+        copied = self.copy_plan_and_approval()
+        result = self.execute(run_id="copied-run")
+        self.assertIn("E_USAGE_UNKNOWN_STOP", result["errors"])
+        self.transport.assert_not_called()
+        self.key.assert_not_called()
+        self.assertFalse((copied / trial.LEDGER_FILENAME).exists())
+
+    def test_copied_plan_approval_cannot_reset_peak_cost_budget(self):
+        self.approve([self.fixture()], budget_cny=0.16)
+        answer = self.answer()
+        answer["usage"] = {"prompt_tokens": 10_000, "completion_tokens": 8192}
+        first = self.execute(answer)
+        self.assertEqual(first["status"], "complete")
+        with trial.Ledger(self.root / trial.LEDGER_FILENAME, trial.local.digest(self.plan.read_bytes()),
+                          160_000_000, 20).connect() as db:
+            self.assertEqual(db.execute("SELECT status,cost FROM calls").fetchone(), ("known", 85_536_000))
+        copied = self.copy_plan_and_approval()
+        result = self.execute(run_id="copied-run")
+        self.assertIn("E_BUDGET_EXHAUSTED", result["errors"])
+        self.transport.assert_not_called()
+        self.key.assert_not_called()
+        self.assertFalse((copied / trial.LEDGER_FILENAME).exists())
+
+    def test_approval_requires_canonical_absolute_fixed_ledger_identity(self):
+        self.approve([self.fixture()])
+        approved = json.loads(self.approval.read_text(encoding="utf-8"))
+        cases = [("missing_path", {k: v for k, v in approved.items() if k != "ledger_path"}, "E_APPROVAL_LEDGER_PATH"),
+                 ("missing_identity", {k: v for k, v in approved.items() if k != "ledger_identity"}, "E_APPROVAL_LEDGER_IDENTITY"),
+                 ("wrong_identity", dict(approved, ledger_identity="f" * 64), "E_APPROVAL_LEDGER_IDENTITY"),
+                 ("moved_path", dict(approved, ledger_path=str((self.root / "other" / trial.LEDGER_FILENAME).resolve())), "E_APPROVAL_LEDGER_IDENTITY"),
+                 ("relative", dict(approved, ledger_path=trial.LEDGER_FILENAME), "E_APPROVAL_LEDGER_PATH"),
+                 ("noncanonical", dict(approved, ledger_path=str(self.root / "other" / ".." / trial.LEDGER_FILENAME)), "E_APPROVAL_LEDGER_PATH"),
+                 ("wrong_name", dict(approved, ledger_path=str((self.root / "another.sqlite3").resolve())), "E_APPROVAL_LEDGER_PATH")]
+        for name, changed, code in cases:
+            with self.subTest(name=name):
+                self.approval.write_text(json.dumps(changed), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, code):
+                    self.execute(run_id=name)
+                self.key.assert_not_called()
+                self.transport.assert_not_called()
+                self.assertFalse((self.root / trial.LEDGER_FILENAME).exists())
+
+    def test_changed_ledger_binding_during_run_refuses_before_reservation(self):
+        self.approve([self.fixture()])
+        key, transport = Mock(return_value="synthetic-secret-key"), Mock(return_value=self.answer())
+        with self.fake_langextract() as lx:
+            extract = lx.extract.side_effect
+
+            def change_binding(**kwargs):
+                approval = json.loads(self.approval.read_text(encoding="utf-8"))
+                other = self.root / "other-ledger"
+                other.mkdir()
+                approval["ledger_path"] = str((other / trial.LEDGER_FILENAME).resolve())
+                approval["ledger_identity"] = trial.approval_ledger_identity(approval["plan_sha256"], approval["ledger_path"])
+                self.approval.write_text(json.dumps(approval), encoding="utf-8")
+                return extract(**kwargs)
+
+            lx.extract.side_effect = change_binding
+            result = trial.run(self.plan, self.approval, "one", "changed-binding", transport=transport, key_getter=key)
+        self.assertIn("E_APPROVAL_LEDGER_CHANGED", result["errors"])
+        key.assert_not_called()
+        transport.assert_not_called()
+        self.assertFalse((self.root / "other-ledger" / trial.LEDGER_FILENAME).exists())
+        with trial.Ledger(self.root / trial.LEDGER_FILENAME, trial.local.digest(self.plan.read_bytes()), 5 * trial.NANO, 20).connect() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM calls").fetchone()[0], 0)
 
     def test_no_usage_stops_following_windows(self):
         self.approve([self.fixture("甲" * 400 + "\n" + "乙" * 400)])
