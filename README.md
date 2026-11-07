@@ -43,7 +43,7 @@ Invoke-Item .\work\demo\report.html
 & .\scripts\run-deepseek-trial.ps1 -Plan work/trial-20261108/outbound-plan.json -Approval work/trial-20261108/approval.json -Item trial-06-short -CheckOnly
 ```
 
-实际运行时去掉 `-CheckOnly`，用新的 `-RunId`，再按本地模型同样的 `ingest-candidates` 导入结果。本轮已有结果直接打开 STATE 中的链接，无需付费重跑。密钥只在子进程环境传递，启停后恢复原环境；不写入仓库、请求日志或命令行。
+实际运行时去掉 `-CheckOnly`，用新的 `-RunId`，再按本地模型同样的 `ingest-candidates` 导入结果。本轮已有结果直接打开 STATE 中的链接，无需付费重跑。批准须绑定原预算账本的绝对路径与身份；复制计划不能重置次数或费用。密钥仅在本次进程树环境传递，退出后恢复原环境；不写入仓库、请求日志或命令行。
 
 本机 DSH 已通过 `python experiments/dsh_bridge.py --mock` 验证隔离 profile 的调用往返，默认执行为不启动进程的 dry-run。此入口只允许内置合成数据和本机 mock，禁用模型工具、额外会话上传及外连；真实审稿抽取本轮采用上面的直接 API。DSH mock 不代表真实模型效果。
 

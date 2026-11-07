@@ -13,13 +13,23 @@
 
 在查看候选之前冻结了 92 条 AI 代理参考、120 个引文，实际墙钟 297.128934 秒；这是代理参考，不是专业人工金标，也不是人类工时。专业编辑实测仍为 0。现有页面已增加显式复核计时、暂停/继续/结束和旁车导出，后续真实编辑可直接记录，操作尝试不会冒称已应用修改。原文分析、匿名方法诊断和 needs_review 修正继续留在受控目录，专业成本和 Framework 效果仍未验证。
 
+隐藏方法名后的代理诊断记录：本地 28 条问题、Flash 16 条问题，另有 12 条参考自身问题；实际诊断墙钟 639.224443 秒，不能当各方法的人类工时。模型都仍存在合并/遗漏独立观点、改变要求或丢替代关系；Flash 还出现实质重复。规则 0 条语义误判记录是因为不作语义判断，仍需拆分和补全字段，不能解读为理解最好。诊断不是 accuracy/recall 评测；方法隐藏不保证盲法，同一代理先参考再诊断有记忆偏差。
+
+6 份修正已实际 apply，每份编辑一个现存候选，actor 为 agent-trial-review，全部 needs_review；三个跨例概念全部 pending_confirmation。实际重放两模型输入后决定、概念和原分未变。当前选择是保留规则和本地无外发路径，Flash 作为明确获授权批次中值得继续评估的提名组件；没有依据宣布已节省人工或部署长期自动理解。本地 Qwen 未微调，本轮没有比较专用微调模型，也没有据此否定该路线。
+
 本轮实际产物集中在 `work/trial-20261108/`：`batch.json/batch-summary.json`（冻结与新颖性）、`local-run.json/flash-run.json/runtime-summary.json`（真实推理与用量）、`outbound-plan.json/approval.json/deepseek-budget.sqlite3`（权限及费用边界）、`reference/`（冻结代理参考）、`pilot/*/report.html`（可复核真实结果）。本地模型已停止。
+
+直接打开[本轮试用索引](../work/trial-20261108/README.md)或[条件样本复核页](../work/trial-20261108/pilot/trial-01-conditional/report.html)。`diagnosis/` 保存匿名方法下的逐条诊断与原始补丁；`diagnostic-summary.json` 解盲汇总；`correction-verification.json` 和 `delivery-verification.json` 验证实际修正、6 个新原件/原分/证据、模型各12请求及25项旧审计指纹不变。
 
 DSH 已以独立 home/profile 和无工具、无额外日志上传的 overlay，通过真实程序、本机 mock 验证 stdio 完成终态；所有使用到的配置显式 Flash。累计 5 个本机 mock POST，真实 DSH 模型请求 0；与直接 API 的 12 次真实请求分开。既有 DSH tracked 源码不变，最后一次探针中旧 home 的路径/大小/mtime 摘要不变。Windows 只读模式本身不能约束任意读取；本轮不把真实资料根目录交给 DSH。
 
+独立两轴在实现 `8de4a88` 均复现同一费用边界缺口：复制同 hash 的 plan/approval 会因按目录新建账本而重置累计限制。已在 `93b2815` 绑定批准中的规范绝对 ledger_path 和 ledger_identity，原审查者分别用无网探针确认复制后次数、费用和未知用量阻断有效，未发现新增阻断。真实原账本 12 条均 known，峰值估算 0.13260472 元，没有实际超额证据；补绑定时原计划和账本 bytes 未改，不新增 API 调用。旧批准快照保留，绑定不提供签名认证。真实模型输出保留当时 `8de4a88` 配置；最终预算修补只作离线回归，没有伪装成又跑一次真实模型。
+
+最终代码验收 `93b2815d2fd6db9f1e5892ecf14302b5a56376d6`：系统 Python + Chrome 执行 `python -B -m unittest discover -s tests -v`，**93 项通过，零失败、零跳过**，35.626 秒。完整命令/版本元数据及日志在 `work/trial-20261108/final-tests.json/txt`；双轴复核为 `review-results.json`。密钥存储用隔离临时仓库/虚构密钥验证加密、可解密且不回显、已有配置不覆盖；真实密钥未进入测试。
+
 ## 上一轮：0.3.0 原型交付证据
 
-当前处于“真实意见理解与复核”开发阶段，软件 0.3.0。接手基线为 `9ac2f948f2ff8610e20cb6b37a3ee81817d871a7`；开发分支 `codex/opinion-review-flow`。此前审计报告与 `audits/2026-11-07/` 保持原样，反映审计时快照；本页和复用记录说明审计之后的实现与实测。
+上一轮处于“真实意见理解与复核”开发阶段，软件 0.3.0。接手基线为 `9ac2f948f2ff8610e20cb6b37a3ee81817d871a7`；开发分支 `codex/opinion-review-flow`。此前审计报告与 `audits/2026-11-07/` 保持原样，反映审计时快照；本页和复用记录说明审计之后的实现与实测。
 
 目标是以外审分数和 Comments 建立评价观点、候选概念和条款差异证据，最终支持出版社审查与改进 Framework。本轮走通本地输入、真实模型提名、精确证据、拆补与修正、候选概念和单篇关联。没有自动发布正式标准。
 
