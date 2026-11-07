@@ -1,6 +1,6 @@
 # ReviewProject
 
-ReviewProject 用外审分项评分与 Comments 建立出版社改进审稿条款所需的证据。首轮交付本地编辑复核工具：保留外审原件和原分，逐段定位意见，记录条件与替代动作，允许编辑修正后重跑。后续可用已核验观点对照 A 的现行条款，结合反例和独立试评提出修订，由出版社授权人员决定发布。
+ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.3.0 提供本地的意见理解与复核流程：规则基线、真实本地模型候选、观点拆分补录、修改历史和候选概念并存。正式条款修订仍需专业判断、独立试评及出版社授权。
 
 ## 跑一份合成审稿表
 
@@ -13,12 +13,29 @@ python -m reviewproto run work/demo-input.docx --workspace work/demo --origin sy
 Invoke-Item .\work\demo\report.html
 ```
 
-每份表使用新建的专用空目录或该表已有的工作目录。处理获准的真实样本时，将输入换成实际 DOCX 路径，使用 `--origin original_review`。冻结原件、数据库、HTML 和补丁都只供可信编辑使用。建议放在 `work/` 内，并由操作系统限制人员访问。工具会在专用工作目录写入仅对该目录生效的 Git 忽略规则。
+每份表使用专用空目录或该表已有的工作目录。真实样本用 `--origin original_review`。冻结原件、数据库、HTML、模型响应和补丁都只供可信编辑使用；放在 `work/` 内，由操作系统限制访问。
+
+业务 CSV 可直接输入：追加 `--format csv`，无需转 Word。当前 CSV 适配已核实的 6 行×6 列单份表单；通用系统导出可转换为[明确的 JSON 契约](docs/DATA_AND_ANNOTATION.md)，使用 `--format json`。无法安全识别的格式会拒收，留待人工核对。
+
+## 使用本机已准备的真实模型
+
+本机已在 `.tools/semantic-env` 安装可选依赖，准备了官方 Qwen3-4B GGUF 和 llama.cpp Vulkan。抽取只向 `127.0.0.1` 发请求，禁用代理与重定向，没有云模型回退。首次抽取只传所选意见分区的文本，不传数值评分或表单身份字段。评语本身仍可能包含身份信息，全部产物留在可信编辑工作区。
+
+```powershell
+& .\scripts\start-local-model.ps1
+# 服务就绪后处理已导入的工作区；run-id 每次用新值。
+& .\.tools\semantic-env\Scripts\python.exe experiments/extract_local.py --workspace work/demo --run-id local-01
+python -m reviewproto ingest-candidates work/demo/model-artifacts/local-01/candidates.json --workspace work/demo
+Invoke-Item .\work\demo\report.html
+& .\scripts\stop-local-model.ps1
+```
+
+其他机器先在隔离环境安装 `requirements-model.txt`；权重、运行包、指纹与授权见[复用记录](docs/REUSE_DECISIONS.md)。启动脚本只复用已安装且指纹匹配的文件，不自动下载。可不启动模型，直接用规则候选开展人工复核。模型截断、引文不符和超长单段会留下失败记录；导入失败产物用于显示诊断，不代表抽取成功。
 
 ## 编辑一条观点
 
 1. 在报告中查看原分、意见分区和高亮原句。“评审意见”的作者可见性默认为待核，“作者不可见”分区及派生观点保留该限制。
-2. 在单条复核表单选中候选，核对前后文，填入修改人、理由和决定。可修改对象、动作和判断方向，高级字段可改条件、互选分支及引文。生成补丁时将文件另存到该工作目录，例如 `work/demo/edit-01.json`。
+2. 在单条复核表单选中候选，填写修改人、理由和决定。可以拆成两条、按原文区间补录遗漏观点；高级字段支持跨句证据、理由、否定、条件、替代动作、概念 ID、评分及条款关系。拆分后各条默认待核，需分别检查语义及继承关系。
 3. 应用补丁并重新打开报告。每次保存都会校验原句、位置、分区和修订号。相同补丁可安全重试，旧修订发生冲突时重新导出。
 
 ```powershell
@@ -34,11 +51,13 @@ python -m reviewproto review --workspace work/demo --candidate ID --output work/
 python -m reviewproto apply work/demo/edit-02.json --workspace work/demo
 ```
 
-若生成报告时中断，运行 `python -m reviewproto recover --workspace work/demo` 重建可读文件。保留冻结原件和 SQLite 数据库。换送审版本或抽取器版本时另建工作目录，并保留原目录供审计。
+概念通过补丁顶层 `concepts` 保存稳定 ID、定义、例子、反例、边界与待确认状态；观点用 `concept_ids` 引用。A 来源使用 `ingest-clauses` 导入，只能成为待核候选，不具有正式标准效力。具体格式见[数据契约](docs/DATA_AND_ANNOTATION.md)。
+
+模型每次运行追加候选和原始输出，不能覆盖人工决定。相同运行重放幂等；同一运行 ID 改内容会拒收。基线、不同模型运行和当前已确认观点分别显示，不相加充当业务意见总数。若生成报告中断，运行 `python -m reviewproto recover --workspace work/demo` 重建可读文件。更换送审版本另建工作目录。
 
 ## 首轮范围与验证
 
-当前支持已核实的单表四评分、双意见分区 DOCX。遇到 Word 原生公式、移动修订或无法映射的内容时会拒收并记录原因。重新使用历史工作目录时，先成功运行 `run` 或 `recover`，再打开报告。提取以完整段落建立待复核候选，再为少数明确的成对条件句标出两路证据。跨段指代、一般语义判断、评分理由及论文事实仍需编辑核对。所有报告均为内部版。
+当前支持已核实 DOCX 表型、业务 CSV 和契约 JSON。Word 样式继承造成隐藏或编号歧义、纵向合并、公式和移动修订等内容会保守拒收，不猜分、不把共享格判为空白。规则仍作为低成本对照。本地模型已经实际处理真实评语，也暴露了漏观点、理由自循环、否定误判和输出截断；候选须复核，精确引文不等于语义正确。页面可记录单篇评分关系的明确、推断或未知状态，不自动判评分矛盾。全部报告仅供可信编辑。
 
 - [交接状态、真实样本入口与限制](docs/STATE.md)
 - [原文定位、评分、权限和复核字段](docs/DATA_AND_ANNOTATION.md)

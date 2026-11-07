@@ -2,7 +2,8 @@
 import html
 import json
 
-from .store import template
+from .store import template, source_filename
+from .understanding import current_views, effective_views
 
 
 def esc(value):
@@ -21,9 +22,25 @@ table{border-collapse:collapse;width:100%}td,th{border:1px solid #b8c2cd;padding
 button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{overflow-wrap:anywhere}</style>
 <h1>内部审稿证据复核</h1><p><strong>仅供可信编辑。本报告、原件、补丁和派生观点均为本地受控材料；没有作者导出。</strong></p>
 <p>规则基线按完整段落产生待复核候选，仅对明确成对字面条件句展示两路结构。语义抽取尚未验证，规则匹配和关键词提示均待人工复核；跨段条件请阅读整个分区。论文未核验，A条款待对照。身份、轮次、量表版本和送审版本关系未知。</p>"""]
-    parts.append(f'<p>来源 ID：<code>{esc(state["source"]["source_id"])}</code>；修订：{state["revision"]}。<a href="source.docx" download>打开冻结原件 source.docx</a>（内容哈希绑定，仅供可信编辑）。偏移：Unicode 字符，左闭右开；原文不规范化。</p>')
+    filename = source_filename(state)
+    parts.append(f'<p>来源 ID：<code>{esc(state["source"]["source_id"])}</code>；修订：{state["revision"]}。<a href="{filename}" download>打开冻结原件 {filename}</a>（内容哈希绑定，仅供可信编辑）。偏移：Unicode 字符，左闭右开；原文不规范化。</p>')
     parts.append(f'<p>来源性质：{esc(state["source"]["origin"])}；表上自报稿件ID（仅表单自报，未核实配对）：{esc(state["source"]["reported_manuscript_id"])}</p>')
-    parts.append('<p>读取范围仅限四项评分和两个评论单元格。表头身份字段及表外段落未作内容分析，请按 source.docx 人工检查；本文不能作为整篇论文或完整材料核验。</p>')
+    parts.append('<p>读取范围以当前来源覆盖说明为准。元数据只保存原样自报值，不确认稿件、教师或送审版本配对；本文不能作为整篇论文或完整材料核验。</p>')
+    baseline = sum(c['origin'] == 'rule_candidate' for c in state['candidates'])
+    model = sum(c['origin'] == 'model_candidate' for c in state['candidates'])
+    parts.append(f'<section><h2>复核队列与当前人工观点</h2><p>段落基线 {baseline}；模型候选 {model}；当前人工确认的独立观点 {len(effective_views(state))}。基线与各模型运行并存，不自动合并计数。拒绝、废弃及被替换记录保留历史，不计入当前已确认观点。</p>')
+    for view in effective_views(state):
+        parts.append(f'<p><a href="#candidate-{esc(view["candidate_id"])}">{esc(view["candidate_id"])}</a> · {esc(view["object"])} · {esc(view["action"])} · 概念 {esc(view.get("concept_ids", []))}</p>')
+    parts.append('</section><section><h2>机器候选运行记录</h2>')
+    for run in state.get('extraction_runs', []):
+        parts.append(f'<details><summary>{esc(run["run_id"])} · {esc(run["model"])} · {esc(run["status"])} · 接收 {len(run["accepted_ids"])} / 拒收 {len(run["rejected"])}</summary><pre>{esc(json.dumps(run, ensure_ascii=False, indent=2))}</pre></details>')
+    parts.append('<p>zero_candidates、partial 和 failed 均须复核；不是“已确认没有意见”。模型定位通过也不等于理解正确。</p></section><section><h2>候选概念与 A 条款来源</h2>')
+    parts.append('<p>概念用稳定 concept_id 引用；自由属性名仅作旧候选描述。A 来源均为待核候选，不具有正式标准效力；观点可以保持 pending_comparison。</p>')
+    for concept in state.get('concepts', []):
+        parts.append(f'<details><summary>概念 {esc(concept["concept_id"])} · {esc(concept["name"])} · {esc(concept["status"])}</summary><pre>{esc(json.dumps(concept, ensure_ascii=False, indent=2))}</pre></details>')
+    for clause in state.get('clauses', []):
+        parts.append(f'<details><summary>A 候选 {esc(clause["clause_id"])} · {esc(clause["source_kind"])} · pending_source_review</summary><pre>{esc(json.dumps(clause, ensure_ascii=False, indent=2))}</pre></details>')
+    parts.append('</section>')
     conditional = [c for c in state["candidates"] if c["alternatives"] or (c["candidate_id"] in previous and previous[c["candidate_id"]]["value"]["alternatives"])]
     parts.append('<nav aria-label="复核入口"><p><a href="#editor">进入单条人工复核表单</a></p>')
     if conditional:
@@ -33,10 +50,17 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
             parts.append(f'<li><a href="#candidate-{esc(cid)}">{esc(candidate["section_id"])} · 查看条件两路及原句 {esc(cid[:8])}</a></li>')
         parts.append('</ul>')
     parts.append('</nav>')
-    parts.append('<section><h2>教师原始评分</h2><table><tr><th>原标签/量表</th><th>原始字符串</th><th>状态</th><th>位置</th></tr>')
+    parts.append('<section id="score-comparison"><h2>教师原始评分</h2><table><tr><th>原标签/量表</th><th>原始字符串</th><th>状态</th><th>位置</th><th>已记录的观点关系</th></tr>')
+    active_views = [c for c in current_views(state) if c['status'] not in {'rejected', 'withdrawn', 'superseded'}]
     for score in state["scores"]:
-        parts.append(f'<tr><td>{esc(score["label"])}</td><td><pre>{esc(json.dumps(score["raw_value"], ensure_ascii=False))}</pre></td><td>{esc(score["missing_state"])}；原因关系 unknown</td><td>{esc(score["locator"])}</td></tr>')
-    parts.append('</table><p>原分不会被人工观点补丁覆盖；数值不是机器生成的理由依据。</p></section>')
+        links = []
+        for view in active_views:
+            for relation in view['relations']:
+                if relation['type'] == 'explains_score' and relation['target'] == score['label']:
+                    links.append(f'<a href="#candidate-{esc(view["candidate_id"])}">{esc(view["candidate_id"])}</a> · {esc(relation["provenance"])} · {esc(view["status"])}')
+        relationship = '<br>'.join(links) if links else 'unknown（未记录解释关系）'
+        parts.append(f'<tr><td>{esc(score["label"])}</td><td><pre>{esc(json.dumps(score["raw_value"], ensure_ascii=False))}</pre></td><td>{esc(score["missing_state"])}</td><td>{esc(score["locator"])}</td><td>{relationship}</td></tr>')
+    parts.append('</table><p>原分不会被观点补丁覆盖。关联分别显示明确、推断或未知及观点复核状态；推断不证明实际给分原因。拒绝、废弃和被替换观点不进入本表关联。数值不是机器生成理由的依据，不自动判评分矛盾。</p></section>')
     for section in state["sections"]:
         sid = section["section_id"]
         parts.append(f'<section id="{esc(sid)}"><h2>{esc(section["label"])}</h2><p>{esc(sid)} · {esc(section["visibility"])} · {esc(section["locator"])}</p><h3>冻结原文</h3><pre>{esc(section["text"])}</pre>')
@@ -44,7 +68,7 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
             cid = candidate["candidate_id"]
             decision = previous.get(cid)
             current = decision["value"] if decision else candidate
-            parts.append(f'<article id="candidate-{esc(cid)}"><h3>候选 {esc(cid)}</h3><p>机器待复核；当前状态：{esc(current["status"])}；来源：{esc(current["origin"])} · <a href="#{esc(sid)}">查看分区全文</a> · <a class="edit-candidate" data-candidate="{esc(cid)}" href="#editor">复核此条</a></p>')
+            parts.append(f'<article id="candidate-{esc(cid)}"><h3>观点 / 候选 {esc(cid)}</h3><p>初始来源：{esc(candidate["origin"])}；运行：{esc(candidate.get("run_id", "baseline_or_human"))}；当前状态：{esc(current["status"])}；当前来源：{esc(current["origin"])} · <a href="#{esc(sid)}">查看分区全文</a> · <a class="edit-candidate" data-candidate="{esc(cid)}" href="#editor">复核此条</a></p>')
             for group in current["alternatives"]:
                 parts.append(f'<h4>可审校分支 · {esc(group["relation"])} · {esc(group["provenance"])}</h4><ul>')
                 for branch in group["branches"]:
@@ -63,6 +87,9 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
             parts.append(f'<details><summary>当前完整结构（高级）</summary><pre>{esc(json.dumps(current, ensure_ascii=False, indent=2))}</pre></details>')
             if decision:
                 parts.append(f'<p>人工决定：{esc(decision["actor"])} · {esc(decision["at"])} · 理由：{esc(decision["reason"])}</p>')
+            score_links = [r for r in current['relations'] if r['type'] == 'explains_score']
+            parts.append(f'<p>原分关系（明确 / 推断 / 未知）：{esc(json.dumps(score_links, ensure_ascii=False)) if score_links else "unknown（没有已记录的解释关系）"}；条款对照：{esc(json.dumps(current.get("clause_links", []), ensure_ascii=False)) if current.get("clause_links") else "pending_comparison"}</p>')
+            parts.append('<details><summary>人工历史 / 父子和替换记录</summary><pre>' + esc(json.dumps({'parent_ids': current.get('parent_ids', []), 'replaces': current.get('replaces', []), 'history': [d for d in state['decisions'] if d['candidate_id'] == cid]}, ensure_ascii=False, indent=2)) + '</pre></details>')
             parts.append('</article>')
         parts.append('</section>')
     parts.append('''<section id="editor"><h2>保存人工复核</h2>
@@ -79,29 +106,42 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
         label = f'{candidate["section_id"]} · {candidate["candidate_id"]} · {candidate["evidence"][0]["quote"][:55]}'
         parts.append(f'<option value="{esc(candidate["candidate_id"])}">{esc(label)}</option>')
     parts.append('''</select></label><p><label>修改人 <input id="actor" autocomplete="off"></label> <label>理由 <input id="reason" size="50" autocomplete="off"></label></p>
-<p><label>复核决定 <select id="status"><option value="needs_review">仍待复核</option><option value="confirmed">人工确认</option><option value="rejected">拒绝候选</option></select></label>
+<p><label>复核决定 <select id="status"><option value="needs_review">仍待复核</option><option value="confirmed">人工确认</option><option value="rejected">拒绝候选</option><option value="superseded">已由子观点替换</option><option value="withdrawn">废弃观点</option></select></label>
 <label>方向 <select id="direction"><option>unknown</option><option>positive</option><option>negative</option><option>mixed</option><option>neutral</option></select></label></p>
 <p><label>对象 <input id="object" size="50"></label></p><p><label>动作 <input id="action" size="70"></label></p>
 <p>简单表单一次保存一条候选；条件、替代、多个证据等在高级 JSON 内修改。修改高级 JSON 后请直接下载，切换候选会重新载入其当前字段。</p>
+<p><label>在首条证据的第几个 Unicode 字符后拆分 <input id="split-offset" type="number" min="1" value="1"></label> <button id="split" type="button">拆为两条独立观点</button></p>
+<p>拆分将生成两个稳定 ID，并以 replaces 记录替换父候选；父记录保留历史。两条新观点默认待核，条件、理由和关联清空，须在高级 JSON 分别核对补充。拆分位置由编辑指定，不代表机器已完成语义切分。</p>
+<p><label>补录分区 <select id="add-section"></select></label> <label>起点 <input id="add-start" type="number" value="0" min="0"></label> <label>终点 <input id="add-end" type="number" value="1" min="1"></label> <button id="add-opinion" type="button">补录一条遗漏观点</button></p>
+<p>补录同样使用 Unicode 左闭右开偏移。高级 JSON 可添加同区多处 evidence、reasons、conditions、alternatives、concept_ids 和 clause_links；概念定义可通过补丁顶层 concepts 列表保存（稳定 ID、name、definition、positive_examples、negative_examples、boundary、status、sources）。废弃可在 status 填 withdrawn。</p>
 <details><summary>高级：结构化字段与精确证据 JSON</summary>
 <p>条件、替代、多标签属性及多段证据可在此修改。evidence 中 quote 必须与 Unicode 左闭右开 start/end 精确一致；不能更改分区或扩大权限。attributes 可分别填写样本规模、代表性。conditions 项格式示意：{"text":"条件原意","meaning":"unknown","evidence_indices":[0],"provenance":"explicit"}。alternatives 的 branches 各保留 condition、action、evidence_indices，关系 relation 可为 conditional_branches 或 either_or；示意字段不是本记录事实。</p>
 <textarea id="patch" aria-label="人工复核补丁"></textarea></details>
 <textarea id="base" hidden aria-hidden="true">''')
     parts.append(esc(json.dumps(base, ensure_ascii=False, indent=2)))
-    parts.append('''</textarea><p><button id="download">下载此条复核补丁</button> <span id="message" role="status"></span></p></section>
+    parts.append('</textarea><textarea id="sections-data" hidden>' + esc(json.dumps(state['sections'], ensure_ascii=False)) + '</textarea>')
+    parts.append('''<p><button id="download">下载此条复核补丁</button> <span id="message" role="status"></span></p></section>
 <script>
 const base=JSON.parse(document.getElementById('base').value);
+const sections=JSON.parse(document.getElementById('sections-data').value);
+for(const section of sections){const option=document.createElement('option');option.value=section.section_id;option.textContent=section.section_id+' · '+section.label;document.getElementById('add-section').append(option);}
 const ids=['status','direction','object','action'];
 function selected(){return base.edits.find(e=>e.candidate_id===document.getElementById('candidate').value);}
 function load(){const item=selected();if(!item)return;for(const id of ids)document.getElementById(id).value=item.fields[id];sync(true);}
 function sync(reset=false){let patch;if(reset){patch={...base,edits:[structuredClone(selected())]};}else{try{patch=JSON.parse(document.getElementById('patch').value);}catch(e){return;}}
 patch.actor=document.getElementById('actor').value;patch.reason=document.getElementById('reason').value;
-for(const id of ids)patch.edits[0].fields[id]=document.getElementById(id).value;
+const entry=patch.edits[0]||(patch.creates||[])[0];if(entry)for(const id of ids)entry.fields[id]=document.getElementById(id).value;
 document.getElementById('patch').value=JSON.stringify(patch,null,2);}
 document.getElementById('candidate').addEventListener('change',load);
 for(const link of document.querySelectorAll('.edit-candidate'))link.addEventListener('click',()=>{document.getElementById('candidate').value=link.dataset.candidate;load();});
-for(const id of [...ids,'actor','reason'])document.getElementById(id).addEventListener('input',()=>sync());
+for(const id of ids)document.getElementById(id).addEventListener('input',()=>sync());
+for(const id of ['actor','reason'])document.getElementById(id).addEventListener('input',()=>{try{const p=JSON.parse(document.getElementById('patch').value);p[id]=document.getElementById(id).value;document.getElementById('patch').value=JSON.stringify(p,null,2);}catch(e){}});
 load();
+function freshId(){return 'human-'+crypto.randomUUID();}
+function cleanFields(){return {status:'needs_review',interpretation:'unknown',object:'unknown',attributes:[],direction:'unknown',speech_function:'unknown',requirement_strength:'unknown',severity:'unknown',action:'unknown',conditions:[],alternatives:[],relations:[],reasons:[],negation:'unknown',concept_ids:[],clause_links:[]};}
+function writeCreates(creates){const p={...base,edits:[],creates,actor:document.getElementById('actor').value,reason:document.getElementById('reason').value};document.getElementById('patch').value=JSON.stringify(p,null,2);document.getElementById('message').textContent='已生成新增观点草稿，请展开高级 JSON 逐条复核后下载。';document.getElementById('patch').parentElement.open=true;}
+document.getElementById('split').addEventListener('click',()=>{try{const item=selected(),e=item.fields.evidence[0],chars=Array.from(e.quote),n=Number(document.getElementById('split-offset').value);if(!Number.isInteger(n)||n<=0||n>=chars.length)throw Error();const pieces=[[0,n],[n,chars.length]].map(([a,b])=>({candidate_id:freshId(),section_id:e.section_id,parent_ids:[item.candidate_id],replaces:[item.candidate_id],fields:{...cleanFields(),evidence:[{...e,start:e.start+a,end:e.start+b,quote:chars.slice(a,b).join('')}]}}));writeCreates(pieces);}catch(e){document.getElementById('message').textContent='拆分位置必须处于首条证据内部。';}});
+document.getElementById('add-opinion').addEventListener('click',()=>{try{const s=sections.find(v=>v.section_id===document.getElementById('add-section').value),a=Number(document.getElementById('add-start').value),b=Number(document.getElementById('add-end').value),chars=Array.from(s.text);if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<=a||b>chars.length)throw Error();writeCreates([{candidate_id:freshId(),section_id:s.section_id,parent_ids:[],replaces:[],fields:{...cleanFields(),evidence:[{source_id:s.source_id,section_id:s.section_id,start:a,end:b,quote:chars.slice(a,b).join(''),precision:'exact'}]}}]);}catch(e){document.getElementById('message').textContent='请核对分区与 Unicode 起止偏移。';}});
 document.getElementById('download').addEventListener('click',()=>{
 const message=document.getElementById('message');try{
 const patch=JSON.parse(document.getElementById('patch').value);

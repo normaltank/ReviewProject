@@ -1,0 +1,3 @@
+# Optional local extraction environment; core CLI remains usable without it.
+-r requirements.txt
+-r experiments/langextract-requirements.txt

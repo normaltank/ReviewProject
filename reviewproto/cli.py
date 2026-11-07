@@ -17,28 +17,37 @@ def main(argv=None):
     try:
         parser = SafeParser(prog="python -m reviewproto", description="Offline trusted-editor evidence review; no author export.")
         sub = parser.add_subparsers(dest="command", required=True)
-        for command in ("run", "review", "export-template", "apply", "render", "recover"):
+        for command in ("run", "review", "export-template", "apply", "render", "recover", "ingest-candidates", "ingest-clauses"):
             item = sub.add_parser(command)
             item.add_argument("--workspace", default="work/review")
-            if command in ("run", "apply"):
+            if command in ("run", "apply", "ingest-candidates", "ingest-clauses"):
                 item.add_argument("input")
             if command == "run":
                 item.add_argument("--origin", choices=("synthetic", "original_review", "unknown"), default="unknown")
+                item.add_argument("--format", choices=("docx", "json", "csv"), default="docx")
             if command in ("review", "export-template"):
                 item.add_argument("--output", default=None)
                 item.add_argument("--candidate", default=None)
         args = parser.parse_args(argv)
         workspace = Workspace(args.workspace)
         if args.command == "run":
-            workspace.run(args.input, args.origin)
+            workspace.run(args.input, args.origin, args.format)
         elif args.command == "apply":
             workspace.apply(input_path=args.input)
+        elif args.command == "ingest-candidates":
+            workspace.import_extractions(input_path=args.input)
+            summary = workspace.last_import_summary
+            # Import success is distinct from extraction success. Do not print
+            # producer error text, quotes, source paths or identities.
+            print("EXTRACTION status=" + summary["status"] + " accepted=" + str(summary["accepted"]) + " rejected=" + str(summary["rejected"]))
+        elif args.command == "ingest-clauses":
+            workspace.import_clauses(input_path=args.input)
         elif args.command in ("review", "export-template"):
             target = Path(args.output).resolve() if args.output else workspace.path / "patch.json"
             require(target.is_relative_to(workspace.path) and target != workspace.path, "E_OUTPUT_SCOPE")
             name = target.name.casefold()
             parts = [p.casefold() for p in target.relative_to(workspace.path).parts]
-            require(name not in {"source.docx", "state.json", "report.html", ".gitignore"} and not name.startswith("review.sqlite3") and not ({"runs", "patches", ".git"} & set(parts)), "E_OUTPUT_RESERVED")
+            require(name not in {"source.docx", "source.csv", "source.json", "state.json", "report.html", ".gitignore"} and not name.startswith("review.sqlite3") and not ({"runs", "patches", "imports", ".git"} & set(parts)), "E_OUTPUT_RESERVED")
             require(not target.is_symlink(), "E_WORKSPACE_LINK")
             require(not target.exists(), "E_OUTPUT_EXISTS")
             patch = workspace.review_template()

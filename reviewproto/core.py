@@ -15,7 +15,7 @@ from docx import Document
 from docx.oxml.ns import qn
 
 SCHEMA = 1
-PARSER = "verified-two-cell-v2-strict-content"
+PARSER = "verified-two-cell-v3-style-merge-closed"
 EXTRACTOR = "paragraph-conditional-baseline-v2"
 SCORE_NAMES = (
     "创新性与科学性（1-5分）", "工作量（1-5分）", "学术范式（1-5分）",
@@ -147,10 +147,14 @@ def parse_docx(data: bytes) -> dict:
     except Exception:
         raise ReviewError("E_DOCX_READ") from None
     body = doc.element.body
+    validate_styles(doc)
     forbidden = ("ins", "del", "moveTo", "moveFrom", "moveToRangeStart", "moveToRangeEnd", "moveFromRangeStart", "moveFromRangeEnd",
                  "cellIns", "cellDel", "cellMerge", "drawing", "pict", "object", "altChunk", "sdt", "fldSimple", "instrText", "txbxContent",
                  "vanish", "specVanish", "webHidden", "footnoteReference", "endnoteReference")
     require(not any(list(body.iter(qn("w:" + tag))) for tag in forbidden), "E_UNSUPPORTED_FEATURE")
+    # A continuation cell has no independent value. Never interpret a shared
+    # visual score/comment as one filled cell followed by an empty cell.
+    require(not list(body.iter(qn("w:vMerge"))), "E_UNSUPPORTED_FEATURE")
     for element in body.iter():
         tag = element.tag
         require(isinstance(tag, str), "E_UNSUPPORTED_FEATURE")
@@ -242,6 +246,44 @@ def parse_docx(data: bytes) -> dict:
             "scores": scores, "sections": sections, "candidates": [], "decisions": [], "applied_patches": {}}
 
 
+def validate_styles(doc):
+    """Reject generated/hidden text in active style inheritance, not all styles.
+
+    Ordinary documents ship unused list/hidden styles. Only referenced styles,
+    their basedOn ancestors and document defaults affect this support decision.
+    Cycles and missing ancestors cannot establish a safe text mapping.
+    """
+    root = doc.styles.element
+    styles = {s.get(qn("w:styleId")): s for s in root.findall(qn("w:style"))}
+    dangerous = {qn("w:" + name) for name in ("vanish", "specVanish", "webHidden", "numPr")}
+
+    def safe(node):
+        require(not any(e.tag in dangerous for e in node.iter()), "E_UNSUPPORTED_FEATURE")
+
+    defaults = root.find(qn("w:docDefaults"))
+    if defaults is not None:
+        safe(defaults)
+    checked = set()
+
+    def check(sid, trail=()):
+        require(sid in styles and sid not in trail, "E_STYLE_CHAIN")
+        if sid in checked:
+            return
+        style = styles[sid]
+        safe(style)
+        parent = style.find(qn("w:basedOn"))
+        if parent is not None:
+            check(parent.get(qn("w:val")), trail + (sid,))
+        checked.add(sid)
+
+    for style in styles.values():
+        if style.get(qn("w:default")) in {"1", "true", "on"}:
+            check(style.get(qn("w:styleId")))
+    for tag in ("pStyle", "rStyle", "tblStyle"):
+        for reference in doc.element.body.iter(qn("w:" + tag)):
+            check(reference.get(qn("w:val")))
+
+
 def extract_section(section: dict) -> list[dict]:
     """This boundary receives one section's text and locators, never score data.
 
@@ -304,13 +346,13 @@ def extract(state: dict) -> list[dict]:
 
 
 EDIT_FIELDS = {"evidence", "object", "attributes", "direction", "speech_function", "requirement_strength", "severity", "action",
-               "conditions", "alternatives", "relations", "interpretation", "status"}
+               "conditions", "alternatives", "relations", "interpretation", "status", "concept_ids", "clause_links", "reasons", "negation"}
 ENUMS = {"direction": {"positive", "negative", "mixed", "neutral", "unknown"},
          "speech_function": {"evaluation", "suggestion", "requirement", "question", "description", "mixed", "unknown"},
          "requirement_strength": {"mandatory", "recommended", "optional", "unknown"},
          "severity": {"minor", "major", "critical", "unknown"},
          "interpretation": {"explicit", "inferred", "unknown"},
-         "status": {"confirmed", "rejected", "needs_review"}}
+         "status": {"confirmed", "rejected", "needs_review", "superseded", "withdrawn"}}
 
 
 def validate_candidate(candidate: dict, state: dict, *, allow_pending=False):
@@ -319,7 +361,7 @@ def validate_candidate(candidate: dict, state: dict, *, allow_pending=False):
     section = sections[candidate["section_id"]]
     require(candidate["visibility"] == section["visibility"], "E_VISIBILITY")
     if allow_pending:
-        require(candidate.get("origin") == "rule_candidate" and candidate.get("status") == "pending_review", "E_MACHINE_STATUS")
+        require(candidate.get("origin") in {"rule_candidate", "model_candidate"} and candidate.get("status") == "pending_review", "E_MACHINE_STATUS")
     evidence = candidate["evidence"]
     require(isinstance(evidence, list) and len(evidence) > 0, "E_EVIDENCE")
     for e in evidence:
@@ -328,7 +370,7 @@ def validate_candidate(candidate: dict, state: dict, *, allow_pending=False):
         require(type(e["start"]) is int and type(e["end"]) is int and 0 <= e["start"] < e["end"] <= len(section["text"]), "E_EVIDENCE_OFFSET")
         require(e["precision"] == "exact" and section["text"][e["start"]:e["end"]] == e["quote"], "E_EVIDENCE_QUOTE")
     for field, options in ENUMS.items():
-        if field == "status" and allow_pending and candidate.get("origin") == "rule_candidate":
+        if field == "status" and allow_pending:
             options = options | {"pending_review"}
         require(isinstance(candidate[field], str) and candidate[field] in options, "E_FIELD_ENUM")
     for field in ("object", "action"):
@@ -352,7 +394,7 @@ def validate_candidate(candidate: dict, state: dict, *, allow_pending=False):
             refs(branch["evidence_indices"])
     for relation in candidate["relations"]:
         require(isinstance(relation, dict) and set(relation) == {"type", "target", "provenance", "evidence_indices"}, "E_RELATION")
-        require(relation["type"] in {"supports", "opposes", "explains_score", "unknown"} and relation["provenance"] in {"explicit", "inferred", "unknown"}, "E_RELATION")
+        require(relation["type"] in {"supports", "opposes", "explains", "alternative", "condition_of", "explains_score", "unknown"} and relation["provenance"] in {"explicit", "inferred", "unknown"}, "E_RELATION")
         claims = {c["candidate_id"] for c in state["candidates"] if c["section_id"] == section["section_id"]}
         score_labels = {s["label"] for s in state["scores"]}
         targets = score_labels if relation["type"] == "explains_score" else claims
@@ -360,3 +402,5 @@ def validate_candidate(candidate: dict, state: dict, *, allow_pending=False):
             targets = targets | score_labels
         require(isinstance(relation["target"], str) and relation["target"] in targets, "E_RELATION_TARGET")
         refs(relation["evidence_indices"])
+    from .understanding import validate_extensions
+    validate_extensions(candidate, state, refs)
