@@ -19,7 +19,8 @@ body{font:16px/1.7 system-ui,sans-serif;max-width:1100px;margin:2rem auto;paddin
 section,article{background:white;border:1px solid #c8d0da;border-radius:8px;padding:1rem;margin:1rem 0}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef1f5;padding:.7rem}textarea{width:100%;min-height:360px;box-sizing:border-box}
 table{border-collapse:collapse;width:100%}td,th{border:1px solid #b8c2cd;padding:.4rem;text-align:left}mark{background:#ffed9b}
-button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{overflow-wrap:anywhere}</style>
+button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{overflow-wrap:anywhere}
+#review-cost select{max-width:100%}#review-cost button{margin-block:.2rem}</style>
 <h1>内部审稿证据复核</h1><p><strong>仅供可信编辑。本报告、原件、补丁和派生观点均为本地受控材料；没有作者导出。</strong></p>
 <p>规则基线按完整段落产生待复核候选，仅对明确成对字面条件句展示两路结构。语义抽取尚未验证，规则匹配和关键词提示均待人工复核；跨段条件请阅读整个分区。论文未核验，A条款待对照。身份、轮次、量表版本和送审版本关系未知。</p>"""]
     filename = source_filename(state)
@@ -106,6 +107,17 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
         label = f'{candidate["section_id"]} · {candidate["candidate_id"]} · {candidate["evidence"][0]["quote"][:55]}'
         parts.append(f'<option value="{esc(candidate["candidate_id"])}">{esc(label)}</option>')
     parts.append('''</select></label><p><label>修改人 <input id="actor" autocomplete="off"></label> <label>理由 <input id="reason" size="50" autocomplete="off"></label></p>
+<div id="review-cost"><h3>复核会话计时（可选）</h3>
+<p>先填写上方修改人，再选择自报角色和本次比较组。开始时固定这些声明；比较组仅记录本次观察对象，不筛选或隐藏页面候选。</p>
+<p><label>自报角色 <select id="cost-actor-kind"><option value="unknown">未知 / 未声明</option><option value="human_editor">专业编辑（本人自报）</option><option value="agent">代理 / 自动化试用</option></select></label>
+<label>比较组 <select id="cost-arm"><option value="rule_baseline">规则基线</option>''')
+    for run in state.get('extraction_runs', []):
+        parts.append(f'<option value="{esc("run:" + run["run_id"])}">运行 {esc(run["run_id"])}</option>')
+    parts.append('''<option value="mixed">混合</option></select></label></p>
+<p><button id="cost-start" type="button">开始计时</button> <button id="cost-pause" type="button" disabled>暂停</button> <button id="cost-finish" type="button" disabled>结束会话</button> <button id="cost-download" type="button" disabled>下载计时记录</button></p>
+<p id="cost-status" role="status">未开始；打开页面不计工时。</p>
+<p><output id="cost-elapsed">活动 0.0 秒；暂停 0.0 秒</output></p>
+<p><small>暂停或切换到隐藏标签页会停止活动计时，返回后需手动继续。仅记录开始后至结束前的输入事件数、拆分/补录按钮尝试数和补丁下载按钮尝试数；它们不等于逻辑修正次数或补丁已应用次数。计时记录独立下载，不写入观点补丁，不含原文或评分；角色自报与活动时长不能证明真实专业工时。未下载记录在刷新或重开后丢失，本页不跨页恢复。</small></p></div>
 <p><label>复核决定 <select id="status"><option value="needs_review">仍待复核</option><option value="confirmed">人工确认</option><option value="rejected">拒绝候选</option><option value="superseded">已由子观点替换</option><option value="withdrawn">废弃观点</option></select></label>
 <label>方向 <select id="direction"><option>unknown</option><option>positive</option><option>negative</option><option>mixed</option><option>neutral</option></select></label></p>
 <p><label>对象 <input id="object" size="50"></label></p><p><label>动作 <input id="action" size="70"></label></p>
@@ -138,6 +150,27 @@ for(const id of ids)document.getElementById(id).addEventListener('input',()=>syn
 for(const id of ['actor','reason'])document.getElementById(id).addEventListener('input',()=>{try{const p=JSON.parse(document.getElementById('patch').value);p[id]=document.getElementById(id).value;document.getElementById('patch').value=JSON.stringify(p,null,2);}catch(e){}});
 load();
 function freshId(){return 'human-'+crypto.randomUUID();}
+let costSession=null,costPhase='idle',costTick=0;
+const costStatus=document.getElementById('cost-status');
+function settleCost(){if(!costSession||costPhase==='finished')return;const now=performance.now(),elapsed=Math.max(0,now-costTick);if(costPhase==='active')costSession.active_elapsed_ms+=elapsed;else if(costPhase==='paused')costSession.paused_elapsed_ms+=elapsed;costTick=now;}
+function showCost(){settleCost();document.getElementById('cost-elapsed').textContent='活动 '+((costSession?.active_elapsed_ms||0)/1000).toFixed(1)+' 秒；暂停 '+((costSession?.paused_elapsed_ms||0)/1000).toFixed(1)+' 秒';}
+function countAttempt(name){if(costSession&&costPhase!=='finished')costSession.attempt_counts[name]++;}
+document.getElementById('cost-start').addEventListener('click',()=>{
+if(document.hidden)return;
+if(costPhase==='idle'){const actor=document.getElementById('actor').value.trim();if(!actor){costStatus.textContent='请先填写上方修改人，再开始计时。';document.getElementById('actor').focus();return;}
+const choice=document.getElementById('cost-arm').value;
+costSession={artifact_type:'review_cost_observation',schema_version:1,session_id:crypto.randomUUID(),source_id:base.source_id,base_revision:base.base_revision,actor,actor_kind:document.getElementById('cost-actor-kind').value,arm:choice.startsWith('run:')?{kind:'extraction_run',run_id:choice.slice(4)}:{kind:choice,run_id:null},started_at_utc:new Date().toISOString(),finished_at_utc:null,active_elapsed_ms:0,paused_elapsed_ms:0,attempt_counts:{editor_input_events:0,split_button_attempts:0,add_opinion_button_attempts:0,patch_download_button_attempts:0}};
+for(const id of ['cost-actor-kind','cost-arm'])document.getElementById(id).disabled=true;
+}else if(costPhase==='paused')settleCost();else return;
+costTick=performance.now();costPhase='active';document.getElementById('cost-start').disabled=true;document.getElementById('cost-pause').disabled=false;document.getElementById('cost-finish').disabled=false;costStatus.textContent='计时中；修改人与角色、比较组采用开始时声明。';showCost();});
+function pauseCost(){if(costPhase!=='active')return;settleCost();costPhase='paused';document.getElementById('cost-start').disabled=false;document.getElementById('cost-start').textContent='继续计时';document.getElementById('cost-pause').disabled=true;costStatus.textContent='已暂停；返回后请手动继续。';showCost();}
+document.getElementById('cost-pause').addEventListener('click',pauseCost);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pauseCost();});
+document.getElementById('cost-finish').addEventListener('click',()=>{if(!costSession||costPhase==='finished')return;settleCost();costPhase='finished';costSession.finished_at_utc=new Date().toISOString();costSession.active_elapsed_ms=Math.round(costSession.active_elapsed_ms);costSession.paused_elapsed_ms=Math.round(costSession.paused_elapsed_ms);for(const id of ['cost-start','cost-pause','cost-finish'])document.getElementById(id).disabled=true;document.getElementById('cost-download').disabled=false;costStatus.textContent='会话已结束；请下载独立记录。刷新前未下载的记录会丢失。';showCost();});
+document.getElementById('cost-download').addEventListener('click',()=>{if(costPhase!=='finished')return;const blob=new Blob([JSON.stringify(costSession,null,2)+'\\n'],{type:'application/json;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='review-cost-'+costSession.session_id+'.json';a.click();URL.revokeObjectURL(a.href);});
+document.getElementById('editor').addEventListener('input',event=>{if(event.target.matches('input,select,textarea')&&!event.target.closest('#review-cost'))countAttempt('editor_input_events');});
+for(const [id,name] of [['split','split_button_attempts'],['add-opinion','add_opinion_button_attempts'],['download','patch_download_button_attempts']])document.getElementById(id).addEventListener('click',()=>countAttempt(name));
+setInterval(showCost,250);
 function cleanFields(){return {status:'needs_review',interpretation:'unknown',object:'unknown',attributes:[],direction:'unknown',speech_function:'unknown',requirement_strength:'unknown',severity:'unknown',action:'unknown',conditions:[],alternatives:[],relations:[],reasons:[],negation:'unknown',concept_ids:[],clause_links:[]};}
 function writeCreates(creates){const p={...base,edits:[],creates,actor:document.getElementById('actor').value,reason:document.getElementById('reason').value};document.getElementById('patch').value=JSON.stringify(p,null,2);document.getElementById('message').textContent='已生成新增观点草稿，请展开高级 JSON 逐条复核后下载。';document.getElementById('patch').parentElement.open=true;}
 document.getElementById('split').addEventListener('click',()=>{try{const item=selected(),e=item.fields.evidence[0],chars=Array.from(e.quote),n=Number(document.getElementById('split-offset').value);if(!Number.isInteger(n)||n<=0||n>=chars.length)throw Error();const pieces=[[0,n],[n,chars.length]].map(([a,b])=>({candidate_id:freshId(),section_id:e.section_id,parent_ids:[item.candidate_id],replaces:[item.candidate_id],fields:{...cleanFields(),evidence:[{...e,start:e.start+a,end:e.start+b,quote:chars.slice(a,b).join('')}]}}));writeCreates(pieces);}catch(e){document.getElementById('message').textContent='拆分位置必须处于首条证据内部。';}});

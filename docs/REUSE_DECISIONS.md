@@ -2,6 +2,12 @@
 
 0.3.0 将先前隔离探针推进到真实本地模型调用。下面先给当前选择，后面的十例固定答案探针保留为历史定位证据；它们不是模型准确率实验。更完整的方法研究见 [TECHNICAL_LITERATURE_REVIEW.md](TECHNICAL_LITERATURE_REVIEW.md)，本轮没有重新开展大综述或安装多个候选平台。
 
+0.3.1 新增一次受控组件对照：6 份新开发材料分别运行规则、本地 Qwen 和用户要求的最新 `deepseek-flash`。Flash 仅作为获授权批次的可选组件，不把持有密钥当作任意材料可外发；5 元总预算与计划文本 hash 绑定。官方当日别名映射为 DeepSeek-V4.1-Flash-1017，固定非思考、JSON object 输出；与本地共用 LangExtract 的 v3 字段、例子、600 字窗口和逐字转换校验。本地的 JSON schema 约束与 Flash 的 prompt/JSON object 约束不同，不能把全部差异只归因模型参数。真实响应与语义诊断见 STATE 和受控 trial 目录。
+
+本批本地 40 个、Flash 9 个自动处理错误，只是 guard 记录；独立观点、理由与条件的语义仍须按原文诊断。没有专业人工计时或独立金标，不能宣布某方案提升准确率或节省人工。已为现有页面增加轻量会话计时，无需新建标注平台。Label Studio/INCEpTION 的真实效率比较仍未运行，只有后续专业工时显示界面成为瓶颈时再作同任务比较。
+
+DSH 复用结论为“隔离调用层已用 mock 验证，真实抽取本轮不用它”。默认 profile 带工具及额外 session/plugin 上传；独立 overlay 禁用后，支持的 profile→stdio RPC→完成终态已用已安装程序跑通。mock-only 入口拒绝真实 endpoint/key/prompt，累计真实模型请求 0。直接 API 更便于绑定这次的待发文本和总预算；不为复用 Harness 给模型额外资料目录或执行权限。具体源码、组合和保留的调试失败见 `work/trial-20261108/dsh-probe/README.md`。
+
 | 环节 | 实际核验与决定 |
 | --- | --- |
 | 输入 | **保留 python-docx 薄适配，优先结构化输入**。1.2.0，MIT；CSV 用标准库 csv，JSON 用明确契约。已核 CSV 是 6×6 单份表单，不再把 5 行当 5 条记录。Word 样式继承及纵向合并歧义拒收，特殊表型继续人工检查。无需建设通用 Word 解析器。[python-docx API](https://python-docx.readthedocs.io/en/latest/api/table.html) · [版本与许可](https://pypi.org/project/python-docx/1.2.0/) |

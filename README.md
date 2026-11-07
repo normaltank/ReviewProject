@@ -1,6 +1,6 @@
 # ReviewProject
 
-ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.3.0 提供本地的意见理解与复核流程：规则基线、真实本地模型候选、观点拆分补录、修改历史和候选概念并存。正式条款修订仍需专业判断、独立试评及出版社授权。
+ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.3.1 提供意见理解与复核流程：规则基线、本地模型、获明确授权的 Flash 对照、观点修正历史和候选概念并存。正式条款修订仍需专业判断、独立试评及出版社授权。
 
 ## 跑一份合成审稿表
 
@@ -32,6 +32,21 @@ Invoke-Item .\work\demo\report.html
 
 其他机器先在隔离环境安装 `requirements-model.txt`；权重、运行包、指纹与授权见[复用记录](docs/REUSE_DECISIONS.md)。启动脚本只复用已安装且指纹匹配的文件，不自动下载。可不启动模型，直接用规则候选开展人工复核。模型截断、引文不符和超长单段会留下失败记录；导入失败产物用于显示诊断，不代表抽取成功。
 
+## 获授权的 Flash 对照
+
+可选 `experiments/deepseek_trial.py` 固定使用官方当前别名 `deepseek-flash`，不使用 Pro。普通工作区仍可完全本地运行。外部试验必须有逐项文本/来源哈希绑定的计划及明确用户授权；只有密钥不足以授权材料外发。作者不可见区禁止进入此入口，数值评分、身份元数据、原稿及 A 材料不传给模型。每批共享调用次数和费用账本，先预留保守费用，未知用量会停止后续调用；token 费用估算不冒充账户实际扣费。
+
+```powershell
+# 仅首次配置：交互输入隐藏，加密保存到本机当前Windows用户的DPAPI文件。
+& .\scripts\set-deepseek-key.ps1
+# 本轮已获授权的计划可先检查；此命令不解密密钥、不调用API。
+& .\scripts\run-deepseek-trial.ps1 -Plan work/trial-20261108/outbound-plan.json -Approval work/trial-20261108/approval.json -Item trial-06-short -CheckOnly
+```
+
+实际运行时去掉 `-CheckOnly`，用新的 `-RunId`，再按本地模型同样的 `ingest-candidates` 导入结果。本轮已有结果直接打开 STATE 中的链接，无需付费重跑。密钥只在子进程环境传递，启停后恢复原环境；不写入仓库、请求日志或命令行。
+
+本机 DSH 已通过 `python experiments/dsh_bridge.py --mock` 验证隔离 profile 的调用往返，默认执行为不启动进程的 dry-run。此入口只允许内置合成数据和本机 mock，禁用模型工具、额外会话上传及外连；真实审稿抽取本轮采用上面的直接 API。DSH mock 不代表真实模型效果。
+
 ## 编辑一条观点
 
 1. 在报告中查看原分、意见分区和高亮原句。“评审意见”的作者可见性默认为待核，“作者不可见”分区及派生观点保留该限制。
@@ -54,6 +69,8 @@ python -m reviewproto apply work/demo/edit-02.json --workspace work/demo
 概念通过补丁顶层 `concepts` 保存稳定 ID、定义、例子、反例、边界与待确认状态；观点用 `concept_ids` 引用。A 来源使用 `ingest-clauses` 导入，只能成为待核候选，不具有正式标准效力。具体格式见[数据契约](docs/DATA_AND_ANNOTATION.md)。
 
 模型每次运行追加候选和原始输出，不能覆盖人工决定。相同运行重放幂等；同一运行 ID 改内容会拒收。基线、不同模型运行和当前已确认观点分别显示，不相加充当业务意见总数。若生成报告中断，运行 `python -m reviewproto recover --workspace work/demo` 重建可读文件。更换送审版本另建工作目录。
+
+页面新增复核成本记录：填写修改人、选择自报角色与对照方法后显式开始计时，可暂停、继续、结束并下载独立旁车 JSON。隐藏标签会暂停，返回后手动继续；未下载的记录刷新会丢失。计时不会改变补丁，输入/点击次数仅为尝试计数，不表示修改已应用。只有真实编辑完成任务后才能据此记录人工时间，自动化演练或代理计时均不能代替专业人工成本。
 
 ## 首轮范围与验证
 
