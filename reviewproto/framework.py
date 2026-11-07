@@ -14,6 +14,8 @@ from .understanding import current_views
 
 SOURCE_LIMIT = 40_000_000
 PACKAGE_LIMIT = 240_000_000
+BOOK_LIMIT = 10_000_000
+REVIEW_PAYLOAD_LIMIT = 10_000_000
 MUTABLE_RULE = {"requirement", "applicable_when", "exceptions", "strength", "strength_provenance", "checks"}
 RELATIONS = {"covered", "partial", "condition_difference", "potential_conflict", "uncovered", "pending_comparison"}
 

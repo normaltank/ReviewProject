@@ -206,17 +206,19 @@ class Workspace:
 
     def _framework_files(self, state, restore_missing=False):
         """Database bytes are recovery authority; changed existing sources fail closed."""
-        from .framework import checked_path, validate_book, framework_digest, SOURCE_LIMIT
+        from .framework import checked_path, validate_book, framework_digest, SOURCE_LIMIT, BOOK_LIMIT
         for framework in state.get("frameworks", []):
+            book_data = encoded(framework["book"])
+            require(len(book_data) <= BOOK_LIMIT, "E_FRAMEWORK_BOOK_LIMIT")
             require(framework_digest(framework["book"]) == framework["sha256"], "E_FRAMEWORK_SOURCE_HASH")
             root = self.path / "frameworks" / framework["sha256"]
             require(not linklike(root.parent) and not linklike(root), "E_FRAMEWORK_LINK")
             book_path = root / "book.json"
             require(not linklike(book_path), "E_FRAMEWORK_LINK")
             if not book_path.exists() and restore_missing:
-                atomic(book_path, encoded(framework["book"]))
+                atomic(book_path, book_data)
             require(book_path.is_file(), "E_FRAMEWORK_SOURCE_MISSING")
-            require(digest(read_input(book_path, 10_000_000)) == framework["sha256"], "E_FRAMEWORK_SOURCE_HASH")
+            require(digest(read_input(book_path, BOOK_LIMIT, "E_FRAMEWORK_BOOK_LIMIT")) == framework["sha256"], "E_FRAMEWORK_SOURCE_HASH")
             sources = {}
             for source in framework["book"]["sources"]:
                 row = self.db.execute("SELECT data FROM framework_sources WHERE id=?", (source["sha256"],)).fetchone()
@@ -475,13 +477,17 @@ class Workspace:
         return template(state)
 
     def import_framework(self, input_path):
-        from .framework import checked_path, framework_digest, load_json, validate_book, SOURCE_LIMIT, PACKAGE_LIMIT
+        from .framework import checked_path, load_json, validate_book, SOURCE_LIMIT, PACKAGE_LIMIT, BOOK_LIMIT
         context = {}
         def action():
             state = self.state()
             path = Path(input_path).absolute()
             require(all(not linklike(p) for p in [path, *path.parents]), "E_FRAMEWORK_LINK")
-            book = load_json(read_input(path, 10_000_000, context=context))
+            book = load_json(read_input(path, BOOK_LIMIT, "E_FRAMEWORK_BOOK_LIMIT", context=context))
+            # Replay and recovery read the canonical form, which may be larger
+            # than compact input. Bound it before freezing files or DB sources.
+            book_data = encoded(book)
+            require(len(book_data) <= BOOK_LIMIT, "E_FRAMEWORK_BOOK_LIMIT")
             require(isinstance(book, dict) and isinstance(book.get("sources"), list) and len(book["sources"]) <= 100, "E_FRAMEWORK_SHAPE")
             sources, total = {}, 0
             for source in book["sources"]:
@@ -491,7 +497,7 @@ class Workspace:
                 require(total <= PACKAGE_LIMIT, "E_FRAMEWORK_PACKAGE_LIMIT")
                 sources[source["source_id"]] = data
             validate_book(book, sources)
-            fingerprint = framework_digest(book)
+            fingerprint = digest(book_data)
             context["import_sha256"] = fingerprint
             for existing in state.get("frameworks", []):
                 if existing["book"]["framework_id"] == book["framework_id"] and existing["book"]["version"] == book["version"]:
@@ -501,9 +507,9 @@ class Workspace:
             book_path = root / "book.json"
             require(not linklike(root.parent) and not linklike(root) and not linklike(book_path), "E_FRAMEWORK_LINK")
             if book_path.exists():
-                require(digest(read_input(book_path, 10_000_000)) == fingerprint, "E_FRAMEWORK_SOURCE_HASH")
+                require(digest(read_input(book_path, BOOK_LIMIT, "E_FRAMEWORK_BOOK_LIMIT")) == fingerprint, "E_FRAMEWORK_SOURCE_HASH")
             else:
-                atomic(book_path, encoded(book))
+                atomic(book_path, book_data)
             for source in book["sources"]:
                 data = sources[source["source_id"]]
                 self.db.execute("INSERT OR IGNORE INTO framework_sources VALUES (?, ?)", (source["sha256"], data))
@@ -514,21 +520,23 @@ class Workspace:
                     atomic(target, data)
             state.setdefault("frameworks", []).append(dict(book=copy.deepcopy(book), sha256=fingerprint, status="candidate", authority="unconfirmed",
                                                            source_status="pending", formal_version="unknown", imported_at=now()))
-            self.db.execute("INSERT OR IGNORE INTO imports VALUES (?, ?)", (fingerprint, encoded(book).decode()))
+            self.db.execute("INSERT OR IGNORE INTO imports VALUES (?, ?)", (fingerprint, book_data.decode()))
             state["revision"] += 1
             return state
         return self.operation("ingest-framework", action, input_context=context)
 
     def apply_framework_review(self, payload=None, *, input_path=None):
-        from .framework import apply_review, framework_digest, load_json
+        from .framework import apply_review, load_json, REVIEW_PAYLOAD_LIMIT
         context = {}
         def action():
             nonlocal payload
             if input_path is not None:
-                payload = load_json(read_input(input_path, 10_000_000, context=context))
+                payload = load_json(read_input(input_path, REVIEW_PAYLOAD_LIMIT, "E_FRAMEWORK_REVIEW_LIMIT", context=context))
+            payload_data = encoded(payload)
+            require(len(payload_data) <= REVIEW_PAYLOAD_LIMIT, "E_FRAMEWORK_REVIEW_LIMIT")
             state = apply_review(self.state(), payload, now())
-            context["import_sha256"] = framework_digest(payload)
-            self.db.execute("INSERT OR IGNORE INTO imports VALUES (?, ?)", (context["import_sha256"], encoded(payload).decode()))
+            context["import_sha256"] = digest(payload_data)
+            self.db.execute("INSERT OR IGNORE INTO imports VALUES (?, ?)", (context["import_sha256"], payload_data.decode()))
             return state
         return self.operation("apply-framework-review", action, input_context=context)
 

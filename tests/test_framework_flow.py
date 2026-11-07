@@ -107,6 +107,54 @@ class FrameworkTests(unittest.TestCase):
         changed['version'] = 'draft-2'
         self.assertEqual(len(self.import_book(changed)['frameworks']), 2)
 
+    def test_canonical_book_limit_rejects_before_freeze_and_keeps_workspace_recoverable(self):
+        book = copy.deepcopy(self.book)
+        book['rules'] = [dict(copy.deepcopy(book['rules'][0]), rule_id='rule-' + str(index), requirement='x' * 99000)
+                         for index in range(100)]
+        raw = json.dumps(book, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        self.assertLessEqual(len(raw), 10_000_000)
+        self.assertGreater(len(encoded(book)), 10_000_000)
+        self.path.write_bytes(raw)
+        with self.assertRaisesRegex(ReviewError, 'E_FRAMEWORK_BOOK_LIMIT'):
+            self.ws.import_framework(self.path)
+        stored = json.loads(self.ws.db.execute('SELECT payload FROM state WHERE id=1').fetchone()[0])
+        self.assertEqual(stored, self.initial)
+        self.assertEqual(self.ws.state(), self.initial)
+        self.assertEqual(self.ws.recover(), self.initial)
+        self.assertEqual(self.ws.db.execute('SELECT COUNT(*) FROM framework_sources').fetchone()[0], 0)
+        self.assertEqual(self.ws.db.execute('SELECT COUNT(*) FROM imports').fetchone()[0], 0)
+        self.assertFalse((self.ws.path / 'frameworks').exists())
+
+    def test_canonical_review_payload_limit_rejects_file_and_memory_before_persistence(self):
+        imported = self.import_book()
+        payload = self.review()
+        proposal = payload['proposals'][0]
+        payload['proposals'] = [dict(copy.deepcopy(proposal), proposal_id='large-proposal-' + str(index), after=dict(requirement='x'))
+                                for index in range(100)]
+        compact = lambda value: json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        # Select valid per-field lengths so compact input fits but replay encoding does not.
+        length = 1 + (10_000_000 - len(compact(payload))) // len(payload['proposals'])
+        self.assertLessEqual(length, 100000)
+        for item in payload['proposals']:
+            item['after']['requirement'] = 'x' * length
+        raw = compact(payload)
+        self.assertLessEqual(len(raw), 10_000_000)
+        self.assertGreater(len(encoded(payload)), 10_000_000)
+        path = self.ws.path / 'large-framework-review.json'
+        path.write_bytes(raw)
+        imports_before = self.ws.db.execute('SELECT COUNT(*) FROM imports').fetchone()[0]
+        sources_before = self.ws.db.execute('SELECT COUNT(*) FROM framework_sources').fetchone()[0]
+        for options in (dict(input_path=path), dict(payload=payload)):
+            with self.subTest(input='file' if 'input_path' in options else 'memory'):
+                with self.assertRaisesRegex(ReviewError, 'E_FRAMEWORK_REVIEW_LIMIT'):
+                    self.ws.apply_framework_review(**options)
+                stored = json.loads(self.ws.db.execute('SELECT payload FROM state WHERE id=1').fetchone()[0])
+                self.assertEqual(stored, imported)
+                self.assertEqual(self.ws.state(), imported)
+                self.assertEqual(self.ws.recover(), imported)
+                self.assertEqual(self.ws.db.execute('SELECT COUNT(*) FROM imports').fetchone()[0], imports_before)
+                self.assertEqual(self.ws.db.execute('SELECT COUNT(*) FROM framework_sources').fetchone()[0], sources_before)
+
     def test_wrong_hash_quote_pointer_time_and_segment_reject_without_state_changes(self):
         changes = [lambda b: b['sources'][0].update(sha256='0' * 64),
                    lambda b: b['rules'][0]['evidence'][0].update(quote='changed quote'),
