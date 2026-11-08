@@ -28,7 +28,7 @@ RECALL_INSTRUCTION = """只召回输入原文中的评价、修改要求或疑�
 只返回示例格式的JSON。/no_think"""
 KINDS = ('evaluation', 'modification', 'question', 'unknown')
 # These surface strings only schedule review. They establish no semantic relation.
-CUES = ('如果', '否则', '有条件', '或者', '因为', '由于', '若', '或')
+CUES = ('如果', '否则', '有条件', '无条件', '或者', '因为', '由于', '若', '或')
 
 
 def recall_schema():

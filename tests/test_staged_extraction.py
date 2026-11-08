@@ -310,6 +310,23 @@ class StagedExtractionTests(unittest.TestCase):
             self.assertTrue(all(q['context']['quote'] == text and q['status'] == 'processed' for q in queue))
             self.assertEqual(self.artifact(workspace)['errors'], [])
 
+    def test_known_report_regression_keeps_with_and_without_conditions_across_paragraphs(self):
+        # Known report example, rendered as synthetic development regression;
+        # this is not an independent semantic accuracy test.
+        text = '有条件补充教学案例。\n补充说明相关教学材料。\n无条件则写明有待实践检验。'
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.run_mock(workspace, [[], []]) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual([e['text_or_documents'] for e in extracts[1:]], [text])
+            self.assertEqual(len(requests), 2)
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual([q['cue_type'] for q in queue], ['有条件', '无条件'])
+            self.assertTrue(all(q['source'] == 'cue_queue' and q['semantics'] == 'semantics_unknown' for q in queue))
+            self.assertTrue(all(q['context']['quote'] == text and q['status'] == 'processed' for q in queue))
+            self.assertEqual(self.artifact(workspace)['candidates'], [])
+            self.assertEqual(self.artifact(workspace, 'recall.json')['spans'], [])
+
     def test_oversize_cue_closure_blocks_fragmented_recall_bypass(self):
         first, middle, last = '若' + '甲' * 210 + '，', '乙' * 210 + '。', '否则' + '丙' * 210 + '。'
         text = '\n'.join([first, middle, last])
