@@ -89,6 +89,22 @@ class LocalExtractionTests(unittest.TestCase):
                                   adapter.digest(json.dumps(adapter.schema(protocol), sort_keys=True)),
                                   adapter.digest(encoded_examples)), hashes)
 
+    def test_selected_schema_enum_mutation_does_not_change_other_protocols_or_defaults(self):
+        original_enums = {key: list(values) for key, values in adapter.ENUMS.items()}
+        original_schemas = {protocol: json.loads(json.dumps(adapter.schema(protocol))) for protocol in ('v3', 'v4')}
+        selected = adapter.protocol_config('v4')['schema']
+        attrs = selected['properties']['extractions']['items']['properties']['opinion_attributes']['properties']
+        try:
+            attrs['direction']['enum'].append('synthetic_mutation')
+            attrs['branch_relation']['enum'].clear()
+            self.assertEqual(adapter.ENUMS, original_enums)
+            for protocol in ('v3', 'v4'):
+                self.assertEqual(adapter.schema(protocol), original_schemas[protocol])
+        finally:
+            # A failing pre-fix run must not poison subsequent tests.
+            for key, values in original_enums.items():
+                adapter.ENUMS[key][:] = values
+
     def test_explicit_v4_selects_actual_prompt_schema_examples_and_records_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory))

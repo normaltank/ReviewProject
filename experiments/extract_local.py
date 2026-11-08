@@ -89,7 +89,7 @@ def schema(protocol="v3"):
     for key in fields:
         attrs[key] = {"type": "array", "items": {"type": "string"}} if key in LIST_ATTRIBUTES else {"type": "string"}
         if key in ENUMS:
-            attrs[key]["enum"] = ENUMS[key]
+            attrs[key]["enum"] = list(ENUMS[key])
     opinion = {"type": "object", "properties": {
         "opinion": {"type": "string"}, "opinion_attributes": {
             "type": "object", "properties": attrs, "required": list(fields), "additionalProperties": False}},
