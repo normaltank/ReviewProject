@@ -52,6 +52,12 @@ class LocalExtractionTests(unittest.TestCase):
     def artifact(self, workspace, run_id='synthetic-run'):
         return json.loads((workspace / 'model-artifacts' / run_id / 'candidates.json').read_text(encoding='utf-8'))
 
+    def convert_attrs(self, text, attrs, *, opinion=None, start=0):
+        document = Obj(extractions=[Obj(extraction_class='opinion', extraction_text=opinion or text,
+                                        attributes=attrs, char_interval=None)])
+        result, _, errors = adapter.convert(document, {'source_id': 's', 'section_id': 'one'}, text, start, 'w-')
+        return result[0], errors
+
     def test_endpoint_only_literal_loopback(self):
         self.assertEqual(adapter.local_endpoint("http://127.0.0.1:8766/v1/"),
                          "http://127.0.0.1:8766/v1/chat/completions")
@@ -113,6 +119,146 @@ class LocalExtractionTests(unittest.TestCase):
         self.assertEqual(len(candidates[0]["review_flags"]), len(set(candidates[0]["review_flags"])))
         self.assertEqual(concepts, [])
         self.assertEqual(candidates[0]["external_id"], "w0-0")
+
+    def test_either_or_preserves_actions_without_inventing_selection_conditions(self):
+        text = '建议补一张图，或者补一张表。'
+        attrs = {'branch_relation': 'either_or', 'branch_conditions': [],
+                 'branch_actions': ['补一张图', '补一张表'], 'action': '补一张图',
+                 'requirement_strength': 'recommended'}
+        document = Obj(extractions=[Obj(extraction_class='opinion', extraction_text=text,
+                                        attributes=attrs, char_interval=None)])
+        result, _, errors = adapter.convert(document, {'source_id': 's', 'section_id': 'one'}, text, 0, 'w-')
+        self.assertEqual(errors, [])
+        self.assertEqual(result[0]['alternatives'], [{'relation': 'either_or', 'provenance': 'explicit',
+                         'branches': [{'condition': 'unknown', 'action': '补一张图', 'evidence_indices': [1]},
+                                      {'condition': 'unknown', 'action': '补一张表', 'evidence_indices': [2]}]}])
+        self.assertEqual(result[0]['conditions'], [])
+        self.assertEqual((result[0]['action'], result[0]['requirement_strength']), ('unknown', 'unknown'))
+        self.assertIn('semantic_model_unverified', result[0]['review_flags'])
+        self.assertIn('branch_strength_requires_review', result[0]['review_flags'])
+        self.assertEqual(attrs['requirement_strength'], 'recommended')
+
+    def test_either_or_round_trips_through_existing_candidate_contract_as_pending(self):
+        text = '建议补图或补表。'
+        def response(**kwargs):
+            return Obj(extractions=[Obj(extraction_class='opinion', extraction_text=text, char_interval=None,
+                       attributes={'branch_relation': 'either_or', 'branch_actions': ['补图', '补表']})])
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.fake_provider(workspace, response):
+                self.assertEqual(adapter.main(), 0)
+            store = Workspace(workspace)
+            try:
+                state = store.import_extractions(self.artifact(workspace))
+                run = state['extraction_runs'][-1]
+                self.assertEqual(run['status'], 'complete')
+                saved = next(c for c in state['candidates'] if c['candidate_id'] in run['accepted_ids'])
+                self.assertEqual(saved['alternatives'][0]['relation'], 'either_or')
+                self.assertEqual([b['condition'] for b in saved['alternatives'][0]['branches']], ['unknown', 'unknown'])
+                self.assertEqual(saved['status'], 'pending_review')
+                self.assertIn('branch_relation_semantics_requires_review', saved['review_flags'])
+            finally:
+                store.close()
+
+    def test_explicit_conditional_relation_preserves_literal_pairs_and_group_strength(self):
+        candidate, errors = self.convert_attrs('若有数据可补图，否则须说明局限。', {
+            'branch_relation': 'conditional_branches', 'branch_conditions': ['若有数据', '否则'],
+            'branch_actions': ['可补图', '须说明局限'], 'requirement_strength': 'mandatory', 'action': '须说明局限'})
+        self.assertEqual(errors, [])
+        group = candidate['alternatives'][0]
+        self.assertEqual(group['relation'], 'conditional_branches')
+        self.assertEqual([(b['condition'], b['action']) for b in group['branches']],
+                         [('若有数据', '可补图'), ('否则', '须说明局限')])
+        self.assertEqual((candidate['action'], candidate['requirement_strength']), ('unknown', 'unknown'))
+
+    def test_none_unknown_and_invalid_relation_never_upgrade_from_branch_lists(self):
+        for relation in ('none', 'unknown', 'invented', ['either_or']):
+            with self.subTest(relation=relation):
+                candidate, errors = self.convert_attrs('建议补图或补表。', {
+                    'branch_relation': relation, 'branch_actions': ['补图', '补表']})
+                self.assertEqual(candidate['alternatives'], [])
+                self.assertIn('E_MODEL_BRANCH_RELATION_CONFLICT', errors)
+
+    def test_no_branch_lists_never_construct_groups_from_connectives_or_quoted_actions(self):
+        for text in ('建议补图，并补表。', '图或表的标题不清楚。', '文中写‘补图或补表’，此表述不清楚。'):
+            for relation in ('none', 'unknown', None):
+                with self.subTest(text=text, relation=relation):
+                    attrs = {} if relation is None else {'branch_relation': relation}
+                    candidate, errors = self.convert_attrs(text, attrs)
+                    self.assertEqual(candidate['alternatives'], [])
+                    self.assertEqual(errors, [])
+
+    def test_even_explicit_model_relation_on_nouns_or_quotation_remains_semantically_unverified(self):
+        for text, actions in [('图或表的标题不清楚。', ['图', '表']),
+                              ('文中写‘补图或补表’，此表述不清楚。', ['补图', '补表'])]:
+            with self.subTest(text=text):
+                candidate, errors = self.convert_attrs(text, {'branch_relation': 'either_or', 'branch_actions': actions})
+                self.assertEqual(errors, [])  # Surface validity is not semantic acceptance.
+                self.assertIn('semantic_model_unverified', candidate['review_flags'])
+                self.assertIn('branch_relation_semantics_requires_review', candidate['review_flags'])
+
+    def test_either_or_requires_two_literal_actions_and_an_intervening_connective(self):
+        cases = [
+            ('建议补图并补表。', ['补图', '补表'], 'E_MODEL_EITHER_OR_CONNECTIVE'),
+            ('建议补图，或许补表。', ['补图', '补表'], 'E_MODEL_EITHER_OR_CONNECTIVE'),
+            ('图或表需要修改。建议补图并补表。', ['补图', '补表'], 'E_MODEL_EITHER_OR_CONNECTIVE'),
+            ('建议补图或补表。', ['补图'], 'E_MODEL_BRANCH_PAIRING'),
+            ('建议补图或补表。', ['补图', '补图'], 'E_MODEL_BRANCH_PAIRING'),
+            ('建议补图或补表。', ['补图', '补表！'], 'E_MODEL_BRANCH_OUTSIDE_OPINION'),
+        ]
+        for text, actions, error in cases:
+            with self.subTest(text=text, actions=actions):
+                candidate, errors = self.convert_attrs(text, {'branch_relation': 'either_or', 'branch_actions': actions,
+                                                       'action': '补图', 'requirement_strength': 'mandatory'})
+                self.assertEqual(candidate['alternatives'], [])
+                self.assertIn(error, errors)
+                self.assertEqual((candidate['action'], candidate['requirement_strength']), ('unknown', 'unknown'))
+
+    def test_either_or_does_not_accept_invented_selection_conditions(self):
+        for conditions in (['unknown', 'unknown'], ['建议', '或者']):
+            with self.subTest(conditions=conditions):
+                candidate, errors = self.convert_attrs('建议补图，或者补表。', {'branch_relation': 'either_or',
+                    'branch_conditions': conditions, 'branch_actions': ['补图', '补表']})
+                self.assertEqual(candidate['alternatives'], [])
+                self.assertIn('E_MODEL_EITHER_OR_CONDITIONS', errors)
+
+    def test_malformed_v4_branch_conditions_do_not_become_empty_valid_conditions(self):
+        candidate, errors = self.convert_attrs('建议补图或补表。', {'branch_relation': 'either_or',
+            'branch_conditions': 'unknown', 'branch_actions': ['补图', '补表']})
+        self.assertEqual(candidate['alternatives'], [])
+        self.assertIn('E_MODEL_QUOTE_LIST_BRANCH_CONDITIONS', errors)
+
+    def test_either_or_unicode_offsets_and_repeated_action_ambiguity(self):
+        text = '前言。建议补😀图，或者补表。'
+        candidate, errors = self.convert_attrs(text, {'branch_relation': 'either_or', 'branch_actions': ['补😀图', '补表']},
+                                                opinion='建议补😀图，或者补表。', start=8)
+        self.assertEqual(errors, [])
+        for branch in candidate['alternatives'][0]['branches']:
+            evidence = candidate['evidence'][branch['evidence_indices'][0]]
+            self.assertEqual(text[evidence['start'] - 8:evidence['end'] - 8], branch['action'])
+        candidate, errors = self.convert_attrs('建议补图或补表；补图需说明。', {
+            'branch_relation': 'either_or', 'branch_actions': ['补图', '补表']})
+        self.assertEqual(candidate['alternatives'], [])
+        self.assertIn('E_QUOTE_AMBIGUOUS', errors)
+
+    def test_v4_conditional_requires_complete_pairs_inside_opinion(self):
+        for conditions, actions, error in [([], [], 'E_MODEL_BRANCH_PAIRING'),
+                (['若有数据', '否则'], ['补图'], 'E_MODEL_BRANCH_PAIRING'),
+                (['若有数据', '否则'], ['补图', '说明局限！'], 'E_MODEL_BRANCH_OUTSIDE_OPINION')]:
+            with self.subTest(conditions=conditions, actions=actions):
+                candidate, errors = self.convert_attrs('若有数据补图，否则说明局限。', {
+                    'branch_relation': 'conditional_branches', 'branch_conditions': conditions, 'branch_actions': actions})
+                self.assertEqual(candidate['alternatives'], [])
+                self.assertIn(error, errors)
+        candidate, errors = self.convert_attrs('建议补图或补表。另须补摘要。', {
+            'branch_relation': 'either_or', 'branch_actions': ['补图', '补摘要']}, opinion='建议补图或补表。')
+        self.assertEqual(candidate['alternatives'], [])
+        self.assertIn('E_MODEL_BRANCH_OUTSIDE_OPINION', errors)
+
+    def test_missing_relation_uses_v3_pairing_without_guessing_either_or(self):
+        candidate, errors = self.convert_attrs('建议补图或补表。', {'branch_actions': ['补图', '补表']})
+        self.assertEqual(candidate['alternatives'], [])
+        self.assertIn('E_MODEL_BRANCH_PAIRING', errors)
 
     def test_schema_has_one_class_and_only_literal_list_attributes(self):
         item = adapter.schema()['properties']['extractions']['items']

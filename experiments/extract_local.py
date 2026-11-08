@@ -22,10 +22,10 @@ import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROMPT_VERSION = "review-opinions-local-v3"
+PROMPT_VERSION = "review-opinions-local-v4"
 ATTRIBUTES = {
     "opinion": ("object", "attribute_labels", "direction", "speech_function", "requirement_strength", "severity", "action",
-                "reason_quotes", "condition_quotes", "branch_conditions", "branch_actions", "negation_quotes"),
+                "reason_quotes", "condition_quotes", "branch_relation", "branch_conditions", "branch_actions", "negation_quotes"),
 }
 LIST_ATTRIBUTES = {"attribute_labels", "reason_quotes", "condition_quotes", "branch_conditions", "branch_actions", "negation_quotes"}
 ENUMS = {
@@ -35,6 +35,7 @@ ENUMS = {
     "severity": ["minor", "major", "critical", "unknown"],
     "provenance": ["explicit", "inferred", "unknown"],
     "meaning": ["known", "unknown"],
+    "branch_relation": ["none", "either_or", "conditional_branches", "unknown"],
 }
 INSTRUCTION = """你在编辑审稿证据。输入是一个意见分区的原文，没有评分或录用结果。
 将每个可独立判断的问题、肯定或修改建议提成opinion，不把一整段当一个观点。
@@ -44,9 +45,13 @@ INSTRUCTION = """你在编辑审稿证据。输入是一个意见分区的原文
 opinion必须逐字引用输入中的连续原句，不改标点、不补字。各_quotes、branch_conditions、branch_actions也必须是输入逐字片段。
 reason_quotes多数为[]。只有明确的因果解释，例如“因为只观察两次”才填实际根据；并列缺点、建议、判断本身都不是理由。
 不能把opinion重复填入reason_quotes，不能猜评分理由。正面评价、直接缺点即使没有建议也要提取。
-没有条件时condition_quotes=[]、branch_conditions=[]、branch_actions=[]。
-“有条件补充案例，无条件则说明尚待检验”是一条含两个替代动作的观点：branch_conditions=["有条件","无条件"]，branch_actions=["补充案例","说明尚待检验"]。
-条件列表与动作列表必须同长度、逐项配对；完整保留这两路，不能只留第一路或改成必须都完成。条件的具体含义留给编辑，不猜。
+branch_relation只可为none、either_or、conditional_branches或unknown。无分支用none；无法确定关系用unknown，两者branch_conditions=[]、branch_actions=[]，不猜分组。
+没有条件时condition_quotes=[]。没有说明选择条件的二择一动作仍可用either_or，branch_conditions必须=[]，不编造“选择第一项”等条件。
+“建议补图，或者补表”用branch_relation=either_or、branch_actions=["补图","补表"]。两条动作都须逐字引用，原句须明确用或、或者、要么等连接这两个替代动作。
+“有条件补充案例，无条件则说明尚待检验”用branch_relation=conditional_branches、branch_conditions=["有条件","无条件"]、branch_actions=["补充案例","说明尚待检验"]。
+conditional_branches的条件列表与动作列表必须同长度、逐项配对；完整保留两路，不能只留第一路或改成必须都完成。条件的具体含义留给编辑，不猜。
+普通列举“建议补图，并补表”没有替代关系；“图或表的标题不清楚”是对象并列，不是两条替代动作；“文中写‘补图或补表’，此表述不清楚”是引述评价，都用none，不因出现“或”而分组。
+有分支时整组action与requirement_strength均unknown，不能把其中一路的动作或强度覆盖整组。
 没有真正否定就negation_quotes=[]。“建议、应、需要、进一步、增加”都不是否定。真正否定如“不必”“没有”“不充分”才逐字保存。
 action须逐字保留明确修改动作（含否定），纯评价且无动作才unknown；强度不明unknown，severity通常unknown，不由“必须”猜严重性。
 object与attribute_labels只给简短对象和候选属性名称；不编定义、不做正式概念确认。
@@ -87,17 +92,22 @@ def local_endpoint(url):
 
 
 def examples(lx):
-    text = "样本人数偏少，因为只有两次观测。样本代表性不足。建议重排章节。若有历史记录可补对照，否则说明资料局限。不必新增实验。论述清晰。"
+    text = "样本人数偏少，因为只有两次观测。样本代表性不足。建议重排章节。若有历史记录可补对照，否则说明资料局限。建议补图，或者补表。建议补图，并补表。图或表的标题不清楚。文中写‘补图或补表’，此表述不清楚。不必新增实验。论述清晰。"
     def ex(quote, **attrs):
         defaults = {key: [] if key in LIST_ATTRIBUTES else "unknown" for key in ATTRIBUTES["opinion"]}
+        defaults["branch_relation"] = "none"
         defaults.update(attrs)
         return lx.data.Extraction(extraction_class="opinion", extraction_text=quote, attributes=defaults)
     return [lx.data.ExampleData(text=text, extractions=[
         ex("样本人数偏少，因为只有两次观测。", object="样本", attribute_labels=["样本规模"], direction="negative", speech_function="evaluation", reason_quotes=["只有两次观测"]),
         ex("样本代表性不足。", object="样本", attribute_labels=["样本代表性"], direction="negative", speech_function="evaluation", negation_quotes=["不足"]),
         ex("建议重排章节。", object="篇章", attribute_labels=["章节安排"], direction="neutral", speech_function="suggestion", requirement_strength="recommended", action="重排章节"),
-        ex("若有历史记录可补对照，否则说明资料局限。", object="资料与论证", attribute_labels=["证据责任"], direction="neutral", speech_function="suggestion", requirement_strength="optional", action="可补对照",
+        ex("若有历史记录可补对照，否则说明资料局限。", object="资料与论证", attribute_labels=["证据责任"], direction="neutral", speech_function="suggestion", branch_relation="conditional_branches",
            condition_quotes=["若有历史记录", "否则"], branch_conditions=["若有历史记录", "否则"], branch_actions=["可补对照", "说明资料局限"]),
+        ex("建议补图，或者补表。", object="呈现", attribute_labels=["修改要求"], direction="neutral", speech_function="suggestion", branch_relation="either_or", branch_actions=["补图", "补表"]),
+        ex("建议补图，并补表。", object="呈现", attribute_labels=["修改要求"], direction="neutral", speech_function="suggestion", requirement_strength="recommended", action="补图，并补表"),
+        ex("图或表的标题不清楚。", object="图表标题", attribute_labels=["表达清晰度"], direction="negative", speech_function="evaluation"),
+        ex("文中写‘补图或补表’，此表述不清楚。", object="表述", attribute_labels=["表达清晰度"], direction="negative", speech_function="evaluation"),
         ex("不必新增实验。", object="实验", attribute_labels=["修改要求"], direction="neutral", speech_function="description", action="不必新增实验", negation_quotes=["不必"]),
         ex("论述清晰。", object="论述", attribute_labels=["表达清晰度"], direction="positive", speech_function="evaluation"),
     ])]
@@ -163,11 +173,14 @@ def convert(document, section, window, start, prefix):
                 value = "unknown"
             candidate[field] = value
 
+        invalid_quote_lists = set()
+
         def quoted_list(key):
             values = attrs.get(key, [])
             if not isinstance(values, list) or not all(isinstance(v, str) and v for v in values):
                 errors.append("E_MODEL_QUOTE_LIST_" + key.upper())
                 flags.append("malformed_quote_list_requires_review")
+                invalid_quote_lists.add(key)
                 return []
             return values
 
@@ -202,13 +215,30 @@ def convert(document, section, window, start, prefix):
             index = cite(text)
             if index is not None:
                 candidate["conditions"].append({"text": text, "meaning": "unknown", "provenance": "explicit", "evidence_indices": [index]})
-        if branch_conditions or branch_actions:
+        # Missing relation is the frozen v3 protocol: replay its paired
+        # conditions unchanged, and never infer either_or from a connective.
+        legacy_branches = "branch_relation" not in attrs
+        branch_lists_valid = not invalid_quote_lists.intersection({"branch_conditions", "branch_actions"})
+        relation = attrs.get("branch_relation", "conditional_branches")
+        if relation not in ENUMS["branch_relation"]:
+            errors.append("E_MODEL_ENUM_BRANCH_RELATION")
+            flags.append("invalid_branch_relation_requires_review")
+            relation = "unknown"
+        if not legacy_branches and relation in {"none", "unknown"} and (branch_conditions or branch_actions):
+            errors.append("E_MODEL_BRANCH_RELATION_CONFLICT")
+            flags.append("incomplete_alternative_requires_review")
+        if (legacy_branches or (relation == "conditional_branches" and branch_lists_valid)) and (branch_conditions or branch_actions):
             branches = []
             if len(branch_conditions) != len(branch_actions) or len(branch_conditions) < 2:
                 errors.append("E_MODEL_BRANCH_PAIRING")
                 flags.append("incomplete_alternative_requires_review")
             else:
                 for condition, action in zip(branch_conditions, branch_actions):
+                    # v4 branches must belong to this opinion, not merely to
+                    # another sentence somewhere in its extraction window.
+                    if not legacy_branches and (condition not in quote["quote"] or action not in quote["quote"]):
+                        errors.append("E_MODEL_BRANCH_OUTSIDE_OPINION")
+                        continue
                     condition_index, action_index = cite(condition), cite(action)
                     if condition_index is not None and action_index is not None:
                         branches.append({"condition": condition, "action": action, "evidence_indices": list(dict.fromkeys([condition_index, action_index]))})
@@ -216,6 +246,37 @@ def convert(document, section, window, start, prefix):
                     candidate["alternatives"].append({"relation": "conditional_branches", "provenance": "explicit", "branches": branches})
                 else:
                     flags.append("incomplete_alternative_requires_review")
+        if not legacy_branches and relation == "either_or" and branch_lists_valid:
+            if branch_conditions:
+                errors.append("E_MODEL_EITHER_OR_CONDITIONS")
+                flags.append("incomplete_alternative_requires_review")
+            elif len(branch_actions) != 2 or len(set(branch_actions)) != 2:
+                errors.append("E_MODEL_BRANCH_PAIRING")
+                flags.append("incomplete_alternative_requires_review")
+            else:
+                branches = []
+                for action in branch_actions:
+                    if action not in quote["quote"]:
+                        errors.append("E_MODEL_BRANCH_OUTSIDE_OPINION")
+                        continue
+                    index = cite(action)
+                    if index is not None:
+                        branches.append({"condition": "unknown", "action": action, "evidence_indices": [index]})
+                if len(branches) == 2:
+                    spans = sorted((evidence[b["evidence_indices"][0]]["start"], evidence[b["evidence_indices"][0]]["end"]) for b in branches)
+                    between = quote["quote"][spans[0][1] - quote["start"]:spans[1][0] - quote["start"]]
+                    # This checks only a necessary surface cue, not whether
+                    # the quoted spans really are alternative actions.
+                    if spans[0][1] > spans[1][0] or not re.search(r"或者|或(?!许)|要么", between):
+                        errors.append("E_MODEL_EITHER_OR_CONNECTIVE")
+                        flags.append("incomplete_alternative_requires_review")
+                    else:
+                        candidate["alternatives"].append({"relation": "either_or", "provenance": "explicit", "branches": branches})
+                else:
+                    flags.append("incomplete_alternative_requires_review")
+        if not legacy_branches and relation == "conditional_branches" and not (branch_conditions or branch_actions):
+            errors.append("E_MODEL_BRANCH_PAIRING")
+            flags.append("incomplete_alternative_requires_review")
         if not candidate["alternatives"] and re.search(r"有条件.+无条件|若.+否则", quote["quote"]):
             errors.append("E_MODEL_CONDITIONAL_PAIR_UNSTRUCTURED")
             flags.append("incomplete_alternative_requires_review")
@@ -234,12 +295,14 @@ def convert(document, section, window, start, prefix):
             errors.append("E_MODEL_ACTION_NOT_LITERAL")
             flags.append("ungrounded_action_requires_review")
             candidate["action"] = "unknown"
-        if candidate["alternatives"]:
+        if candidate["alternatives"] or (not legacy_branches and relation in {"either_or", "conditional_branches"}):
             # Neither a branch's optional action nor its strength describes the
             # whole conditional group. Preserve originals in raw grounding.
             candidate["action"] = "unknown"
             candidate["requirement_strength"] = "unknown"
             flags.append("branch_strength_requires_review")
+        if not legacy_branches and candidate["alternatives"]:
+            flags.append("branch_relation_semantics_requires_review")
         if fallback:
             flags.append("langextract_unaligned_literal_unique")
         candidate["review_flags"] = list(dict.fromkeys(flags))

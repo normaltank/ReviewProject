@@ -1,4 +1,4 @@
-"""Explicitly approved, score-blind DeepSeek comparison using the local v3 adapter.
+"""Explicitly approved, score-blind DeepSeek comparison using the shared local adapter.
 
 No discovery, retries, redirects, proxies, tools or provider fallback. This CLI
 never imports candidates: an editor can inspect model-artifacts before ingestion.
