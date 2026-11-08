@@ -1,6 +1,6 @@
 # ReviewProject
 
-ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.4.1 提供意见复核、有原文证据的 A 候选规则、B 对照与修订讨论草案，并保留条件/替代抽取的真实失败和开发修正。正式条款修订仍需专业判断、独立试评及出版社授权。
+ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.4.2 提供意见复核、A 候选规则与修订讨论，并增加可单独追查召回、局部复核和未处理原文的实验入口。正式条款修订仍需专业判断、独立试评及出版社授权。
 
 ## 跑一份合成审稿表
 
@@ -35,6 +35,17 @@ Invoke-Item .\work\demo\report.html
 抽取默认仍用 `--protocol v3`。显式 `--protocol v4` 可试验区分 `either_or` 与 `conditional_branches`；未说明的选择条件保留 unknown，不把两路改成都必须完成。四份新真实材料的同模型对照未证实 v4 恢复关键分支，所以没有将它设为默认；共享的 Flash 入口也仍用 v3。[本轮试验与失败索引](work/conditional-20261108/README.md)保留真实响应、诊断和修正，不必重跑模型即可查看。
 
 当前可直接复核[双路条件观点](work/conditional-20261108/workspaces/conditional-01/report.html#candidate-agent-conditional-01-target)、[条件未说明的二择一](work/conditional-20261108/workspaces/conditional-02/report.html#candidate-agent-conditional-02-target)和[短评拆分结果](work/conditional-20261108/workspaces/conditional-04/report.html#candidate-agent-conditional-04-coverage)。补录由 AI 代理沿原文完成、全部 needs_review，专业编辑可用既有表单和计时入口继续核对。它们是可信编辑材料，不能向作者或外部服务直接转发。
+
+可选 `experiments/extract_staged.py` 先召回原句，再用原文线索和召回跨度安排局部 v4 复核；线索和召回均单独保存，只有第二步真实模型输出进入候选。四份新材料及两份已知回归的试验尚未证明整体更好，当前默认入口仍是上面的联合 v3。查看[本轮结果及失败索引](work/staged-20261108/README.md)、[新条件观点](work/staged-20261108/workspaces/staged-01/report.html#candidate-agent-staged-01-target)或[主张—理由复核页](work/staged-20261108/workspaces/staged-03/report.html#candidate-agent-staged-03-target)，无需重复推理。
+
+需要自行试用时，先按前文启动本机模型，选择已导入工作区的普通区 ID 和全新 run-id：
+
+```powershell
+& .\.tools\semantic-env\Scripts\python.exe experiments/extract_staged.py --workspace work/demo --section section-1 --run-id staged-demo-01 --stage2-max-output-tokens 8192
+python -m reviewproto ingest-candidates work/demo/model-artifacts/staged-demo-01/candidates.json --workspace work/demo
+```
+
+它默认每记录至多12请求、4次局部复核。超长上下文、预算未处理及失败留在 `queue.json / coverage.json`；处理覆盖与候选结果分开，空候选伴错误明确失败。队列处理完成只表示模型看过，不能解释为观点已被理解。试用完按前文停止模型。
 
 ## 获授权的 Flash 对照
 

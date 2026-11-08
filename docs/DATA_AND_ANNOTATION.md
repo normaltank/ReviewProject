@@ -1,4 +1,4 @@
-# 数据与标注契约 · 0.4.1
+# 数据与标注契约 · 0.4.2
 
 一份 DOCX、CSV 或契约 JSON 对应一个可信编辑工作目录。目录整体继承原件权限。打开 HTML 的人可以读取其中的私密意见，隐藏或折叠界面元素不提供身份隔离。权限控制依赖本地目录访问控制。复核、备份和恢复时按整份受控材料管理。`actor` 是审计声明，不是经过身份认证的账号。
 
@@ -30,6 +30,12 @@
 本地抽取 CLI 默认 `--protocol v3`，共享公开配置及 Flash 入口保持该默认。`--protocol v4` 是显式试验选项：新增 `branch_relation=none / unknown / either_or / conditional_branches`。none/unknown 不升级成分组；纯 either_or 只接收两个不同、位于同一观点引用内的逐字动作、空 branch_conditions，以及两动作间的显式“或/或者/要么”连接。存储时两支 condition 均为 unknown；不得补造“无法实验”等选择条件。有明确条件时仍逐项引用条件与动作。缺字段的旧 grounding 按 v3 回放，不据关键词猜 either_or。
 
 v4 的连接词检查仅为必要表面约束，不能确认两段真是可选动作；对象列举、引述或相容建议仍可能被模型误报，保留 `branch_relation_semantics_requires_review`。有分支提名时整组 action/requirement_strength 保留 unknown，不能用单一路径的模态覆盖全组。运行配置记录实际选定协议、指令/schema 指纹及输出 token 上限；协议选择不改变模型权重、候选概念或正式条款。
+
+可选分步入口 `extract_staged.py` 仅接受既有工作区、显式普通分区和新运行ID。第一步的逐字 span/kind、原文字面cue及其上下文队列都是旁车，语义状态固定未知，绝不充作已理解观点。第二步仅接收同一区域的连续原文和公开合成例子，不接收第一步kind或语义结论、评分、身份字段、私密区或A条款；实际候选复用v4逐字转换及待核状态。该入口同时改变了上下文安排和调用次数，不是纯关系分类器或分阶段方法的单变量消融。
+
+同区重叠cue上下文先按坐标闭包合并，相交召回继承完整范围；超600码点保留 `boundary_pending`，不得用碎片绕过。原span、ID、来源和原句仍可回看；纯召回不按主题互相合并。cue字面表是有限提示，不保证发现所有语言条件或理解其含义。默认总请求12、局部复核4；未处理项保留预算或边界原因，不能算已完成业务复核。
+
+每请求前重验源文件、所选文本及权限，采用相同本地端点/禁代理/禁重定向约束，先落盘attempted再发送。中断时 pending 只证明客户端已记尝试，不证明服务已接收或完成。`recall.json / queue.json / grounding.json / coverage.json / response-*.json` 的实际指纹放入config；队列processed只表示送模型处理，绝不是语义正确。coverage可为partial，同时零候选伴错误的候选payload为failed且退出2；合法无错空为complete并导入zero_candidates，有错非空由核心派生partial。旁车进展不会将失败升级为充分支持。旧默认入口、概念审批及正式规则权限不变。
 
 ## 结构化输入
 
