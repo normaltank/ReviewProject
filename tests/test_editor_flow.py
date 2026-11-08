@@ -165,3 +165,54 @@ class EditorFlowTests(unittest.TestCase):
                     page.set_viewport_size({'width': 390, 'height': 844})
                     self.assertLessEqual(page.locator('#editor').evaluate('(e)=>e.scrollWidth'), page.locator('#editor').evaluate('(e)=>e.clientWidth'))
                     browser.close()
+
+    def test_partial_and_malformed_advanced_import_preserve_current_fields_atomically(self):
+        from playwright.sync_api import sync_playwright
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / 'synthetic.json'
+            source.write_text(json.dumps({'schema_version': 1, 'scores': [], 'sections': [
+                {'section_id': 'comments', 'label': '评审意见', 'text': '合成意见。', 'visibility': 'visibility_unknown'}]}), encoding='utf-8')
+            with closing(Workspace(root / 'workspace')) as ws:
+                ws.run(source, 'synthetic', 'json')
+                initial = ws.review_template()
+                initial.update(actor='synthetic', reason='saved advanced fields')
+                initial['edits'][0]['fields'].update(direction='negative', attributes=['keep'])
+                ws.apply(initial)
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(executable_path=str(CHROME), headless=True)
+                    page = browser.new_page(offline=True)
+                    page.goto((ws.path / 'report.html').as_uri())
+                    page.get_by_text('高级：结构化字段与精确证据 JSON', exact=True).click()
+                    patch = json.loads(page.locator('#patch').input_value())
+                    patch['edits'][0]['fields'] = {'evidence': patch['edits'][0]['fields']['evidence'], 'object': 'partial对象'}
+                    page.locator('#patch').fill(json.dumps(patch, ensure_ascii=False))
+                    page.locator('#import-advanced').click()
+                    page.locator('#action').fill('普通动作')
+                    valid = json.loads(page.locator('#patch').input_value())
+                    self.assertEqual(valid['edits'][0]['fields']['direction'], 'negative')
+                    self.assertEqual(valid['edits'][0]['fields']['attributes'], ['keep'])
+                    bad = json.loads(json.dumps(valid))
+                    bad['edits'][0]['fields']['object'] = 'malformed对象'
+                    bad['edits'][0]['fields']['reasons'] = {}
+                    page.locator('#patch').fill(json.dumps(bad, ensure_ascii=False))
+                    page.locator('#import-advanced').click()
+                    self.assertIn('未覆盖', page.locator('#message').inner_text())
+                    self.assertEqual(page.locator('#object').input_value(), 'partial对象')
+                    page.locator('#action').fill('拒绝坏JSON后继续修改')
+                    kept = json.loads(page.locator('#patch').input_value())
+                    self.assertEqual(kept['edits'][0]['fields']['object'], 'partial对象')
+                    self.assertEqual(kept['edits'][0]['fields']['attributes'], ['keep'])
+                    self.assertEqual(kept['edits'][0]['fields']['action'], '拒绝坏JSON后继续修改')
+                    self.assertIsInstance(kept['edits'][0]['fields']['reasons'], list)
+                    for invalid in [
+                        {'alternatives': [{'relation': 'unknown', 'provenance': 'unknown', 'branches': {}}]},
+                        {'reasons': [{'text': 'bad refs', 'provenance': 'unknown', 'evidence_indices': None}]},
+                    ]:
+                        bad = json.loads(json.dumps(kept))
+                        bad['edits'][0]['fields'].update(invalid)
+                        page.locator('#patch').fill(json.dumps(bad, ensure_ascii=False))
+                        page.locator('#import-advanced').click()
+                        self.assertEqual(json.loads(page.locator('#patch').input_value()), kept)
+                        self.assertEqual(page.locator('#action').input_value(), '拒绝坏JSON后继续修改')
+                    browser.close()

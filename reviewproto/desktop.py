@@ -88,9 +88,11 @@ class Controller:
 
     def open_workspace(self, path):
         target = self._existing(path)
-        with closing(Workspace(target)) as ws:
-            state = ws.state()
+        # Recovery republishes the current editor for pre-upgrade workspaces;
+        # it preserves the revision and all saved business records.
         self.path = target
+        with closing(Workspace(target)) as ws:
+            state = self._mutation(ws, ws.recover)
         return self._result(state)
 
     def apply_patch(self, patch):
@@ -127,7 +129,8 @@ class Controller:
         require(getattr(self, 'owns_model', False), 'E_MODEL_NOT_OWNED')
         state = json.loads((ROOT / 'work/local-model/server-state.json').read_text(encoding='utf-8-sig'))
         require(state.get('run_id') == self.owns_model, 'E_MODEL_NOT_OWNED')
-        result = run_process(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ROOT / 'scripts/stop-local-model.ps1'])
+        result = run_process(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                              ROOT / 'scripts/stop-local-model.ps1', '-ExpectedRunId', self.owns_model])
         require(result.returncode == 0, 'E_LOCAL_MODEL_STOP')
         self.owns_model = False
 

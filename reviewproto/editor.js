@@ -34,7 +34,59 @@ for(const link of document.querySelectorAll('.edit-candidate'))link.addEventList
 el('draft-list').addEventListener('change',()=>{if(!ready()){el('draft-list').value=active;return;}active=el('draft-list').value;show();});
 el('add-section').addEventListener('change',()=>sourcePane(el('add-section').value));
 el('patch').addEventListener('input',()=>{advancedDirty=true;dirty=true;message('高级 JSON 有未载入修改。');});
-el('import-advanced').addEventListener('click',()=>{try{const p=JSON.parse(el('patch').value);if(!Array.isArray(p.edits)||!Array.isArray(p.creates||[])||p.source_id!==base.source_id||p.base_revision!==base.base_revision)throw Error();const values=[...p.edits,...(p.creates||[])];if(new Set(values.map(v=>v.candidate_id)).size!==values.length||p.edits.some(e=>(p.creates||[]).some(c=>(c.replaces||[]).includes(e.candidate_id))))throw Error();for(const v of values)if(!v.fields||!Array.isArray(v.fields.evidence)||!v.fields.evidence.length)throw Error();draft=p;draft.creates??=[];for(const v of values)v.fields={...cleanFields(),...v.fields};active=values.some(v=>v.candidate_id===active)?active:values[0]?.candidate_id;el('actor').value=p.actor;el('reason').value=p.reason;advancedDirty=false;show();publish();message('已载入高级 JSON；普通表单保留未改的高级字段。');}catch(e){message('JSON 结构或来源/修订不匹配，请检查；原草稿未覆盖。');}});
+function prepareAdvanced(p){
+    const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+    const check=value=>{if(!value)throw Error();};
+    check(object(p)&&Array.isArray(p.edits)&&Array.isArray(p.creates||[])&&p.source_id===base.source_id&&p.base_revision===base.base_revision);
+    check(typeof p.actor==='string'&&typeof p.reason==='string');
+    p.creates??=[];
+    for(const item of [...p.edits,...p.creates]){
+        check(object(item)&&typeof item.candidate_id==='string'&&object(item.fields));
+        const saved=base.edits.find(e=>e.candidate_id===item.candidate_id);
+        const edit=p.edits.includes(item);
+        check(!edit||saved);
+        item.fields={...cleanFields(),...(edit?saved.fields:{}),...item.fields};
+        const f=item.fields;
+        for(const key of scalar)check(typeof f[key]==='string');
+        for(const key of ['evidence','reasons','conditions','alternatives','relations','clause_links','attributes','concept_ids'])check(Array.isArray(f[key]));
+        check(f.evidence.length>0);
+        const sid=edit?saved.fields.evidence[0].section_id:item.section_id;
+        check(sections.some(v=>v.section_id===sid));
+        for(const e of f.evidence){
+            check(object(e)&&e.section_id===sid&&e.source_id===base.source_id&&typeof e.quote==='string');
+            check(exact(sid,e.start,e.end).quote===e.quote);
+        }
+        for(const row of [...f.reasons,...f.conditions])check(object(row)&&typeof row.text==='string'&&typeof row.provenance==='string');
+        for(const row of f.conditions)check(typeof row.meaning==='string');
+        for(const group of f.alternatives){
+            check(object(group)&&typeof group.relation==='string'&&typeof group.provenance==='string'&&Array.isArray(group.branches)&&group.branches.length>=2);
+            for(const branch of group.branches)check(object(branch)&&typeof branch.condition==='string'&&typeof branch.action==='string');
+        }
+        for(const row of allReferences(f))check(object(row)&&Array.isArray(row.evidence_indices)&&row.evidence_indices.every(i=>Number.isInteger(i)&&i>=0&&i<f.evidence.length));
+        if(!edit)for(const key of ['parent_ids','replaces'])check(item[key]===undefined||Array.isArray(item[key])&&item[key].every(v=>typeof v==='string'));
+    }
+    const values=[...p.edits,...p.creates];
+    check(new Set(values.map(v=>v.candidate_id)).size===values.length);
+    check(!p.edits.some(e=>p.creates.some(c=>(c.replaces||[]).includes(e.candidate_id))));
+    return p;
+}
+el('import-advanced').addEventListener('click',()=>{
+    try{
+        // Validate and normalize a separate object before replacing any live
+        // draft, active selection, audit input or ordinary form field.
+        const next=prepareAdvanced(JSON.parse(el('patch').value));
+        const values=[...next.edits,...next.creates];
+        draft=next;
+        active=values.some(v=>v.candidate_id===active)?active:values[0]?.candidate_id;
+        el('actor').value=draft.actor;el('reason').value=draft.reason;
+        advancedDirty=false;show();publish();
+        message('已载入高级 JSON；普通表单保留未改的高级字段。');
+    }catch(e){
+        advancedDirty=false;
+        el('patch').value=JSON.stringify(draft,null,2);
+        message('JSON 结构或来源/修订不匹配，未载入；原草稿未覆盖，已恢复有效 JSON，可继续修改表单。');
+    }
+});
 el('delete-draft').addEventListener('click',()=>{if(!ready())return;const item=current();if(!draft.creates.includes(item))return;draft.creates=draft.creates.filter(v=>v!==item);active=entries()[0]?.candidate_id||null;show();publish();});
 function exact(sid,a,b){const s=sections.find(s=>s.section_id===sid),chars=Array.from(s?.text||'');if(!s||!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<=a||b>chars.length)throw Error();return {source_id:base.source_id,section_id:sid,start:a,end:b,quote:chars.slice(a,b).join(''),precision:'exact'};}
 el('capture-selection').addEventListener('click',()=>{try{const selection=getSelection();if(!selection.rangeCount)throw Error();const r=selection.getRangeAt(0),pane=el('source-pane');if(!pane.contains(r.startContainer)||!pane.contains(r.endContainer))throw Error();const prefix=document.createRange();prefix.selectNodeContents(pane);prefix.setEnd(r.startContainer,r.startOffset);const a=Array.from(prefix.toString()).length;prefix.setEnd(r.endContainer,r.endOffset);const b=Array.from(prefix.toString()).length;const s=sections.find(v=>v.section_id===pane.dataset.section);if(Array.from(s.text).slice(a,b).join('')!==r.toString())throw Error();captured={section:s.section_id,start:a,end:b};el('captured-quote').textContent='['+a+', '+b+') '+(r.toString()||'（光标）');message('已捕获冻结原文位置；尚未添加观点或证据。');}catch(e){captured=null;el('captured-quote').textContent='未捕获';message('请选择同一个冻结原文框内的文字或光标；不能跨分区。');}});

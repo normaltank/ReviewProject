@@ -3,12 +3,78 @@ from pathlib import Path
 import tempfile
 import json
 import unittest
+import os
+import shutil
+import subprocess
 from unittest.mock import patch
 
 from reviewproto.core import ReviewError
 
 
 class DesktopControllerTests(unittest.TestCase):
+    def test_open_republishes_current_editor_without_changing_business_state(self):
+        from reviewproto.desktop import Controller
+        from reviewproto.store import Workspace
+        from contextlib import closing
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / 'source.json'
+            source.write_text(json.dumps({'schema_version': 1, 'scores': [], 'sections': [
+                {'section_id': 'comments', 'label': '评审意见', 'text': '合成意见。', 'visibility': 'visibility_unknown'}]}), encoding='utf-8')
+            c = Controller()
+            c.import_source(source, root / 'workspace', 'synthetic', 'json')
+            with closing(Workspace(c.path)) as ws:
+                before = ws.state()
+            (c.path / 'report.html').write_text('<html>old 0.4.3 editor</html>', encoding='utf-8')
+            self.assertEqual(c.open_workspace(c.path)['revision'], before['revision'])
+            self.assertIn('id="source-pane"', (c.path / 'report.html').read_text(encoding='utf-8'))
+            with closing(Workspace(c.path)) as ws:
+                self.assertEqual(ws.state(), before)
+
+    def test_gui_stop_passes_expected_identity_as_argument(self):
+        from reviewproto.desktop import Controller
+        c = Controller()
+        c.owns_model = 'a' * 32
+        with patch('reviewproto.desktop.Path.read_text', return_value=json.dumps({'run_id': c.owns_model})), \
+             patch('reviewproto.desktop.run_process', return_value=subprocess.CompletedProcess([], 0)) as call:
+            c.stop_model()
+            argv = call.call_args.args[0]
+            self.assertEqual(argv[-2:], ['-ExpectedRunId', 'a' * 32])
+
+    @unittest.skipUnless(os.name == 'nt' and shutil.which('powershell.exe'), 'Windows PowerShell needed')
+    def test_stop_script_rejects_replaced_run_under_mutex_without_touching_process_or_state(self):
+        repo = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'scripts').mkdir()
+            (root / 'work/local-model').mkdir(parents=True)
+            target = root / 'scripts/stop-local-model.ps1'
+            shutil.copyfile(repo / 'scripts/stop-local-model.ps1', target)
+            state = root / 'work/local-model/server-state.json'
+            state.write_text(json.dumps({'run_id': 'b' * 32}), encoding='utf-8')
+            before = state.read_bytes()
+            harness = root / 'probe.ps1'
+            harness.write_text('''$ErrorActionPreference = 'Stop'
+function global:Get-CimInstance { throw 'PROCESS_LOOKUP_MUST_NOT_RUN' }
+function global:Get-Process { throw 'PROCESS_LOOKUP_MUST_NOT_RUN' }
+$caught = ''
+try { & (Join-Path $PSScriptRoot 'scripts/stop-local-model.ps1') -ExpectedRunId ('a' * 32) }
+catch { $caught = $_.Exception.Message }
+if ($caught -cne 'E_MODEL_NOT_OWNED') { throw 'Expected identity mismatch before process lookup' }
+Write-Output 'EXPECTED_RUN_REJECTED'
+''', encoding='utf-8')
+            result = subprocess.run([shutil.which('powershell.exe'), '-NoProfile', '-File', str(harness)],
+                                    capture_output=True, text=True, timeout=30, shell=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('EXPECTED_RUN_REJECTED', result.stdout)
+            self.assertEqual(state.read_bytes(), before)
+            for bad in ['a' * 31, 'A' * 32, 'SYNTHETIC-PRIVATE-ARGUMENT']:
+                invalid = subprocess.run([shutil.which('powershell.exe'), '-NoProfile', '-File', str(target),
+                                          '-ExpectedRunId', bad], capture_output=True, text=True, timeout=30, shell=False)
+                self.assertNotEqual(invalid.returncode, 0)
+                self.assertIn('E_MODEL_RUN_ID', invalid.stderr)
+                self.assertNotIn(bad, invalid.stdout + invalid.stderr)
+                self.assertEqual(state.read_bytes(), before)
     def test_import_apply_reopen_recover_and_unsafe_paths(self):
         from reviewproto.desktop import Controller
         with tempfile.TemporaryDirectory() as temp:

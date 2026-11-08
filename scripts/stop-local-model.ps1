@@ -1,9 +1,14 @@
 # Stop only the process created and identified by scripts/start-local-model.ps1.
 [CmdletBinding()]
-param()
+param(
+    [string]$ExpectedRunId
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
+if ($PSBoundParameters.ContainsKey('ExpectedRunId') -and $ExpectedRunId -cnotmatch '^[0-9a-f]{32}$') {
+    throw 'E_MODEL_RUN_ID'
+}
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $exe = Join-Path $repoRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
 $model = Join-Path $repoRoot '.tools/local-llm/Qwen3-4B-Q4_K_M.gguf'
@@ -20,6 +25,11 @@ if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
 }
 try { $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
 catch { throw 'The local service state is not readable JSON. No process was stopped.' }
+# GUI callers bind their own launch identity. Check while holding the lifecycle
+# mutex, before looking up or stopping any process; a later run is never theirs.
+if ($PSBoundParameters.ContainsKey('ExpectedRunId') -and $state.run_id -cne $ExpectedRunId) {
+    throw 'E_MODEL_NOT_OWNED'
+}
 $expectedArguments = '-m "' + $model + '" --alias reviewproject-qwen3-4b-q4km --tags reviewproject-local-run-' + $state.run_id + ' --host 127.0.0.1 --port 8766 --cors-origins localhost -c 16384 -np 1 -ngl 99 --device Vulkan0 --reasoning off --offline --no-webui --no-slots --no-cache-prompt --cache-ram 0 --log-colors off'
 if ($state.owner -ne 'ReviewProject/scripts/local-model/v1' -or $state.repo_root -ne $repoRoot -or
     $state.executable -ne $exe -or $state.model_path -ne $model -or
