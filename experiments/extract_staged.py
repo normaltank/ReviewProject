@@ -178,6 +178,7 @@ def main():
     parser.add_argument('--endpoint', default='http://127.0.0.1:8766/v1')
     parser.add_argument('--model', choices=('reviewproject-qwen3-4b-q4km',), default='reviewproject-qwen3-4b-q4km')
     parser.add_argument('--window-chars', type=int, choices=(600,), default=600)
+    parser.add_argument('--context-chars', type=int, choices=(600, 1000), default=600)
     parser.add_argument('--stage1-max-output-tokens', type=int, choices=(2048,), default=2048)
     parser.add_argument('--stage2-max-output-tokens', type=int, choices=(4096, 8192), default=4096)
     parser.add_argument('--max-refinements', type=int, default=4)
@@ -329,7 +330,7 @@ def main():
                 except ValueError as error:
                     errors.append(str(error))
                     outcome['errors'].append(str(error))
-        queue.extend(build_queue(section, [r for r in recall if r['span']['section_id'] == section['section_id']], args.window_chars))
+        queue.extend(build_queue(section, [r for r in recall if r['span']['section_id'] == section['section_id']], args.context_chars))
     # All literal cues precede recall-only contexts. Dedup requests only for
     # identical coordinates; keep every distinct queue item and its origin.
     queue.sort(key=lambda q: (q['source'] != 'cue_queue', args.section.index(q['span']['section_id']), q['span']['start']))
@@ -375,7 +376,9 @@ def main():
     processed = sum(o['status'] == 'processed' for o in outcomes)
     status = 'partial' if errors and (processed or recall or queue) else 'failed' if errors else 'complete'
     candidate_status = 'complete' if unique or not errors else 'failed'
-    coverage = {'status': status, 'is_semantic_accuracy': False, 'recall_spans': len(recall), 'queue_items': len(queue),
+    coverage = {'status': status, 'is_semantic_accuracy': False,
+        'window_chars': args.window_chars, 'context_chars': args.context_chars,
+        'recall_spans': len(recall), 'queue_items': len(queue),
         'queue_processed': sum(q['status'] == 'processed' for q in queue),
         'queue_unprocessed': sum(q['status'] != 'processed' for q in queue),
         'queue_budget_unprocessed': sum(any(e in {'E_CALL_BUDGET', 'E_REFINEMENT_BUDGET'} for e in q['errors']) for q in queue),
@@ -392,7 +395,8 @@ def main():
     sidecars = {p.name: local.digest(p.read_bytes()) for p in sorted(folder.glob('*.json'))}
     config = {'protocol': 'staged-recall-focused-v1', 'protocols': protocol_records,
         'script_sha256': script_hash, 'adapter_sha256': adapter_hash, 'endpoint': args.endpoint,
-        'window_chars': args.window_chars, 'stage1_max_output_tokens': args.stage1_max_output_tokens,
+        'window_chars': args.window_chars, 'context_chars': args.context_chars,
+        'stage1_max_output_tokens': args.stage1_max_output_tokens,
         'stage2_max_output_tokens': args.stage2_max_output_tokens, 'max_refinements': args.max_refinements,
         'max_calls': args.max_calls, 'model_requests': len(calls), 'external_model_requests': 0,
         'score_blind': True, 'input_scope': 'single_section_contiguous_source', 'temperature': 0,

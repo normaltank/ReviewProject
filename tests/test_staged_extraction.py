@@ -327,6 +327,83 @@ class StagedExtractionTests(unittest.TestCase):
             self.assertEqual(self.artifact(workspace)['candidates'], [])
             self.assertEqual(self.artifact(workspace, 'recall.json')['spans'], [])
 
+    def test_explicit_context_budget_sends_771_codepoint_closure_whole_with_600_stage1_windows(self):
+        paragraphs = ['若' + '甲' * 190 + '。', '因为' + '乙' * 189 + '。',
+                      '否则' + '丙' * 189 + '。', '或者' + '丁' * 189 + '。']
+        text = '\n'.join(paragraphs)
+        self.assertEqual(len(text), 771)
+        recall = [{'span': paragraphs[1], 'span_attributes': {'kind': 'unknown'}}]
+        for extra, budget, expected_exit in [((), 600, 2), (('--context-chars', '600'), 600, 2),
+                                             (('--context-chars', '1000'), 1000, 0)]:
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as directory:
+                workspace = self.workspace(Path(directory), text)
+                with self.run_mock(workspace, [recall, [], []], extra) as (requests, extracts):
+                    self.assertEqual(staged.main(), expected_exit)
+                queue = self.artifact(workspace, 'queue.json')
+                self.assertEqual(len(queue), 5)
+                self.assertEqual({q['source'] for q in queue}, {'cue_queue', 'stage1_recall'})
+                self.assertTrue(all(q['context']['quote'] == text for q in queue))
+                self.assertTrue(all(q['semantics'] == 'semantics_unknown' for q in queue))
+                self.assertEqual(self.artifact(workspace)['candidates'], [])
+                self.assertTrue(all(len(e['text_or_documents']) <= 600 for e in extracts[:2]))
+                self.assertTrue(all(len(json.loads(r['messages'][1]['content'])['source']) <= 600 for r in requests[:2]))
+                config = self.artifact(workspace)['config']
+                self.assertEqual(config['context_chars'], budget)
+                self.assertEqual(config['window_chars'], 600)
+                self.assertEqual((config['max_refinements'], config['max_calls']), (4, 12))
+                coverage = self.artifact(workspace, 'coverage.json')
+                self.assertEqual((coverage['window_chars'], coverage['context_chars']), (600, budget))
+                if budget == 1000:
+                    self.assertEqual(len(requests), 3)
+                    self.assertEqual([e['text_or_documents'] for e in extracts[2:]], [text])
+                    self.assertEqual(json.loads(requests[2]['messages'][1]['content'])['source'], text)
+                    self.assertTrue(all(q['status'] == 'processed' and q['stage2_calls'] == [3] for q in queue))
+                else:
+                    self.assertEqual(len(requests), 2)
+                    self.assertTrue(all(q['status'] == 'boundary_pending' and q['stage2_calls'] == [] for q in queue))
+
+    def test_1000_codepoint_boundary_keeps_complete_closure_and_blocks_1001_recall_fragment(self):
+        for length, expected_exit in [(1000, 0), (1001, 2)]:
+            paragraphs = ['😀若' + '甲' * 246 + '。', '因为' + '乙' * 246 + '。',
+                          '否则' + '丙' * 246 + '。', '或者' + '丁' * (length - 753) + '。']
+            text = '\n'.join(paragraphs)
+            self.assertEqual(len(text), length)
+            recall = [{'span': paragraphs[1], 'span_attributes': {'kind': 'modification'}}]
+            with self.subTest(length=length), tempfile.TemporaryDirectory() as directory:
+                workspace = self.workspace(Path(directory), text)
+                with self.run_mock(workspace, [recall, [], []], ['--context-chars', '1000']) as (requests, extracts):
+                    self.assertEqual(staged.main(), expected_exit)
+                self.assertTrue(all(len(e['text_or_documents']) <= 600 for e in extracts[:2]))
+                queue = self.artifact(workspace, 'queue.json')
+                self.assertEqual(len(queue), 5)
+                self.assertTrue(all(q['context']['quote'] == text for q in queue))
+                self.assertTrue(all(q['context']['end'] - q['context']['start'] == length for q in queue))
+                self.assertEqual(queue[-1]['source'], 'stage1_recall')
+                self.assertTrue(all(q['semantics'] == 'semantics_unknown' for q in queue))
+                payload, coverage = self.artifact(workspace), self.artifact(workspace, 'coverage.json')
+                self.assertEqual(payload['config']['context_chars'], 1000)
+                self.assertEqual(coverage['context_chars'], 1000)
+                self.assertEqual(payload['candidates'], [])
+                if length == 1000:
+                    self.assertEqual(len(requests), 3)
+                    self.assertEqual([e['text_or_documents'] for e in extracts[2:]], [text])
+                    self.assertTrue(all(q['status'] == 'processed' and q['stage2_calls'] == [3] for q in queue))
+                    self.assertEqual(payload['errors'], [])
+                    expected_run_status = 'zero_candidates'
+                else:
+                    self.assertEqual(len(requests), 2)
+                    self.assertEqual(extracts[2:], [])
+                    self.assertTrue(all(q['status'] == 'boundary_pending' and q['stage2_calls'] == [] for q in queue))
+                    self.assertIn('E_CONTEXT_BOUNDARY_REQUIRES_REVIEW', payload['errors'])
+                    self.assertEqual(payload['status'], 'failed')
+                    self.assertEqual((coverage['status'], coverage['queue_unprocessed']), ('partial', 5))
+                    expected_run_status = 'failed'
+                store = Workspace(workspace)
+                try:
+                    self.assertEqual(store.import_extractions(payload)['extraction_runs'][-1]['status'], expected_run_status)
+                finally:
+                    store.close()
+
     def test_oversize_cue_closure_blocks_fragmented_recall_bypass(self):
         first, middle, last = '若' + '甲' * 210 + '，', '乙' * 210 + '。', '否则' + '丙' * 210 + '。'
         text = '\n'.join([first, middle, last])
