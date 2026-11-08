@@ -35,22 +35,102 @@ class LocalExtractionTests(unittest.TestCase):
         return directory
 
     @contextmanager
-    def fake_provider(self, workspace, extract_response, run_id='synthetic-run'):
+    def fake_provider(self, workspace, extract_response, run_id='synthetic-run', extra_args=()):
         lx, core = ModuleType('langextract'), ModuleType('langextract.core')
         core.base_model = Obj(BaseLanguageModel=object)
         core.tokenizer = Obj(UnicodeTokenizer=lambda: None)
-        core.types = Obj()
+        core.types = Obj(ScoredOutput=Obj)
+        lx.data = Obj(Extraction=Obj, ExampleData=Obj)
         lx.extract = Mock(side_effect=extract_response)
         with patch.dict(sys.modules, {'langextract': lx, 'langextract.core': core}), \
-             patch.object(adapter, 'examples', return_value=[]), \
              patch.object(adapter, 'version', return_value='synthetic'), \
-             patch.object(sys, 'argv', ['adapter', '--workspace', str(workspace), '--run-id', run_id]), \
+             patch.object(sys, 'argv', ['adapter', '--workspace', str(workspace), '--run-id', run_id, *extra_args]), \
              patch('urllib.request.OpenerDirector.open', side_effect=AssertionError('network forbidden')), \
              patch('builtins.print'):
             yield lx.extract
 
     def artifact(self, workspace, run_id='synthetic-run'):
         return json.loads((workspace / 'model-artifacts' / run_id / 'candidates.json').read_text(encoding='utf-8'))
+
+    def test_default_protocol_keeps_v3_public_interface_and_cli_configuration(self):
+        self.assertEqual(adapter.PROMPT_VERSION, 'review-opinions-local-v3')
+        self.assertNotIn('branch_relation', adapter.schema()['properties']['extractions']['items']['properties']['opinion_attributes']['properties'])
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory))
+            with self.fake_provider(workspace, lambda **kwargs: Obj(extractions=[])) as model:
+                self.assertEqual(adapter.main(), 0)
+            call = model.call_args.kwargs
+            config = self.artifact(workspace)['config']
+            self.assertEqual(config['protocol'], 'v3')
+            self.assertEqual(config['prompt_version'], 'review-opinions-local-v3')
+            self.assertEqual(call['prompt_description'], adapter.INSTRUCTION)
+            self.assertEqual(len(call['examples'][0].extractions), 6)
+            self.assertNotIn('branch_relation', call['examples'][0].extractions[3].attributes)
+            self.assertEqual((config['temperature'], config['window_chars'], config['max_output_tokens']), (0, 600, 4096))
+
+    def test_protocols_preserve_frozen_synthetic_instructions_schemas_and_examples(self):
+        # Independent fingerprints from the pre-selection frozen v3/v4
+        # protocols. These cover synthetic few-shot material, never real data.
+        expected = {
+            'v3': ('c5abdf8d9dc43c0e71a7fecab299de6b841386117d45d6b92e4cd556ea3eb6c2',
+                   '86500400377333db277fbad422a3917c9abeab1a16a3441e0166e36a30346fb0',
+                   'f960e33240481090adc3eb73a6016c5d5095fdad6b31f14931d0bc1e8bbf80ec'),
+            'v4': ('386279a6e8c8ff3337aa19b5ff3a238bd916fa1f44149306575f35a497a070c8',
+                   'ad343442c35d5715ed4da724cfd0b57b2931f3d5abd346de63333dbc0d72de77',
+                   'ca189482a3e6651c3e8ebcae3824dfbf7d39f9eb8e6e59803c90b5ddd0d308ee'),
+        }
+        lx = Obj(data=Obj(Extraction=Obj, ExampleData=Obj))
+        for protocol, hashes in expected.items():
+            with self.subTest(protocol=protocol):
+                selected = adapter.protocol_config(protocol)
+                encoded_examples = json.dumps(adapter.examples(lx, protocol), ensure_ascii=False,
+                                               sort_keys=True, default=vars)
+                self.assertEqual((adapter.digest(selected['instruction']),
+                                  adapter.digest(json.dumps(adapter.schema(protocol), sort_keys=True)),
+                                  adapter.digest(encoded_examples)), hashes)
+
+    def test_explicit_v4_selects_actual_prompt_schema_examples_and_records_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory))
+            requests = []
+            def respond(**kwargs):
+                # Exercise the adapter's real request assembly, using a
+                # synthetic transport so no local model or socket is involved.
+                list(kwargs['model'].infer(['synthetic formatted prompt']))
+                return Obj(extractions=[])
+            def transport(request, **kwargs):
+                requests.append(json.loads(request.data))
+                response = Mock()
+                response.read.return_value = json.dumps({'choices': [{'finish_reason': 'stop', 'message': {'content': '{}'}}]}).encode()
+                response.__enter__ = Mock(return_value=response)
+                response.__exit__ = Mock(return_value=False)
+                return response
+            with self.fake_provider(workspace, respond, extra_args=('--protocol', 'v4')) as model, \
+                 patch('urllib.request.OpenerDirector.open', side_effect=transport):
+                self.assertEqual(adapter.main(), 0)
+            call = model.call_args.kwargs
+            config = self.artifact(workspace)['config']
+            self.assertEqual(config['protocol'], 'v4')
+            self.assertEqual(config['prompt_version'], 'review-opinions-local-v4')
+            self.assertEqual(requests[0]['messages'][0]['content'], call['prompt_description'])
+            self.assertEqual(config['prompt_sha256'], digest(call['prompt_description'].encode('utf-8')))
+            sent_schema = requests[0]['response_format']['json_schema']['schema']
+            self.assertIn('branch_relation', sent_schema['properties']['extractions']['items']['properties']['opinion_attributes']['properties'])
+            self.assertEqual(config['schema_sha256'], digest(json.dumps(sent_schema, sort_keys=True).encode('utf-8')))
+            self.assertEqual(len(call['examples'][0].extractions), 10)
+            self.assertEqual(call['examples'][0].extractions[4].attributes['branch_relation'], 'either_or')
+            self.assertEqual((requests[0]['temperature'], requests[0]['max_tokens']), (0, 4096))
+            self.assertEqual(adapter.PROMPT_VERSION, 'review-opinions-local-v3')
+
+    def test_invalid_protocol_refuses_before_model_workspace_or_artifact_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / 'missing'
+            result = subprocess.run([sys.executable, str(PATH), '--workspace', str(workspace), '--protocol', 'invalid'],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn('invalid choice', result.stderr)
+            self.assertEqual(result.stdout, '')
+            self.assertFalse(workspace.exists())
 
     def convert_attrs(self, text, attrs, *, opinion=None, start=0):
         document = Obj(extractions=[Obj(extraction_class='opinion', extraction_text=opinion or text,
