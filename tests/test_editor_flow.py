@@ -94,6 +94,7 @@ class EditorFlowTests(unittest.TestCase):
                     page.locator('#source-pane').evaluate('''e=>{const r=document.createRange();r.setStart(e.firstChild,6);r.collapse(true);const s=getSelection();s.removeAllRanges();s.addRange(r);}''')
                     page.locator('#capture-selection').click()
                     page.locator('#selection-split').click()
+                    self.assertFalse(page.locator('#patch').evaluate("e=>e.closest('details').open"))
                     children = json.loads(page.locator('#patch').input_value())['creates']
                     self.assertEqual(len(children), 2)
                     page.locator('#object').fill('左子观点')

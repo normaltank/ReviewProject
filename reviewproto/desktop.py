@@ -173,7 +173,8 @@ def main():
     widgets = []
     status = tk.StringVar(value='选择新材料或已有工作区。材料、报告和补丁仅供可信编辑。')
     location = tk.StringVar(value='尚未打开工作区')
-    origin = tk.StringVar(value='unknown')
+    origin_labels = {'unknown': '未确认', 'original_review': '原始审稿', 'synthetic': '合成演示'}
+    origin = tk.StringVar(value=origin_labels['unknown'])
     source_format = tk.StringVar(value='docx')
     section = tk.StringVar()
     frame = ttk.Frame(root, padding=16)
@@ -182,7 +183,7 @@ def main():
     ttk.Label(frame, textvariable=location, wraplength=700).pack(anchor='w', pady=10)
     options = ttk.Frame(frame)
     options.pack(fill='x')
-    for label, variable, choices in [('来源声明', origin, ['unknown', 'original_review', 'synthetic']),
+    for label, variable, choices in [('来源声明', origin, list(origin_labels.values())),
                                        ('输入类型', source_format, ['docx', 'csv', 'json'])]:
         ttk.Label(options, text=label).pack(side='left')
         box = ttk.Combobox(options, textvariable=variable, values=choices, state='readonly', width=17)
@@ -223,7 +224,7 @@ def main():
             else:
                 status.set(success)
                 if isinstance(result, dict):
-                    location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · 来源 ' + result['origin'])
+                    location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · 来源 ' + origin_labels[result['origin']])
                     section_box['values'] = [s['section_id'] for s in result['sections']]
                     if section.get() not in section_box['values']:
                         section.set(result['sections'][0]['section_id'] if result['sections'] else '')
@@ -242,7 +243,8 @@ def main():
         if not parent:
             return
         destination = Path(parent) / ('review-' + uuid.uuid4().hex[:12])
-        declared, kind = origin.get(), source_format.get()
+        declared = next(value for value, label in origin_labels.items() if label == origin.get())
+        kind = source_format.get()
         submit(lambda: controller.import_source(source, destination, declared, kind), '材料已导入。请打开报告复核。')
 
     def open_existing():
@@ -269,7 +271,7 @@ def main():
     button('选择下载补丁并应用', choose_patch)
     button('恢复报告', lambda: submit(controller.recover, '报告已恢复，请重新打开核对。'))
     ttk.Separator(frame).pack(fill='x', pady=8)
-    ttk.Label(frame, text='可选本地模型：仅普通分区；v3，提取后单独导入，候选仍待核。').pack(anchor='w')
+    ttk.Label(frame, text='可选本地模型：仅处理所选普通分区；提取并导入的候选仍待人工复核。').pack(anchor='w')
     section_box = ttk.Combobox(frame, textvariable=section, state='readonly')
     section_box.pack(anchor='w')
     widgets.append(section_box)
