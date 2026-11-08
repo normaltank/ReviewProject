@@ -1,6 +1,7 @@
 """Static editor report, without remote resources or executable source text."""
 import html
 import json
+from pathlib import Path
 
 from .store import template, source_filename
 from .understanding import current_views, effective_views
@@ -20,6 +21,7 @@ section,article{background:white;border:1px solid #c8d0da;border-radius:8px;padd
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef1f5;padding:.7rem}textarea{width:100%;min-height:360px;box-sizing:border-box}
 table{border-collapse:collapse;width:100%}td,th{border:1px solid #b8c2cd;padding:.4rem;text-align:left}mark{background:#ffed9b}
 button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{overflow-wrap:anywhere}
+input,select,textarea{font:inherit;max-width:100%;box-sizing:border-box}input,select{padding:.3rem}label{display:inline-block;max-width:100%}button:disabled{cursor:default;opacity:.55}button:hover:enabled{background:#e3e8ee}:focus-visible{outline:2px solid #315879;outline-offset:2px}::selection{background:#cbdff0;color:#17212e}#source-pane{max-height:24rem;overflow:auto;user-select:text;outline:1px solid #77899d}#captured-quote{min-height:2rem}fieldset{margin:.8rem 0;border:1px solid #b8c2cd;min-width:0}fieldset label{margin-right:.6rem}.reference{display:block;overflow-wrap:anywhere}#draft-list{width:100%}#editor p{overflow-wrap:anywhere}#editor textarea:not(#patch){min-height:4rem}@media(max-width:600px){body{margin:.5rem auto;padding:0 .6rem}section,article{padding:.7rem}table{display:block;overflow:auto}button{max-width:100%;white-space:normal}}
 #review-cost select{max-width:100%}#review-cost button{margin-block:.2rem}</style>
 <h1>内部审稿证据复核</h1><p><strong>仅供可信编辑。本报告、原件、补丁和派生观点均为本地受控材料；没有作者导出。</strong></p>
 <p>规则基线按完整段落产生待复核候选，仅对明确成对字面条件句展示两路结构。语义抽取尚未验证，规则匹配和关键词提示均待人工复核；跨段条件请阅读整个分区。论文未核验，A条款待对照。身份、轮次、量表版本和送审版本关系未知。</p>"""]
@@ -98,17 +100,17 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
     parts.append('''<section id="editor"><h2>保存人工复核</h2>
 <ol><li>先核对候选原句及冻结原件；在下方单条表单选择候选，填写修改人和理由。</li>
 <li>选择“人工确认”“拒绝候选”或“仍待复核”，按需修改对象、动作和方向。未确定的语义轴保持 unknown。</li>
-<li>点击“下载此条复核补丁”，将补丁保存到本工作区，运行 <code>python -m reviewproto apply work/本工作区/patch.json --workspace work/本工作区</code>；成功后重新打开 report.html。
+<li>点击“下载草稿补丁”，将补丁保存到本工作区，运行 <code>python -m reviewproto apply work/本工作区/patch.json --workspace work/本工作区</code>；成功后重新打开 report.html。
 也可运行 <code>python -m reviewproto review --workspace work/本工作区</code>，用文本编辑器修改工作区 patch.json，再 apply。</li>
 <li>保存会校验证据、结构、权限和修订号。旧补丁冲突时重新导出后修改；完全相同的补丁重复应用幂等。重跑保留人工决定，历史在 state.json；产物中断可运行 recover 重建。</li></ol>
 <p>此静态页面不会直接写入工作区，也不会发送网络请求。下载只是生成待应用补丁。</p>
 ''')
     base = template(state)
-    parts.append('<label>选择一条候选 <select id="candidate">')
+    parts.append('<label>选择已有候选 <select id="candidate">')
     for candidate in state["candidates"]:
         label = f'{candidate["section_id"]} · {candidate["candidate_id"]} · {candidate["evidence"][0]["quote"][:55]}'
         parts.append(f'<option value="{esc(candidate["candidate_id"])}">{esc(label)}</option>')
-    parts.append('''</select></label><p><label>修改人 <input id="actor" autocomplete="off"></label> <label>理由 <input id="reason" size="50" autocomplete="off"></label></p>
+    parts.append('''</select></label><p><label>修改人 <input id="actor" autocomplete="off"></label> <label>审计理由（为什么修改） <input id="reason" size="50" autocomplete="off"></label></p>
 <div id="review-cost"><h3>复核会话计时（可选）</h3>
 <p>先填写上方修改人，再选择自报角色和本次比较组。开始时固定这些声明；比较组仅记录本次观察对象，不筛选或隐藏页面候选。</p>
 <p><label>自报角色 <select id="cost-actor-kind"><option value="unknown">未知 / 未声明</option><option value="human_editor">专业编辑（本人自报）</option><option value="agent">代理 / 自动化试用</option></select></label>
@@ -123,35 +125,33 @@ button{font:inherit;padding:.5rem 1rem;cursor:pointer}small{color:#3f5267}code{o
 <p><label>复核决定 <select id="status"><option value="needs_review">仍待复核</option><option value="confirmed">人工确认</option><option value="rejected">拒绝候选</option><option value="superseded">已由子观点替换</option><option value="withdrawn">废弃观点</option></select></label>
 <label>方向 <select id="direction"><option>unknown</option><option>positive</option><option>negative</option><option>mixed</option><option>neutral</option></select></label></p>
 <p><label>对象 <input id="object" size="50"></label></p><p><label>动作 <input id="action" size="70"></label></p>
-<p>简单表单一次保存一条候选；条件、替代、多个证据等在高级 JSON 内修改。修改高级 JSON 后请直接下载，切换候选会重新载入其当前字段。</p>
+<h3>草稿队列</h3><p><label>正在编辑 <select id="draft-list"></select></label> <button id="delete-draft" type="button">删除未应用的新增草稿</button></p>
+<p>切换会保留本页草稿；下载包含队列全部修改。拆分后请逐条核对孩子观点。</p>
+<h3>选择冻结原文</h3><p>先在补录分区选择来源，再用鼠标或键盘选择下方原文，点击捕获。添加证据只接受当前观点同分区。拆分使用选区末端（或光标）切分首条证据，两个子观点的语义字段均重置为 unknown / 空列表，请分别补充。</p>
+<pre id="source-pane" tabindex="0" aria-label="可选择的冻结原文"></pre>
+<button id="capture-selection" type="button">捕获选区或光标</button><pre id="captured-quote" aria-live="polite">尚未捕获</pre>
+<p><button id="selection-create" type="button">从选区补录观点</button> <button id="selection-evidence" type="button">将选区添加为当前观点证据</button> <button id="selection-split" type="button">用选区末端拆为两条观点</button></p>
+<h3>语义字段</h3><div id="semantic-axes"></div>
+<h3>证据及引用</h3><div id="evidence-list"></div>
+<h3>观点理由（与审计理由分开）</h3><div id="reasons-rows"></div><button id="add-reason" type="button">添加观点理由</button>
+<h3>条件及含义</h3><div id="conditions-rows"></div><button id="add-condition" type="button">添加条件</button>
+<h3>替代或条件分支</h3><p>每组至少两支。纯 either_or 的未知条件请保留 unknown，不补造执行路径。</p><div id="alternatives-rows"></div><button id="add-alternative" type="button">添加两支分组</button>
+<details open><summary>备用：数字偏移拆分与补录</summary>
 <p><label>在首条证据的第几个 Unicode 字符后拆分 <input id="split-offset" type="number" min="1" value="1"></label> <button id="split" type="button">拆为两条独立观点</button></p>
-<p>拆分将生成两个稳定 ID，并以 replaces 记录替换父候选；父记录保留历史。两条新观点默认待核，条件、理由和关联清空，须在高级 JSON 分别核对补充。拆分位置由编辑指定，不代表机器已完成语义切分。</p>
+<p>拆分将生成两个稳定 ID，并以 replaces 记录替换父候选；父记录保留历史。两条新观点默认待核，条件、理由和关联清空，须在草稿队列分别核对补充。拆分位置由编辑指定，不代表机器已完成语义切分。</p>
 <p><label>补录分区 <select id="add-section"></select></label> <label>起点 <input id="add-start" type="number" value="0" min="0"></label> <label>终点 <input id="add-end" type="number" value="1" min="1"></label> <button id="add-opinion" type="button">补录一条遗漏观点</button></p>
 <p>补录同样使用 Unicode 左闭右开偏移。高级 JSON 可添加同区多处 evidence、reasons、conditions、alternatives、concept_ids 和 clause_links；概念定义可通过补丁顶层 concepts 列表保存（稳定 ID、name、definition、positive_examples、negative_examples、boundary、status、sources）。废弃可在 status 填 withdrawn。</p>
-<details><summary>高级：结构化字段与精确证据 JSON</summary>
+</details><details><summary>高级：结构化字段与精确证据 JSON</summary><p>高级 JSON 修改后，先点“载入高级 JSON 到表单”。未载入时普通表单操作被阻止，防止覆盖；下载可直接使用高级 JSON。切换前也须先载入。</p><button id="import-advanced" type="button">载入高级 JSON 到表单</button>
 <p>条件、替代、多标签属性及多段证据可在此修改。evidence 中 quote 必须与 Unicode 左闭右开 start/end 精确一致；不能更改分区或扩大权限。attributes 可分别填写样本规模、代表性。conditions 项格式示意：{"text":"条件原意","meaning":"unknown","evidence_indices":[0],"provenance":"explicit"}。alternatives 的 branches 各保留 condition、action、evidence_indices，关系 relation 可为 conditional_branches 或 either_or；示意字段不是本记录事实。</p>
 <textarea id="patch" aria-label="人工复核补丁"></textarea></details>
 <textarea id="base" hidden aria-hidden="true">''')
     parts.append(esc(json.dumps(base, ensure_ascii=False, indent=2)))
     parts.append('</textarea><textarea id="sections-data" hidden>' + esc(json.dumps(state['sections'], ensure_ascii=False)) + '</textarea>')
-    parts.append('''<p><button id="download">下载此条复核补丁</button> <span id="message" role="status"></span></p></section>
+    parts.append('''<p><button id="download">下载草稿补丁</button> <span id="message" role="status"></span></p></section>
 <script>
-const base=JSON.parse(document.getElementById('base').value);
-const sections=JSON.parse(document.getElementById('sections-data').value);
-for(const section of sections){const option=document.createElement('option');option.value=section.section_id;option.textContent=section.section_id+' · '+section.label;document.getElementById('add-section').append(option);}
-const ids=['status','direction','object','action'];
-function selected(){return base.edits.find(e=>e.candidate_id===document.getElementById('candidate').value);}
-function load(){const item=selected();if(!item)return;for(const id of ids)document.getElementById(id).value=item.fields[id];sync(true);}
-function sync(reset=false){let patch;if(reset){patch={...base,edits:[structuredClone(selected())]};}else{try{patch=JSON.parse(document.getElementById('patch').value);}catch(e){return;}}
-patch.actor=document.getElementById('actor').value;patch.reason=document.getElementById('reason').value;
-const entry=patch.edits[0]||(patch.creates||[])[0];if(entry)for(const id of ids)entry.fields[id]=document.getElementById(id).value;
-document.getElementById('patch').value=JSON.stringify(patch,null,2);}
-document.getElementById('candidate').addEventListener('change',load);
-for(const link of document.querySelectorAll('.edit-candidate'))link.addEventListener('click',()=>{document.getElementById('candidate').value=link.dataset.candidate;load();});
-for(const id of ids)document.getElementById(id).addEventListener('input',()=>sync());
-for(const id of ['actor','reason'])document.getElementById(id).addEventListener('input',()=>{try{const p=JSON.parse(document.getElementById('patch').value);p[id]=document.getElementById(id).value;document.getElementById('patch').value=JSON.stringify(p,null,2);}catch(e){}});
-load();
-function freshId(){return 'human-'+crypto.randomUUID();}
+''')
+    parts.append(Path(__file__).with_name("editor.js").read_text(encoding="utf-8"))
+    parts.append('''
 let costSession=null,costPhase='idle',costTick=0;
 const costStatus=document.getElementById('cost-status');
 function settleCost(){if(!costSession||costPhase==='finished')return;const now=performance.now(),elapsed=Math.max(0,now-costTick);if(costPhase==='active')costSession.active_elapsed_ms+=elapsed;else if(costPhase==='paused')costSession.paused_elapsed_ms+=elapsed;costTick=now;}
@@ -173,15 +173,5 @@ document.getElementById('cost-download').addEventListener('click',()=>{if(costPh
 document.getElementById('editor').addEventListener('input',event=>{if(event.target.matches('input,select,textarea')&&!event.target.closest('#review-cost'))countAttempt('editor_input_events');});
 for(const [id,name] of [['split','split_button_attempts'],['add-opinion','add_opinion_button_attempts'],['download','patch_download_button_attempts']])document.getElementById(id).addEventListener('click',()=>countAttempt(name));
 setInterval(showCost,250);
-function cleanFields(){return {status:'needs_review',interpretation:'unknown',object:'unknown',attributes:[],direction:'unknown',speech_function:'unknown',requirement_strength:'unknown',severity:'unknown',action:'unknown',conditions:[],alternatives:[],relations:[],reasons:[],negation:'unknown',concept_ids:[],clause_links:[]};}
-function writeCreates(creates){const p={...base,edits:[],creates,actor:document.getElementById('actor').value,reason:document.getElementById('reason').value};document.getElementById('patch').value=JSON.stringify(p,null,2);document.getElementById('message').textContent='已生成新增观点草稿，请展开高级 JSON 逐条复核后下载。';document.getElementById('patch').parentElement.open=true;}
-document.getElementById('split').addEventListener('click',()=>{try{const item=selected(),e=item.fields.evidence[0],chars=Array.from(e.quote),n=Number(document.getElementById('split-offset').value);if(!Number.isInteger(n)||n<=0||n>=chars.length)throw Error();const pieces=[[0,n],[n,chars.length]].map(([a,b])=>({candidate_id:freshId(),section_id:e.section_id,parent_ids:[item.candidate_id],replaces:[item.candidate_id],fields:{...cleanFields(),evidence:[{...e,start:e.start+a,end:e.start+b,quote:chars.slice(a,b).join('')}]}}));writeCreates(pieces);}catch(e){document.getElementById('message').textContent='拆分位置必须处于首条证据内部。';}});
-document.getElementById('add-opinion').addEventListener('click',()=>{try{const s=sections.find(v=>v.section_id===document.getElementById('add-section').value),a=Number(document.getElementById('add-start').value),b=Number(document.getElementById('add-end').value),chars=Array.from(s.text);if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<=a||b>chars.length)throw Error();writeCreates([{candidate_id:freshId(),section_id:s.section_id,parent_ids:[],replaces:[],fields:{...cleanFields(),evidence:[{source_id:s.source_id,section_id:s.section_id,start:a,end:b,quote:chars.slice(a,b).join(''),precision:'exact'}]}}]);}catch(e){document.getElementById('message').textContent='请核对分区与 Unicode 起止偏移。';}});
-document.getElementById('download').addEventListener('click',()=>{
-const message=document.getElementById('message');try{
-const patch=JSON.parse(document.getElementById('patch').value);
-if(typeof patch.actor!=='string'||!patch.actor.trim()||typeof patch.reason!=='string'||!patch.reason.trim())throw Error();
-const blob=new Blob([JSON.stringify(patch,null,2)+'\\n'],{type:'application/json;charset=utf-8'});
-const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='patch.json';a.click();URL.revokeObjectURL(a.href);
-message.textContent='已生成待应用补丁；请在本地运行 apply。';}catch(e){message.textContent='请检查 JSON、修改人及理由。';}});</script></html>''')
+</script></html>''')
     return "".join(parts)

@@ -17,6 +17,7 @@ def main(argv=None):
     try:
         parser = SafeParser(prog="python -m reviewproto", description="Offline trusted-editor evidence review; no author export.")
         sub = parser.add_subparsers(dest="command", required=True)
+        sub.add_parser("desktop")
         for command in ("run", "review", "export-template", "apply", "render", "recover", "ingest-candidates", "ingest-clauses", "ingest-framework", "framework-template", "apply-framework-review"):
             item = sub.add_parser(command)
             item.add_argument("--workspace", default="work/review")
@@ -32,6 +33,9 @@ def main(argv=None):
                 item.add_argument("--framework", default=None)
                 item.add_argument("--rule", default=None)
         args = parser.parse_args(argv)
+        if args.command == "desktop":
+            from .desktop import main as desktop_main
+            return desktop_main()
         workspace = Workspace(args.workspace)
         if args.command == "run":
             workspace.run(args.input, args.origin, args.format)
