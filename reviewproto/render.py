@@ -125,8 +125,8 @@ input,select,textarea{font:inherit;max-width:100%;box-sizing:border-box}input,se
 <p><label>复核决定 <select id="status"><option value="needs_review">仍待复核</option><option value="confirmed">人工确认</option><option value="rejected">拒绝候选</option><option value="superseded">已由子观点替换</option><option value="withdrawn">废弃观点</option></select></label>
 <label>方向 <select id="direction"><option>unknown</option><option>positive</option><option>negative</option><option>mixed</option><option>neutral</option></select></label></p>
 <p><label>对象 <input id="object" size="50"></label></p><p><label>动作 <input id="action" size="70"></label></p>
-<h3>草稿队列</h3><p><label>正在编辑 <select id="draft-list"></select></label> <button id="delete-draft" type="button">删除未应用的新增草稿</button></p>
-<p>切换会保留本页草稿；下载包含队列全部修改。拆分后请逐条核对孩子观点。</p>
+<h3>草稿队列</h3><p><label>正在编辑 <select id="draft-list"></select></label> <button id="delete-draft" type="button">移出草稿队列（不删除已保存记录）</button></p>
+<p>切换会保留本页草稿；下载包含整条草稿队列。选择已有候选会加入可移出的草稿；移出不删除已保存记录。拆分后请逐条核对子观点。</p>
 <h3>选择冻结原文</h3><p>先在补录分区选择来源，再用鼠标或键盘选择下方原文，点击捕获。添加证据只接受当前观点同分区。拆分使用选区末端（或光标）切分首条证据，两个子观点的语义字段均重置为 unknown / 空列表，请分别补充。</p>
 <pre id="source-pane" tabindex="0" aria-label="可选择的冻结原文"></pre>
 <button id="capture-selection" type="button">捕获选区或光标</button><pre id="captured-quote" aria-live="polite">尚未捕获</pre>

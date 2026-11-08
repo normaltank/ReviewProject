@@ -13,6 +13,42 @@ CHROME = Path(os.environ.get('REVIEW_BROWSER_BINARY', r'C:\Program Files\Google\
 
 @unittest.skipUnless(CHROME.is_file() and importlib.util.find_spec('playwright'), 'local Chrome and Playwright needed')
 class EditorFlowTests(unittest.TestCase):
+    def test_remove_existing_draft_limits_saved_decisions_and_empty_queue_can_add(self):
+        from playwright.sync_api import sync_playwright
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / 'synthetic.json'
+            source.write_text(json.dumps({'schema_version': 1, 'scores': [], 'sections': [
+                {'section_id': 'comments', 'label': '评审意见', 'text': '第一条合成。\n第二条合成。', 'visibility': 'visibility_unknown'}]}), encoding='utf-8')
+            with closing(Workspace(root / 'workspace')) as ws:
+                initial = ws.run(source, 'synthetic', 'json')
+                first, second = [c['candidate_id'] for c in initial['candidates']]
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(executable_path=str(CHROME), headless=True)
+                    page = browser.new_page(offline=True, accept_downloads=True)
+                    page.goto((ws.path / 'report.html').as_uri())
+                    page.locator('#candidate').select_option(second)
+                    page.locator('#object').fill('仅保存第二条')
+                    page.locator('#draft-list').select_option(first)
+                    page.locator('#delete-draft').click()
+                    page.locator('#actor').fill('synthetic-editor')
+                    page.locator('#reason').fill('仅修改指定目标')
+                    with page.expect_download() as download:
+                        page.locator('#download').click()
+                    saved = root / 'single.json'
+                    download.value.save_as(saved)
+                    payload = json.loads(saved.read_text(encoding='utf-8'))
+                    self.assertEqual([e['candidate_id'] for e in payload['edits']], [second])
+                    state = ws.apply(input_path=saved)
+                    self.assertEqual([d['candidate_id'] for d in state['decisions']], [second])
+                    page.locator('#delete-draft').click()
+                    self.assertEqual(json.loads(page.locator('#patch').input_value())['edits'], [])
+                    page.locator('#source-pane').evaluate('''e=>{const r=document.createRange();r.selectNodeContents(e);const s=getSelection();s.removeAllRanges();s.addRange(r);}''')
+                    page.locator('#capture-selection').click()
+                    page.locator('#selection-create').click()
+                    self.assertEqual(len(json.loads(page.locator('#patch').input_value())['creates']), 1)
+                    browser.close()
+
     def test_empty_candidate_queue_can_create_without_json(self):
         from playwright.sync_api import sync_playwright
         with tempfile.TemporaryDirectory() as temp:
