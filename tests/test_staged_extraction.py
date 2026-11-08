@@ -151,12 +151,12 @@ class StagedExtractionTests(unittest.TestCase):
                 self.assertEqual(staged.main(), 0)
             self.assertEqual(len(observed), 1)
 
-    def test_budget_preserves_recall_and_cue_origins_as_partial(self):
+    def test_budget_preserves_recall_and_cue_origins_as_partial_coverage_but_failed_output(self):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), '如果有图请补图。\n论述清楚。')
             recall = [{'span': '论述清楚。', 'span_attributes': {'kind': 'evaluation'}}]
             with self.run_mock(workspace, [recall], ['--max-refinements', '0']) as (requests, _):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
                 self.assertEqual(len(requests), 1)
             queue = self.artifact(workspace, 'queue.json')
             self.assertEqual({q['source'] for q in queue}, {'stage1_recall', 'cue_queue'})
@@ -168,7 +168,7 @@ class StagedExtractionTests(unittest.TestCase):
             self.assertEqual(coverage['queue_unprocessed'], 2)
             store = Workspace(workspace)
             try:
-                self.assertEqual(store.import_extractions(self.artifact(workspace))['extraction_runs'][-1]['status'], 'partial')
+                self.assertEqual(store.import_extractions(self.artifact(workspace))['extraction_runs'][-1]['status'], 'failed')
             finally:
                 store.close()
 
@@ -191,7 +191,7 @@ class StagedExtractionTests(unittest.TestCase):
                     (workspace / 'source.json').write_text('{}', encoding='utf-8')
             recall = [{'span': '论述清楚。', 'span_attributes': {'kind': 'evaluation'}}]
             with self.run_mock(workspace, [recall], before_request=before_request) as (requests, _):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
                 self.assertEqual(len(requests), 1)
             payload = self.artifact(workspace)
             self.assertIn('E_SOURCE_CHANGED', payload['errors'])
@@ -225,6 +225,8 @@ class StagedExtractionTests(unittest.TestCase):
                     self.assertEqual(len(requests), 1)
                 payload = self.artifact(workspace)
                 self.assertEqual(payload['candidates'], [])
+                self.assertEqual(payload['status'], 'complete' if expected == 'zero_candidates' else 'failed')
+                self.assertEqual(payload['config']['candidate_status'], payload['status'])
                 store = Workspace(workspace)
                 try:
                     self.assertEqual(store.import_extractions(payload)['extraction_runs'][-1]['status'], expected)
@@ -237,19 +239,44 @@ class StagedExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), '建议补图。')
             with self.run_mock(workspace, [recall, (review, 'length')]):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
             self.assertEqual(self.artifact(workspace)['candidates'], [])
             self.assertIn('E_MODEL_TRUNCATED', self.artifact(workspace)['errors'])
             self.assertEqual(len(self.artifact(workspace, 'recall.json')['spans']), 1)
             self.assertEqual(self.artifact(workspace, 'queue.json')[0]['status'], 'failed')
             self.assertEqual(self.artifact(workspace, 'coverage.json')['status'], 'partial')
 
+    def test_successful_recall_with_failed_empty_review_is_failed_candidate_run(self):
+        recall = [{'span': '建议补图。', 'span_attributes': {'kind': 'modification'}}]
+        for answer, error in [(([], 'length'), 'E_MODEL_TRUNCATED'),
+                              (RuntimeError('synthetic transport failure'), 'E_LOCAL_EXTRACTION_FAILED')]:
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                workspace = self.workspace(Path(directory), '建议补图。')
+                with self.run_mock(workspace, [recall, answer]), patch('builtins.print') as printed:
+                    self.assertEqual(staged.main(), 2)
+                payload = self.artifact(workspace)
+                self.assertEqual(payload['candidates'], [])
+                self.assertEqual(payload['status'], 'failed')
+                self.assertIn(error, payload['errors'])
+                self.assertEqual(payload['config']['processing_status'], 'partial')
+                self.assertEqual(self.artifact(workspace, 'coverage.json')['status'], 'partial')
+                self.assertEqual(len(self.artifact(workspace, 'recall.json')['spans']), 1)
+                self.assertEqual(self.artifact(workspace, 'queue.json')[0]['status'], 'failed')
+                summary = json.loads(printed.call_args.args[0])
+                self.assertEqual(summary['candidate_status'], 'failed')
+                self.assertEqual(summary['processing_status'], 'partial')
+                store = Workspace(workspace)
+                try:
+                    self.assertEqual(store.import_extractions(payload)['extraction_runs'][-1]['status'], 'failed')
+                finally:
+                    store.close()
+
     def test_strict_recall_quotes_reject_modified_or_repeated_text(self):
         answers = [[{'span': quote, 'span_attributes': {'kind': 'evaluation'}} for quote in ['论述清楚。', '论述清楚！']]]
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), '论述清楚。论述清楚。')
             with self.run_mock(workspace, answers):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
             self.assertEqual(self.artifact(workspace, 'recall.json')['spans'], [])
             self.assertEqual(set(self.artifact(workspace)['errors']), {'E_QUOTE_AMBIGUOUS', 'E_QUOTE_NOT_FOUND'})
 
@@ -290,7 +317,7 @@ class StagedExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), text)
             with self.run_mock(workspace, [recall, []]) as (requests, extracts):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
             self.assertEqual(len(requests), 2)
             self.assertTrue(all('span' in e['examples'][0].extractions[0].extraction_class for e in extracts))
             queue = self.artifact(workspace, 'queue.json')
@@ -302,7 +329,7 @@ class StagedExtractionTests(unittest.TestCase):
             self.assertEqual(self.artifact(workspace, 'coverage.json')['queue_unprocessed'], 3)
             store = Workspace(workspace)
             try:
-                self.assertEqual(store.import_extractions(self.artifact(workspace))['extraction_runs'][-1]['status'], 'partial')
+                self.assertEqual(store.import_extractions(self.artifact(workspace))['extraction_runs'][-1]['status'], 'failed')
             finally:
                 store.close()
 
@@ -364,7 +391,7 @@ class StagedExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), text)
             with self.run_mock(workspace, [recall], ['--max-refinements', '0']) as (requests, _):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
             self.assertEqual(len(requests), 1)
             queue = self.artifact(workspace, 'queue.json')
             self.assertEqual(len(queue), 3)
@@ -391,7 +418,7 @@ class StagedExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), text)
             with self.run_mock(workspace, [recall, []], ['--max-refinements', '1']) as (requests, extracts):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
             self.assertEqual([e['text_or_documents'] for e in extracts[1:]], [context])
             self.assertEqual(len(requests), 2)
             queue = self.artifact(workspace, 'queue.json')
@@ -406,7 +433,7 @@ class StagedExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), text)
             with self.run_mock(workspace, [[], []]) as (requests, _):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
                 self.assertEqual(len(requests), 2)
             queue = self.artifact(workspace, 'queue.json')
             self.assertEqual(queue[0]['status'], 'boundary_pending')
@@ -417,7 +444,7 @@ class StagedExtractionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             workspace = self.workspace(Path(directory), '若有图请补图。')
             with self.run_mock(workspace, [[]], ['--max-calls', '1']) as (requests, _):
-                self.assertEqual(staged.main(), 0)
+                self.assertEqual(staged.main(), 2)
                 self.assertEqual(len(requests), 1)
             self.assertEqual(self.artifact(workspace, 'coverage.json')['queue_budget_unprocessed'], 1)
             self.assertEqual(self.artifact(workspace)['config']['model_requests'], 1)
@@ -497,6 +524,9 @@ class StagedExtractionTests(unittest.TestCase):
             payload = self.artifact(workspace)
             self.assertEqual(payload['errors'], ['E_QUOTE_NOT_FOUND'])
             self.assertEqual(len(payload['candidates']), 1)
+            self.assertEqual(payload['status'], 'complete')
+            self.assertEqual(payload['config']['candidate_status'], 'complete')
+            self.assertEqual(payload['config']['processing_status'], 'partial')
             folder = workspace / 'model-artifacts' / 'synthetic-run'
             for name, fingerprint in payload['config']['sidecar_sha256'].items():
                 self.assertEqual(staged.local.digest((folder / name).read_bytes()), fingerprint)

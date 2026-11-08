@@ -374,6 +374,7 @@ def main():
             unique.append(candidate)
     processed = sum(o['status'] == 'processed' for o in outcomes)
     status = 'partial' if errors and (processed or recall or queue) else 'failed' if errors else 'complete'
+    candidate_status = 'complete' if unique or not errors else 'failed'
     coverage = {'status': status, 'is_semantic_accuracy': False, 'recall_spans': len(recall), 'queue_items': len(queue),
         'queue_processed': sum(q['status'] == 'processed' for q in queue),
         'queue_unprocessed': sum(q['status'] != 'processed' for q in queue),
@@ -395,17 +396,19 @@ def main():
         'stage2_max_output_tokens': args.stage2_max_output_tokens, 'max_refinements': args.max_refinements,
         'max_calls': args.max_calls, 'model_requests': len(calls), 'external_model_requests': 0,
         'score_blind': True, 'input_scope': 'single_section_contiguous_source', 'temperature': 0,
-        'started_at': started_at, 'processing_status': status, 'sidecar_sha256': sidecars}
-    # Core import accepts complete/failed; its error-preserving policy derives
-    # partial, and complete+empty derives zero_candidates. Do not extend it here.
+        'started_at': started_at, 'processing_status': status, 'candidate_status': candidate_status, 'sidecar_sha256': sidecars}
+    # Recall and queue coverage are not opinion output. Empty output with errors
+    # fails even when sidecars were processed. Core derives partial for nonempty
+    # output with errors, and zero_candidates for legitimate empty success.
     result = {'schema_version': 1, 'source_id': source_id, 'run_id': args.run_id,
         'extractor': 'langextract-' + version('langextract') + '-local-staged', 'model': args.model,
         'config': config, 'sections': [{'section_id': s['section_id'], 'text_sha256': frozen_sections[s['section_id']]} for s in sections],
-        'candidates': unique, 'status': 'failed' if status == 'failed' else 'complete', 'errors': errors}
+        'candidates': unique, 'status': candidate_status, 'errors': errors}
     save(folder, 'candidates.json', result)
-    print(json.dumps({'run_id': args.run_id, 'status': status, 'candidates': len(unique), 'errors': len(errors),
+    print(json.dumps({'run_id': args.run_id, 'status': candidate_status, 'candidate_status': candidate_status,
+                      'processing_status': status, 'candidates': len(unique), 'errors': len(errors),
                       'recall_spans': len(recall), 'queue_unprocessed': coverage['queue_unprocessed'], 'model_requests': len(calls)}))
-    return 2 if status == 'failed' else 0
+    return 2 if candidate_status == 'failed' else 0
 
 
 if __name__ == '__main__':
