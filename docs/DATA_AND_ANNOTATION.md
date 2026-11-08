@@ -1,4 +1,4 @@
-# 数据与标注契约 · 0.4.0
+# 数据与标注契约 · 0.4.1
 
 一份 DOCX、CSV 或契约 JSON 对应一个可信编辑工作目录。目录整体继承原件权限。打开 HTML 的人可以读取其中的私密意见，隐藏或折叠界面元素不提供身份隔离。权限控制依赖本地目录访问控制。复核、备份和恢复时按整份受控材料管理。`actor` 是审计声明，不是经过身份认证的账号。
 
@@ -26,6 +26,10 @@
 拆分或补录使用补丁顶层 `creates`。每条包含 `candidate_id`、`section_id`、`fields`，可带 `parent_ids` 与 `replaces`。新 ID 使用 8–100 位 ASCII 字母、数字、下划线或连字符，工作区内唯一；新观点只能从 `needs_review` 或显式 `confirmed` 开始。被替换父项追加 `superseded` 决定，原记录不会删除。单条修正仍用 `edits`。确认、拒绝、待核、替换、废弃分别记录；只有当前 `confirmed` 的独立观点进入已确认视图。
 
 模型重跑使用新的 `run_id`，通过 `ingest-candidates` 追加；旧观点 ID、人工修改及概念绑定不变。相同运行和内容重试幂等，同 ID 不同内容拒绝。抽取状态有 `complete / partial / failed / zero_candidates`；任何错误或候选拒收都会进入运行记录，接收成功不表示语义通过。严格校验冻结文本切片，禁止以模糊匹配掩盖改引号、空白或重复引文歧义。
+
+本地抽取 CLI 默认 `--protocol v3`，共享公开配置及 Flash 入口保持该默认。`--protocol v4` 是显式试验选项：新增 `branch_relation=none / unknown / either_or / conditional_branches`。none/unknown 不升级成分组；纯 either_or 只接收两个不同、位于同一观点引用内的逐字动作、空 branch_conditions，以及两动作间的显式“或/或者/要么”连接。存储时两支 condition 均为 unknown；不得补造“无法实验”等选择条件。有明确条件时仍逐项引用条件与动作。缺字段的旧 grounding 按 v3 回放，不据关键词猜 either_or。
+
+v4 的连接词检查仅为必要表面约束，不能确认两段真是可选动作；对象列举、引述或相容建议仍可能被模型误报，保留 `branch_relation_semantics_requires_review`。有分支提名时整组 action/requirement_strength 保留 unknown，不能用单一路径的模态覆盖全组。运行配置记录实际选定协议、指令/schema 指纹及输出 token 上限；协议选择不改变模型权重、候选概念或正式条款。
 
 ## 结构化输入
 

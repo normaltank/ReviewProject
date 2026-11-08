@@ -1,6 +1,6 @@
 # ReviewProject
 
-ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.4.0 在意见复核流程上接入了有原文证据的 A 候选规则、B 对照与修订讨论草案。正式条款修订仍需专业判断、独立试评及出版社授权。
+ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，建立候选概念、评分对照和条款差异证据，支持出版社改进现有审稿 Framework。当前 0.4.1 提供意见复核、有原文证据的 A 候选规则、B 对照与修订讨论草案，并保留条件/替代抽取的真实失败和开发修正。正式条款修订仍需专业判断、独立试评及出版社授权。
 
 ## 跑一份合成审稿表
 
@@ -31,6 +31,10 @@ Invoke-Item .\work\demo\report.html
 ```
 
 其他机器先在隔离环境安装 `requirements-model.txt`；权重、运行包、指纹与授权见[复用记录](docs/REUSE_DECISIONS.md)。启动脚本只复用已安装且指纹匹配的文件，不自动下载。可不启动模型，直接用规则候选开展人工复核。模型截断、引文不符和超长单段会留下失败记录；导入失败产物用于显示诊断，不代表抽取成功。
+
+抽取默认仍用 `--protocol v3`。显式 `--protocol v4` 可试验区分 `either_or` 与 `conditional_branches`；未说明的选择条件保留 unknown，不把两路改成都必须完成。四份新真实材料的同模型对照未证实 v4 恢复关键分支，所以没有将它设为默认；共享的 Flash 入口也仍用 v3。[本轮试验与失败索引](work/conditional-20261108/README.md)保留真实响应、诊断和修正，不必重跑模型即可查看。
+
+当前可直接复核[双路条件观点](work/conditional-20261108/workspaces/conditional-01/report.html#candidate-agent-conditional-01-target)、[条件未说明的二择一](work/conditional-20261108/workspaces/conditional-02/report.html#candidate-agent-conditional-02-target)和[短评拆分结果](work/conditional-20261108/workspaces/conditional-04/report.html#candidate-agent-conditional-04-coverage)。补录由 AI 代理沿原文完成、全部 needs_review，专业编辑可用既有表单和计时入口继续核对。它们是可信编辑材料，不能向作者或外部服务直接转发。
 
 ## 获授权的 Flash 对照
 
