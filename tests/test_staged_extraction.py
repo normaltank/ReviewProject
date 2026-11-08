@@ -20,13 +20,14 @@ SPEC.loader.exec_module(staged)
 
 
 class StagedExtractionTests(unittest.TestCase):
-    def workspace(self, root, text='论述清楚。', private=False):
+    def workspace(self, root, text='论述清楚。', private=False, extra_sections=()):
         source = root / 'input.json'
         source.write_text(json.dumps({'scores': [{'label': '创新性与科学性（1-5分）', 'raw_value': '4'}],
             'metadata': {'reviewer': 'PRIVATE-IDENTITY'}, 'sections': [
                 {'section_id': 'one', 'label': '作者不可见' if private else '评审意见', 'text': text,
                  'visibility': 'internal_only' if private else 'visibility_unknown'},
-                {'section_id': 'secret', 'label': '作者不可见', 'text': 'PRIVATE-CONTENT', 'visibility': 'internal_only'}]},
+                {'section_id': 'secret', 'label': '作者不可见', 'text': 'PRIVATE-CONTENT', 'visibility': 'internal_only'},
+                *extra_sections]},
             ensure_ascii=False), encoding='utf-8')
         workspace = root / 'workspace'
         store = Workspace(workspace)
@@ -266,7 +267,139 @@ class StagedExtractionTests(unittest.TestCase):
             self.assertEqual([q['source'] for q in queue[:2]], ['cue_queue', 'cue_queue'])
             self.assertEqual(queue[0]['status'], 'processed')
             self.assertEqual(queue[2]['status'], 'processed')
-            self.assertTrue(any(q['status'] == 'pending' for q in queue))
+            self.assertTrue(all(q['status'] == 'processed' and q['context']['quote'] == text for q in queue))
+
+    def test_overlapping_cues_review_one_complete_three_paragraph_context(self):
+        text = '若能取得完整记录，\n可补一张对照表。\n否则说明资料覆盖范围。'
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.run_mock(workspace, [[], [], []]) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual([e['text_or_documents'] for e in extracts[1:]], [text])
+            self.assertEqual(len(requests), 2)
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual(len(queue), 2)
+            self.assertEqual([q['span']['quote'] for q in queue], ['若', '否则'])
+            self.assertTrue(all(q['context']['quote'] == text and q['status'] == 'processed' for q in queue))
+            self.assertEqual(self.artifact(workspace)['errors'], [])
+
+    def test_oversize_cue_closure_blocks_fragmented_recall_bypass(self):
+        first, middle, last = '若' + '甲' * 210 + '，', '乙' * 210 + '。', '否则' + '丙' * 210 + '。'
+        text = '\n'.join([first, middle, last])
+        recall = [{'span': middle, 'span_attributes': {'kind': 'unknown'}}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.run_mock(workspace, [recall, []]) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual(len(requests), 2)
+            self.assertTrue(all('span' in e['examples'][0].extractions[0].extraction_class for e in extracts))
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual(len(queue), 3)
+            self.assertEqual({q['source'] for q in queue}, {'cue_queue', 'stage1_recall'})
+            self.assertTrue(all(q['context']['quote'] == text and q['status'] == 'boundary_pending' for q in queue))
+            self.assertTrue(all(q['stage2_calls'] == [] and q['semantics'] == 'semantics_unknown' for q in queue))
+            self.assertEqual(self.artifact(workspace, 'coverage.json')['status'], 'partial')
+            self.assertEqual(self.artifact(workspace, 'coverage.json')['queue_unprocessed'], 3)
+            store = Workspace(workspace)
+            try:
+                self.assertEqual(store.import_extractions(self.artifact(workspace))['extraction_runs'][-1]['status'], 'partial')
+            finally:
+                store.close()
+
+    def test_cue_closure_never_merges_selected_sections_or_reads_private_section(self):
+        first = '若能取得完整记录，\n可补一张对照表。\n否则说明资料覆盖范围。'
+        second = '如果取得两次记录，\n可说明观测范围。\n否则补充资料局限。'
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), first, extra_sections=[
+                {'section_id': 'two', 'label': '评审意见', 'text': second, 'visibility': 'visibility_unknown'}])
+            with self.run_mock(workspace, [[], [], [], []], ['--section', 'two']) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual([e['text_or_documents'] for e in extracts], [first, second, first, second])
+            self.assertEqual(len(requests), 4)
+            self.assertNotIn('PRIVATE-CONTENT', json.dumps(requests))
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual(len(queue), 4)
+            for item in queue:
+                expected = first if item['span']['section_id'] == 'one' else second
+                self.assertEqual(item['context']['section_id'], item['span']['section_id'])
+                self.assertEqual(item['context']['quote'], expected)
+
+    def test_recall_only_paragraphs_remain_separate_without_cues(self):
+        first, second = '论述清楚。', '建议补充图表。'
+        text = first + '\n' + second
+        recall = [{'span': q, 'span_attributes': {'kind': 'unknown'}} for q in (first, second)]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.run_mock(workspace, [recall, [], []]) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual([e['text_or_documents'] for e in extracts[1:]], [first, second])
+            self.assertEqual(len(requests), 3)
+            self.assertEqual(len(self.artifact(workspace, 'queue.json')), 2)
+
+    def test_merged_cue_context_retains_codepoint_grounding_and_original_bytes(self):
+        text = '😀若能取得完整记录，\n可补一张对照表。\n否则说明资料覆盖范围。'
+        recall = [{'span': '可补一张对照表。', 'span_attributes': {'kind': 'modification'}}]
+        review = [{'opinion': '可补一张对照表。', 'opinion_attributes': {}},
+                  {'opinion': '否则说明资料覆盖范围。', 'opinion_attributes': {}}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            source_bytes = (workspace / 'source.json').read_bytes()
+            with self.run_mock(workspace, [recall, review]) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual(len(requests), 2)
+            self.assertEqual(extracts[1]['text_or_documents'], text)
+            self.assertEqual((workspace / 'source.json').read_bytes(), source_bytes)
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual(len(queue), 3)
+            self.assertTrue(all(q['context']['quote'] == text and q['status'] == 'processed' for q in queue))
+            candidates = self.artifact(workspace)['candidates']
+            self.assertEqual([c['evidence'][0]['start'] for c in candidates], [11, 20])
+            for candidate in candidates:
+                evidence = candidate['evidence'][0]
+                self.assertEqual(text[evidence['start']:evidence['end']], evidence['quote'])
+
+    def test_merged_cue_and_recall_queue_survives_budget_without_fragment_requests(self):
+        text = '若能取得完整记录，\n可补一张对照表。\n否则说明资料覆盖范围。'
+        recall = [{'span': '可补一张对照表。', 'span_attributes': {'kind': 'modification'}}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.run_mock(workspace, [recall], ['--max-refinements', '0']) as (requests, _):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual(len(requests), 1)
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual(len(queue), 3)
+            self.assertTrue(all(q['context']['quote'] == text and q['status'] == 'pending' for q in queue))
+            self.assertEqual(self.artifact(workspace, 'coverage.json')['queue_budget_unprocessed'], 3)
+            self.assertEqual(self.artifact(workspace, 'coverage.json')['status'], 'partial')
+
+    def test_cue_context_overlap_closure_is_transitive(self):
+        text = '若有记录，\n可补图。\n因为观测少，\n须说明局限。\n否则保留待核。'
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.run_mock(workspace, [[], [], [], []]) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual([e['text_or_documents'] for e in extracts[1:]], [text])
+            self.assertEqual(len(requests), 2)
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual(len(queue), 3)
+            self.assertTrue(all(q['context']['quote'] == text for q in queue))
+
+    def test_unrelated_recall_outside_cue_closure_keeps_its_own_context_and_budget(self):
+        context = '若能补图，\n可补图。\n否则说明局限。\n分隔说明。'
+        text = context + '\n论述清楚。'
+        recall = [{'span': '论述清楚。', 'span_attributes': {'kind': 'evaluation'}}]
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.workspace(Path(directory), text)
+            with self.run_mock(workspace, [recall, []], ['--max-refinements', '1']) as (requests, extracts):
+                self.assertEqual(staged.main(), 0)
+            self.assertEqual([e['text_or_documents'] for e in extracts[1:]], [context])
+            self.assertEqual(len(requests), 2)
+            queue = self.artifact(workspace, 'queue.json')
+            self.assertEqual(len(queue), 3)
+            remaining = next(q for q in queue if q['source'] == 'stage1_recall')
+            self.assertEqual(remaining['context']['quote'], '论述清楚。')
+            self.assertEqual(remaining['status'], 'pending')
+            self.assertEqual(self.artifact(workspace, 'coverage.json')['queue_budget_unprocessed'], 1)
 
     def test_unfittable_complete_context_stays_explicitly_pending_without_truncation(self):
         text = '甲' * 305 + '。\n否则' + '乙' * 305 + '。'

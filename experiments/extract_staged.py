@@ -95,6 +95,48 @@ def focused_context(section, left, right, limit):
     return left, right, None if right - left <= limit else 'E_CONTEXT_BOUNDARY_REQUIRES_REVIEW'
 
 
+def coalesce_cue_contexts(section, entries, limit):
+    """Close overlapping cue coordinates within this section before budgeting.
+
+    Queue identities and source spans stay intact. A recall context touching a
+    cue component inherits its complete interval, including a boundary failure;
+    recall-only contexts are not merged with one another.
+    """
+    groups = []
+    cues = sorted((entry for entry in entries if entry['source'] == 'cue_queue'),
+                  key=lambda entry: (entry['context']['start'], entry['context']['end']))
+    for entry in cues:
+        context = entry['context']
+        if groups and context['start'] < groups[-1]['end']:
+            groups[-1]['end'] = max(groups[-1]['end'], context['end'])
+            groups[-1]['entries'].append(entry)
+        else:
+            groups.append({'start': context['start'], 'end': context['end'], 'entries': [entry]})
+
+    def assign(entry, left, right, cue_ids):
+        boundary = right - left > limit
+        entry.update(context={'section_id': section['section_id'], 'start': left, 'end': right,
+                              'quote': section['text'][left:right]},
+                     status='boundary_pending' if boundary else 'pending',
+                     context_policy='overlapping_cue_closure', context_cue_ids=cue_ids)
+        code = 'E_CONTEXT_BOUNDARY_REQUIRES_REVIEW'
+        entry['errors'] = [error for error in entry['errors'] if error != code] + ([code] if boundary else [])
+
+    for group in groups:
+        cue_ids = [entry['id'] for entry in group['entries']]
+        for entry in group['entries']:
+            assign(entry, group['start'], group['end'], cue_ids)
+    for entry in entries:
+        if entry['source'] != 'stage1_recall':
+            continue
+        context = entry['context']
+        touched = [group for group in groups if context['start'] < group['end'] and group['start'] < context['end']]
+        if touched:
+            left = min(context['start'], *(group['start'] for group in touched))
+            right = max(context['end'], *(group['end'] for group in touched))
+            assign(entry, left, right, [cue['id'] for group in touched for cue in group['entries']])
+
+
 def build_queue(section, recalls, limit):
     text, entries = section['text'], []
     # Longer alternatives precede their suffixes, avoiding two cues for 或者.
@@ -122,6 +164,7 @@ def build_queue(section, recalls, limit):
                      semantics='semantics_unknown', context={'section_id': section['section_id'], 'start': left,
                      'end': right, 'quote': text[left:right]}, status='boundary_pending' if error else 'pending',
                      errors=[error] if error else [], stage2_calls=[])
+    coalesce_cue_contexts(section, entries, limit)
     return entries
 
 
