@@ -5,6 +5,7 @@ import os
 import json
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -47,6 +48,18 @@ def safe_message(error):
 def run_process(argv):
     return subprocess.run([str(v) for v in argv], cwd=ROOT, shell=False, capture_output=True,
                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=False)
+
+
+def powershell_executable():
+    # Prefer the same modern host used by the project scripts on this machine.
+    # Resolve once per invocation as an executable value, never as shell text.
+    executable = shutil.which('pwsh.exe') or shutil.which('powershell.exe')
+    require(executable is not None, 'E_LOCAL_MODEL_SETUP')
+    return str(Path(executable).absolute())
+
+
+def run_powershell(arguments):
+    return run_process([powershell_executable(), '-NoProfile', *arguments])
 
 
 class Controller:
@@ -117,7 +130,7 @@ class Controller:
     def start_model(self):
         # This window may stop only a service it successfully started.
         require(not getattr(self, 'owns_model', False), 'E_MODEL_ALREADY_STARTED')
-        result = run_process(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ROOT / 'scripts/start-local-model.ps1'])
+        result = run_powershell(['-ExecutionPolicy', 'Bypass', '-File', ROOT / 'scripts/start-local-model.ps1'])
         require(result.returncode == 0, 'E_LOCAL_MODEL_START')
         state = json.loads((ROOT / 'work/local-model/server-state.json').read_text(encoding='utf-8-sig'))
         output = result.stdout.decode('utf-8', errors='replace') if isinstance(result.stdout, bytes) else result.stdout
@@ -129,14 +142,14 @@ class Controller:
         require(getattr(self, 'owns_model', False), 'E_MODEL_NOT_OWNED')
         state = json.loads((ROOT / 'work/local-model/server-state.json').read_text(encoding='utf-8-sig'))
         require(state.get('run_id') == self.owns_model, 'E_MODEL_NOT_OWNED')
-        result = run_process(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-                              ROOT / 'scripts/stop-local-model.ps1', '-ExpectedRunId', self.owns_model])
+        result = run_powershell(['-ExecutionPolicy', 'Bypass', '-File',
+                                 ROOT / 'scripts/stop-local-model.ps1', '-ExpectedRunId', self.owns_model])
         require(result.returncode == 0, 'E_LOCAL_MODEL_STOP')
         self.owns_model = False
 
     def _check_model(self):
         require(getattr(self, 'owns_model', False), 'E_MODEL_NOT_OWNED')
-        result = run_process(['powershell.exe', '-NoProfile', '-Command', MODEL_IDENTITY])
+        result = run_powershell(['-Command', MODEL_IDENTITY])
         output = result.stdout.decode('utf-8', errors='replace') if isinstance(result.stdout, bytes) else result.stdout
         require(result.returncode == 0 and (output or '').strip() == self.owns_model, 'E_MODEL_NOT_OWNED')
 

@@ -12,6 +12,38 @@ from reviewproto.core import ReviewError
 
 
 class DesktopControllerTests(unittest.TestCase):
+    def test_powershell_host_prefers_pwsh_then_falls_back_and_missing_is_safe(self):
+        from reviewproto.desktop import powershell_executable
+        modern = str(Path('C:/Program Files/PowerShell/7/pwsh.exe').absolute())
+        legacy = str(Path('C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe').absolute())
+        with patch('reviewproto.desktop.shutil.which', side_effect=lambda name: {'pwsh.exe': modern, 'powershell.exe': legacy}.get(name)) as which:
+            self.assertEqual(powershell_executable(), modern)
+            which.assert_called_once_with('pwsh.exe')
+        with patch('reviewproto.desktop.shutil.which', side_effect=lambda name: legacy if name == 'powershell.exe' else None):
+            self.assertEqual(powershell_executable(), legacy)
+        with patch('reviewproto.desktop.shutil.which', return_value=None):
+            with self.assertRaisesRegex(ReviewError, 'E_LOCAL_MODEL_SETUP'):
+                powershell_executable()
+
+    def test_model_start_identity_and_stop_use_same_selected_host(self):
+        from reviewproto.desktop import Controller
+        selected = str(Path('C:/Program Files/PowerShell/7/pwsh.exe').absolute())
+        identity = 'a' * 32
+        c = Controller()
+        responses = [subprocess.CompletedProcess([], 0, stdout=b'Local model ready; PID 123\n'),
+                     subprocess.CompletedProcess([], 0, stdout=identity.encode()),
+                     subprocess.CompletedProcess([], 0, stdout=b'Stopped')]
+        with patch('reviewproto.desktop.shutil.which', return_value=selected), \
+             patch('reviewproto.desktop.Path.read_text', return_value=json.dumps({'run_id': identity, 'pid': 123})), \
+             patch('reviewproto.desktop.run_process', side_effect=responses) as call:
+            c.start_model()
+            c._check_model()
+            c.stop_model()
+            self.assertEqual([v.args[0][0] for v in call.call_args_list], [selected] * 3)
+            self.assertIn('-File', call.call_args_list[0].args[0])
+            self.assertIn('-Command', call.call_args_list[1].args[0])
+            self.assertEqual(call.call_args_list[2].args[0][-2:], ['-ExpectedRunId', identity])
+
     def test_open_republishes_current_editor_without_changing_business_state(self):
         from reviewproto.desktop import Controller
         from reviewproto.store import Workspace
@@ -36,6 +68,7 @@ class DesktopControllerTests(unittest.TestCase):
         c = Controller()
         c.owns_model = 'a' * 32
         with patch('reviewproto.desktop.Path.read_text', return_value=json.dumps({'run_id': c.owns_model})), \
+             patch('reviewproto.desktop.powershell_executable', return_value='synthetic-shell.exe'), \
              patch('reviewproto.desktop.run_process', return_value=subprocess.CompletedProcess([], 0)) as call:
             c.stop_model()
             argv = call.call_args.args[0]
@@ -137,6 +170,7 @@ Write-Output 'EXPECTED_RUN_REJECTED'
             self.assertEqual(call.call_args.args[0][1], 'source & bad$(echo).json')
             self.assertFalse(call.call_args.kwargs['shell'])
             self.assertTrue(call.call_args.kwargs['cwd'].is_absolute())
+            self.assertEqual(call.call_args.kwargs['creationflags'], getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         self.assertNotIn('secret', safe_message(ValueError('secret quote C:/private')))
         self.assertIn('重新', safe_message(ReviewError('E_PATCH_REVISION')))
 
@@ -188,7 +222,8 @@ Write-Output 'EXPECTED_RUN_REJECTED'
             with self.assertRaises(ReviewError):
                 c.stop_model()
             call.assert_not_called()
-        with patch('reviewproto.desktop.run_process') as call:
+        with patch('reviewproto.desktop.powershell_executable', return_value='synthetic-shell.exe'), \
+             patch('reviewproto.desktop.run_process') as call:
             call.return_value.returncode = 0
             call.return_value.stdout = b'different-run\n'
             with self.assertRaisesRegex(ReviewError, 'E_MODEL_NOT_OWNED'):
