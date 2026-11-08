@@ -6,6 +6,9 @@ import unittest
 import os
 import shutil
 import subprocess
+import sys
+import threading
+import time
 from unittest.mock import patch
 
 from reviewproto.core import ReviewError
@@ -171,8 +174,87 @@ Write-Output 'EXPECTED_RUN_REJECTED'
             self.assertFalse(call.call_args.kwargs['shell'])
             self.assertTrue(call.call_args.kwargs['cwd'].is_absolute())
             self.assertEqual(call.call_args.kwargs['creationflags'], getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            self.assertFalse(call.call_args.kwargs['check'])
+            self.assertTrue(call.call_args.kwargs['stdout'].closed)
+            self.assertTrue(call.call_args.kwargs['stderr'].closed)
         self.assertNotIn('secret', safe_message(ValueError('secret quote C:/private')))
         self.assertIn('重新', safe_message(ReviewError('E_PATCH_REVISION')))
+
+    def test_process_closes_output_files_when_spawn_fails(self):
+        from reviewproto.desktop import run_process
+        with patch('reviewproto.desktop.subprocess.run', side_effect=OSError('synthetic spawn failure')) as call:
+            with self.assertRaises(OSError):
+                run_process(['synthetic-missing-executable'])
+            self.assertTrue(call.call_args.kwargs['stdout'].closed)
+            self.assertTrue(call.call_args.kwargs['stderr'].closed)
+
+    def test_process_returns_when_parent_exits_with_inherited_output_still_open(self):
+        from reviewproto.desktop import run_process
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            ready, release, finished = [root / name for name in ('ready', 'release', 'finished')]
+            grandchild = root / 'grandchild.py'
+            grandchild.write_text('''from pathlib import Path
+import sys
+import time
+ready, release, finished = map(Path, sys.argv[1:])
+print('grandchild stdout', flush=True)
+print('grandchild stderr', file=sys.stderr, flush=True)
+ready.touch()
+deadline = time.monotonic() + 20
+while not release.exists() and time.monotonic() < deadline:
+    time.sleep(0.02)
+sys.stdout.close()
+sys.stderr.close()
+finished.touch()
+''', encoding='utf-8')
+            parent = root / 'parent.py'
+            parent.write_text('''from pathlib import Path
+import subprocess
+import sys
+import time
+subprocess.Popen([sys.executable, sys.argv[1], *sys.argv[2:]],
+                 stdout=sys.stdout, stderr=sys.stderr, close_fds=False)
+deadline = time.monotonic() + 10
+while not Path(sys.argv[2]).exists():
+    if time.monotonic() >= deadline:
+        raise RuntimeError('synthetic grandchild did not start')
+    time.sleep(0.02)
+print('parent stdout', flush=True)
+print('parent stderr', file=sys.stderr, flush=True)
+sys.exit(7)
+''', encoding='utf-8')
+            results, errors = [], []
+
+            def invoke():
+                try:
+                    results.append(run_process([sys.executable, parent, grandchild, ready, release, finished]))
+                except Exception as error:
+                    errors.append(error)
+
+            worker = threading.Thread(target=invoke, daemon=True)
+            worker.start()
+            try:
+                worker.join(5)
+                self.assertFalse(worker.is_alive(), 'direct parent exited but inherited output blocked run_process')
+                self.assertFalse(errors, errors)
+                self.assertTrue(ready.is_file())
+                self.assertFalse(finished.exists(), 'grandchild must still hold both output handles')
+                self.assertEqual(results[0].returncode, 7)
+                self.assertIn(b'parent stdout', results[0].stdout)
+                self.assertIn(b'grandchild stdout', results[0].stdout)
+                self.assertIn(b'parent stderr', results[0].stderr)
+                self.assertIn(b'grandchild stderr', results[0].stderr)
+            finally:
+                # Release only this fixture's grandchild, including on the old
+                # pipe-blocking implementation; never touch a model process.
+                release.touch()
+                worker.join(10)
+                deadline = time.monotonic() + 10
+                while not finished.exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertFalse(worker.is_alive(), 'synthetic run_process did not clean up')
+                self.assertTrue(finished.is_file(), 'synthetic grandchild did not clean up')
 
     def test_model_status_is_ingest_derived_and_failed_payload_is_preserved(self):
         from reviewproto.desktop import Controller

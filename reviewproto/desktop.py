@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import uuid
 
@@ -46,8 +47,18 @@ def safe_message(error):
 
 
 def run_process(argv):
-    return subprocess.run([str(v) for v in argv], cwd=ROOT, shell=False, capture_output=True,
-                          creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=False)
+    # A service launched by the direct child may retain its output handles.
+    # Files let us wait for that child without waiting for pipe EOF from the
+    # service. Capture a finite snapshot without waiting for later output.
+    with tempfile.TemporaryFile(mode='w+b') as stdout, tempfile.TemporaryFile(mode='w+b') as stderr:
+        result = subprocess.run([str(v) for v in argv], cwd=ROOT, shell=False,
+                                stdout=stdout, stderr=stderr,
+                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), check=False)
+        for name, stream in [('stdout', stdout), ('stderr', stderr)]:
+            size = os.fstat(stream.fileno()).st_size
+            stream.seek(0)
+            setattr(result, name, stream.read(size))
+        return result
 
 
 def powershell_executable():
