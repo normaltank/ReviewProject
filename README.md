@@ -1,6 +1,8 @@
 # ReviewProject
 
-ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，组织多来源证据、原分与候选规则，供可信编辑查证、纠正并保存条款审核决定。首轮三票已本地集成验收；用户本人体验、专业理解可靠性及正式条款效果分别验证。
+ReviewProject 从外审评分与 Comments 提取可追溯的评价观点，组织多来源证据、原分与候选规则，供可信编辑查证、纠正并保存条款审核决定。当前阶段、准确版本、验证和续接点统一见[交接状态](docs/STATE.md)。
+
+代理工程入口为 [AGENTS.md](AGENTS.md)。本页是操作指南；旧试验及历史材料仅在对应任务中按需查阅，[历史交接快照](docs/history/STATE-2026-11-09.md)保留原过程。
 
 从[本轮试跑与试用索引](work/framework-review-20261109/README.md)进入，或直接打开[本地模型条款审核包](work/framework-review-20261109/model-batch/report.html)。报告含真实受限材料，只供本机可信编辑。当前模型提案没有生成新的改法，保留原规则仅作对照；真实错误与未知项见索引及[交接状态](docs/STATE.md)。无需重新推理即可查看已有结果。
 
@@ -16,7 +18,7 @@ python -m reviewproto desktop
 
 ### 审核本轮小批条款包
 
-公开规格为 [Issue #1](https://github.com/normaltank/ReviewProject/issues/1)，实施顺序为 [T1 #2](https://github.com/normaltank/ReviewProject/issues/2) → [T2 #3](https://github.com/normaltank/ReviewProject/issues/3) → [T3 #4](https://github.com/normaltank/ReviewProject/issues/4)。三票代码及三项独立审查发现已本地集成验收；代码尚未推送或创建PR，准确版本、验证与Issue状态见 [STATE](docs/STATE.md)。
+公开规格为 [Issue #1](https://github.com/normaltank/ReviewProject/issues/1)，实施顺序为 [T1 #2](https://github.com/normaltank/ReviewProject/issues/2) → [T2 #3](https://github.com/normaltank/ReviewProject/issues/3) → [T3 #4](https://github.com/normaltank/ReviewProject/issues/4)。实施及远端状态以 [STATE 中注明的核验范围](docs/STATE.md#续接点与远端记录)为准。
 
 1. 点“选择审核包”，选本轮 `model-batch` 等含 `batch.sqlite3` 的目录，再点“打开审核页”。查看原话、原分、规则出处，以及原规则的适用条件、例外、要求强度与来源、未知项和检查项。未列出不代表不存在；规则候选仍未获正式授权。
 2. 需要纠正观点时，从包内链接进入原观点表单；在桌面包来源下拉选择相应记录，点“打开所选原来源”，再用上方“选择下载补丁并应用”保存原来源修正。
@@ -151,7 +153,7 @@ Invoke-Item .\work\demo\report.html
 
 当前支持已核实 DOCX 表型、业务 CSV 和契约 JSON。Word 样式继承造成隐藏或编号歧义、纵向合并、公式和移动修订等内容会保守拒收，不猜分、不把共享格判为空白。规则仍作为低成本对照。本地模型已经实际处理真实评语，也暴露了漏观点、理由自循环、否定误判和输出截断；候选须复核，精确引文不等于语义正确。页面可记录单篇评分关系的明确、推断或未知状态，不自动判评分矛盾。全部报告仅供可信编辑。
 
-试用MVP面向本机可信编辑。入口与高频复核操作已可运行，两份已知真实材料完成普通表单修正、保存及旧来源/模型产物重放；这些是开发演练，不是独立业务测试。复杂 A 修改仍由操作员经 CLI/JSON 预导入，尚无规则图形编辑器、多用户认证或安全作者端。下一步让专业编辑完成小批真实任务并计时，按阻断问题返修；模型实验不代替这项验收。工程可运行、专业理解可靠性和 Framework 改善效果分别核验。
+试用MVP面向本机可信编辑。入口与高频复核操作已可运行，两份已知真实材料完成普通表单修正、保存及旧来源/模型产物重放；这些是开发演练，不是独立业务测试。复杂 A 修改仍由操作员经 CLI/JSON 预导入，尚无规则图形编辑器、多用户认证或安全作者端。按已确认顺序，由用户本人先体验并记录错漏与操作负担，专业编辑核验及标准效果另行验证；模型实验不代替这些验收。
 
 - [交接状态、真实样本入口与限制](docs/STATE.md)
 - [原文定位、评分、权限和复核字段](docs/DATA_AND_ANNOTATION.md)
@@ -186,10 +188,10 @@ python experiments/audit_inputs.py Bfeedback
 & ./scripts/gh.ps1 issue list --state open
 ```
 
-其他环境安装官方 [GitHub CLI](https://cli.github.com/) 并登录即可。`docs/agents/*.md` 可直接调整；切换任务跟踪平台或重新初始化时再运行 setup 技能。
+其他环境安装官方 [GitHub CLI](https://cli.github.com/) 并登录即可。调整任务跟踪平台时同步维护[工作项约定](docs/agents/issue-tracker.md)。
 
-仓库提供可发现的自动技能及六个角色配置；主代理本身担任统筹。原生发现是否已生效需在支持该配置的 Codex 新会话或重启后核实。当前接口缺少角色类型参数时，统筹读取角色指令后通过临时子代理工具派工，显式传入模型与思考强度。配置不是自运行引擎，也不创建常驻聊天或后台服务。
+仓库提供自动统筹技能及六个角色配置，主代理担任统筹，子代理按获派职责执行。配置与实际调用方式见[多代理协作](docs/agents/multi-agent.md)；角色文件存在不代表角色已实际运行。
 
-首轮业务原型按一条可独立验收的链路交付，实际运行与审查记录见交接状态。项目自动技能承载阶段方法；全局 explicit-only 技能仍由用户显式调用。
+项目自动技能承载阶段方法；全局 explicit-only 技能仍由用户显式调用。
 
 配置字段参考 [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)；项目协作方式参考 [NewPlan](https://github.com/normaltank/NewPlan/blob/main/docs/agents/workflow.md) 和 [DataBase](https://github.com/normaltank/DataBase/blob/main/docs/agents/workflow.md)，本项目业务约定以仓库文件为准。

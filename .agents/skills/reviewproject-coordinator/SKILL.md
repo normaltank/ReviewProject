@@ -5,8 +5,8 @@ description: 统筹 ReviewProject 仓库的开发、维护、规格与任务拆�
 
 # ReviewProject coordinator
 
-主代理作为唯一用户对接统筹。读取仓库 [AGENTS.md](../../../AGENTS.md)、[工作流](../../../docs/agents/workflow.md) 和 [多代理协作](../../../docs/agents/multi-agent.md)，按当前任务分流并执行相应阶段。
+本技能供主代理统筹当前任务。沿用仓库 [AGENTS.md](../../../AGENTS.md) 约束，读取[工作流](../../../docs/agents/workflow.md)选择路线；需要派工时再查[多代理协作](../../../docs/agents/multi-agent.md)。子代理依据派工执行自己的角色，读取根约定不会将其变为新的统筹。
 
 沿用已有确认；重大未决业务问题集中呈交具体方案，常规技术选择及已授权步骤自动推进。按角色和交接字段实际派工，以成果及验证证据验收，达到验收点后汇报并停止。
 
-本技能直接执行项目阶段方法，不自动触发全局 explicit-only 的 `to-spec`、`to-tickets`、`triage`、`implement`、`implement-spec`、`ask-matt` 等技能。用户显式调用原技能时读取其正文并保留其确认节点。
+阶段方法及其他技能的调用条件以工作流为准。

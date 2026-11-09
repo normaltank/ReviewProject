@@ -37,7 +37,7 @@
 
 旧版 CLI 可通过 GitHub API 添加关系：子项接口为 `issues/<parent>/sub_issues`，字段为 `sub_issue_id`；阻塞接口为 `issues/<child>/dependencies/blocked_by`，字段为 `issue_id`。这些字段使用工作项的数字数据库 ID，可由 `gh api repos/normaltank/ReviewProject/issues/<number> --jq '.id'` 取得，不是 `#number` 或 `node_id`。
 
-原生关系不可用时，在子项正文开头写 `Part of #<parent>` 和 `Blocked by: #<blocker>`，并在父项任务列表保留关联。所有阻塞项关闭后，任务才可开始。
+原生关系不可用时，在子项正文开头写 `Part of #<parent>` 和 `Blocked by: #<blocker>`，并在父项任务列表保留关联。工程依赖按[集成与验收证据](multi-agent.md#验收证据)判断：前置成果已集成且验收通过后才释放下游；Issue 是否关闭单独记录。若原生阻塞状态尚未同步，先核对验收证据并在获授权时更新关系。
 
 ## 技能约定
 
