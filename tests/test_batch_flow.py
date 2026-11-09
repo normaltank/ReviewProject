@@ -83,6 +83,29 @@ class BatchFlowTests(unittest.TestCase):
                         dict(issue_id='issue-1', decision_type='case_decision', case_source_id=state['sources'][0]['source']['source_id'], action='keep', reason='本案无需强制补充'),
                         dict(issue_id='issue-1', decision_type='framework_proposal_review', case_source_id=None, action='need_material', reason='通用要求须另补依据')])
 
+    def test_basic_after_displays_its_actual_condition_changes_without_rewriting_before(self):
+        from lxml import html
+        self.manifest['issues'][0]['after'].update(applicable_when=['资料充分时'], exceptions=[],
+            strength='mandatory', strength_provenance='explicit', checks=['另核资料完整性'])
+        state = self.build()
+        self.cli('batch-recover')
+        self.assertEqual(self.read(), state)
+        report = html.fromstring((self.batch / 'report.html').read_text(encoding='utf-8'))
+        before = report.find_class('rule-before')[0].text_content()
+        after = report.find_class('rule-after')[0].text_content()
+        self.assertIn('资料有限时', before)
+        self.assertIn('不预设必须新增资料', before)
+        self.assertIn('建议（recommended）', before)
+        self.assertIn('核实条件', before)
+        self.assertIn('资料充分时', after)
+        self.assertNotIn('资料有限时', after)
+        self.assertNotIn('不预设必须新增资料', after)
+        self.assertIn('强制措辞（正式效力未确认）（mandatory）', after)
+        self.assertIn('明说（explicit）', after)
+        self.assertIn('另核资料完整性', after)
+        self.assertIn('正式适用范围未知', after)
+        self.assertIn('未列出（不据此推定不存在）', after)
+
     def apply(self, payload, ok=True):
         patch = self.root / 'decision.json'
         patch.write_bytes(encoded(payload))

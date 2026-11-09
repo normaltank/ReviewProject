@@ -6,6 +6,22 @@ from pathlib import Path
 
 def render(state):
     esc = lambda value: escape(str(value), quote=True)
+    def rule_context(rule):
+        strength = {'unknown': '未知', 'recommended': '建议', 'mandatory': '强制措辞（正式效力未确认）', 'optional': '可选'}
+        provenance = {'unknown': '未知', 'explicit': '明说', 'inferred': '推断'}
+        rows = []
+        for key, label in [('applicable_when', '适用条件'), ('exceptions', '例外'),
+                           ('strength', '要求强度'), ('strength_provenance', '强度来源'),
+                           ('unknowns', '规则未知项'), ('checks', '检查项')]:
+            value = rule[key]
+            if isinstance(value, list):
+                visible = '<ul>' + ''.join(f'<li>{esc(item)}</li>' for item in value) + '</ul>' if value else '未列出（不据此推定不存在）'
+            else:
+                labels = strength if key == 'strength' else provenance
+                visible = esc(labels.get(value, value) + '（' + value + '）')
+            rows.append(f'<dt>{label}</dt><dd>{visible}</dd>')
+        return '<dl class="rule-context">' + ''.join(rows) + '</dl>'
+
     parts = ['<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>多来源条款审核</title>',
              '<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{max-width:1100px;margin:auto;padding:24px;font:16px/1.6 system-ui;color:#202c36;background:#f5f6f8}article,section,fieldset{background:white;border:1px solid #b8c2cc;border-radius:8px;padding:20px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f6;padding:12px}label{display:block;margin:10px 0}select,input,textarea,button{font:inherit;max-width:100%;padding:8px}textarea{width:90%}button{cursor:pointer}a{color:#074b8b}:target{outline:3px solid #b78612}strong{color:#8a3b13}</style>',
              '<h1>多来源条款审核</h1><p>本机可信编辑材料，沿用来源权限。不是作者端导出。区分人工预填、规则相关词/条件线索与本地模型探索；不发布正式标准。</p><p>来源按原件指纹去重，不推定独立教师或稿件数。个案选择指向审稿记录，稿件身份关系仍待核。</p>']
@@ -53,19 +69,27 @@ def render(state):
     parts.append('<h2>规则候选 · authority=unconfirmed</h2><p>原规则引文只支持 before；after 是编辑建议，未经专业确认。</p>')
     for rule in state['framework']['book']['rules']:
         parts.append(f'<article id="rule-{esc(rule["rule_id"])}"><h3>{esc(rule["title"])}</h3><pre>{esc(rule["requirement"])}</pre>')
+        parts.append(rule_context(rule))
         for evidence in rule['evidence']:
             parts.append(f'<p>{esc(evidence["source_id"])} · {esc(evidence["locator"])}</p><pre>{esc(evidence["quote"])}</pre>')
         parts.append('</article>')
     parts.append(f'<p>所用规则版本：{esc(state["framework"]["book"]["version"])} · {esc(state["framework"]["sha256"])}</p>')
     for issue in state['issues']:
         origin = '人工预填' if issue['origin'] == 'manual' else '分析候选（待审核）'
-        parts.append(f'<article class="review-issue" id="issue-{esc(issue["issue_id"])}"><h2>{esc(issue["title"])}</h2><p>{origin} · {esc(issue.get("provenance", "manual"))} · {esc(issue.get("validity", "unknown"))} · {esc(issue["rationale"])}</p><pre>before: {esc(issue["before"]["requirement"])}</pre><pre>after: {esc(issue["after"])}</pre>')
+        parts.append(f'<article class="review-issue" id="issue-{esc(issue["issue_id"])}"><h2>{esc(issue["title"])}</h2><p>{origin} · {esc(issue.get("provenance", "manual"))} · {esc(issue.get("validity", "unknown"))} · {esc(issue["rationale"])}</p><section class="rule-before"><h3>原规则（before）</h3><pre>{esc(issue["before"]["requirement"])}</pre>{rule_context(issue["before"])}</section><pre>候选改动（after）: {esc(issue["after"])}</pre>')
+        if 'alternatives' not in issue:
+            effective = dict(issue['before'], **issue['after'])
+            parts.append('<section class="rule-after"><h3>候选方案的条件与强度</h3><p>未单列修改的字段沿用原规则；明确改动按 after 展示，尚待审核。</p>' + rule_context(effective) + '</section>')
         if 'concept' in issue:
             concept = issue['concept']
             parts.append(f'<p>候选概念 {esc(concept["concept_id"])} · {esc(concept["status"])}</p><p>定义：{esc(concept["definition"])}</p><p>边界：{esc(concept["boundary"])}</p><p>正例：{esc(concept["example"])}；边界反例：{esc(concept["boundary_counterexample"] or "本次未有，不编造")}</p>')
             parts.append(f'<p>规则对照（inferred）：{esc(issue["comparison"])}</p><p class="ranking">排序理由：{esc(issue["ranking"]["reasons"])}</p><p>原分关联（生成后连接）：{esc(issue["score_links"])}</p>')
             for alternative in issue['alternatives']:
                 parts.append(f'<section class="alternative"><h3>{esc(alternative["label"])}</h3><p>editorial_proposal · authority=unconfirmed</p><pre>{esc(alternative["after"]["requirement"])}</pre><p>理由：{esc(alternative["rationale"])}</p><p>可能益处：{esc(alternative["benefits"])}；代价/负担：{esc(alternative["costs"])}</p><p>未知：{esc(alternative["unknowns"])}</p>')
+                note = ('本版扩展方案仅修改要求文字；条件、例外、强度、未知项及检查项沿用原规则。'
+                        if set(alternative['after']) == {'requirement'} else
+                        '历史方案含其他改动字段，保留决定须重新核验；未修改字段沿用原规则。')
+                parts.append('<p>' + note + '</p>' + rule_context(dict(issue['before'], **alternative['after'])))
                 if alternative['alternative_id'] == 'retain':
                     # Old producers copied discussion evidence into retain.
                     # Keep those records visible without endorsing their roles.
