@@ -18,6 +18,13 @@ def main(argv=None):
         parser = SafeParser(prog="python -m reviewproto", description="Offline trusted-editor evidence review; no author export.")
         sub = parser.add_subparsers(dest="command", required=True)
         sub.add_parser("desktop")
+        for command in ("batch-build", "batch-apply", "batch-recover", "batch-template", "batch-append-analysis"):
+            item = sub.add_parser(command)
+            if command in ("batch-build", "batch-apply", "batch-append-analysis"):
+                item.add_argument("input")
+            if command == "batch-template":
+                item.add_argument("--output", default="decision-template.json")
+            item.add_argument("--workspace", default="work/batch-review")
         for command in ("run", "review", "export-template", "apply", "render", "recover", "ingest-candidates", "ingest-clauses", "ingest-framework", "framework-template", "apply-framework-review"):
             item = sub.add_parser(command)
             item.add_argument("--workspace", default="work/review")
@@ -36,6 +43,26 @@ def main(argv=None):
         if args.command == "desktop":
             from .desktop import main as desktop_main
             return desktop_main()
+        if args.command.startswith("batch-"):
+            from .batch import BatchWorkspace, read_json
+            workspace = BatchWorkspace(args.workspace)
+            if args.command == "batch-build":
+                workspace.build(read_json(args.input), Path(args.input).absolute().parent)
+            elif args.command == "batch-apply":
+                workspace.apply(input_path=args.input)
+            elif args.command == "batch-recover":
+                workspace.recover()
+            elif args.command == "batch-append-analysis":
+                workspace.append_analysis(input_path=args.input)
+            else:
+                from .batch import checked_local
+                target = checked_local(workspace.path / args.output)
+                require(target.parent == workspace.path and target.suffix == '.json' and target.name not in {'state.json'}, "E_OUTPUT_SCOPE")
+                require(not target.exists(), "E_OUTPUT_EXISTS")
+                with target.open('xb') as stream:
+                    stream.write(encoded(workspace.review_template()))
+            print("OK " + args.command)
+            return 0
         workspace = Workspace(args.workspace)
         if args.command == "run":
             workspace.run(args.input, args.origin, args.format)
