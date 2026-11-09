@@ -59,6 +59,13 @@ def source_state(path):
             db.close()
 
 
+def selected_run_summary(state, candidates):
+    run_ids = {c['value'].get('run_id') for c in candidates}
+    return [dict(run_id=r['run_id'], status=r.get('status', 'unknown'),
+        errors_count=len(r.get('errors', [])) + len(r.get('rejected', [])))
+        for r in state.get('extraction_runs', []) if r['run_id'] in run_ids]
+
+
 def select_source(selection, root):
     require(isinstance(selection, dict) and set(selection) == {'workspace', 'source_id', 'revision', 'section_ids', 'candidate_ids', 'view'}, 'E_BATCH_MANIFEST')
     require(isinstance(selection['workspace'], str) and selection['workspace'].strip(), 'E_BATCH_PATH')
@@ -96,6 +103,9 @@ def select_source(selection, root):
     frozen = dict(workspace=str(path), source=copy.deepcopy(state['source']), revision=state['revision'],
                   view=copy.deepcopy(view), sections=[copy.deepcopy(bysection[s]) for s in sections],
                   scores=copy.deepcopy(state['scores']), candidates=selected, latest_decision_ids=latest)
+    # Only status summaries of the selected extraction runs, never their raw
+    # payloads (which can include unselected/private sections).
+    frozen['extraction_status'] = selected_run_summary(state, selected)
     frozen['binding_sha256'] = framework_digest({k: v for k, v in frozen.items() if k != 'workspace'})
     return frozen
 
@@ -106,7 +116,9 @@ def manual_issues(entries, sources, framework):
     refs = {(s['source']['source_id'], c['value']['candidate_id']) for s in sources for c in s['candidates']}
     result, seen = [], set()
     for entry in entries:
-        require(isinstance(entry, dict) and set(entry) == {'issue_id', 'title', 'rule_id', 'support', 'counter', 'rationale', 'after', 'unknowns'}, 'E_BATCH_ISSUE')
+        basic = {'issue_id', 'title', 'rule_id', 'support', 'counter', 'rationale', 'after', 'unknowns'}
+        extended = {'concept', 'alternatives', 'ranking', 'comparison', 'score_links'}
+        require(isinstance(entry, dict) and (set(entry) == basic or set(entry) == basic | extended), 'E_BATCH_ISSUE')
         identifier(entry['issue_id'])
         require(entry['issue_id'] not in seen and entry['rule_id'] in rules, 'E_BATCH_ISSUE')
         seen.add(entry['issue_id'])
@@ -126,6 +138,9 @@ def manual_issues(entries, sources, framework):
             texts(value) if key in {'applicable_when', 'exceptions', 'checks'} else text(value)
         require('strength' not in after or after['strength'] in {'unknown', 'recommended', 'mandatory', 'optional'}, 'E_BATCH_AFTER')
         require('strength_provenance' not in after or after['strength_provenance'] in {'explicit', 'inferred', 'unknown'}, 'E_BATCH_AFTER')
+        if set(entry) == basic | extended:
+            from .batch_discovery import validate_issue
+            validate_issue(entry, sources, rules[entry['rule_id']])
         item = copy.deepcopy(entry)
         item.update(origin='manual', before=copy.deepcopy(rules[entry['rule_id']]),
                     evidence_scope='baseline_only', after_provenance='editorial_proposal', authority='unconfirmed')
@@ -167,15 +182,25 @@ class BatchWorkspace:
         require(row is not None, 'E_BATCH_EMPTY')
         state = load_json(row[0])
         stale = False
+        source_runs = []
         for source in state['sources']:
+            summary = source.get('extraction_status', [])
             try:
                 actual = source_state(source['workspace'])
+                summary = selected_run_summary(actual, source['candidates'])
                 selection = dict(workspace=source['workspace'], source_id=source['source']['source_id'], revision=source['revision'],
                                  section_ids=[s['section_id'] for s in source['sections']], candidate_ids=[c['value']['candidate_id'] for c in source['candidates']], view=source['view'])
                 current = select_source(selection, Path.cwd())
+                if 'extraction_status' not in source:
+                    current.pop('extraction_status', None)
+                    current['binding_sha256'] = framework_digest({k: v for k, v in current.items() if k not in {'workspace', 'binding_sha256'}})
                 require(actual['revision'] == source['revision'] and current['binding_sha256'] == source['binding_sha256'], 'E_BATCH_SOURCE_CHANGED')
             except ReviewError:
                 stale = True
+            source_runs.append(dict(source_id=source['source']['source_id'], runs=summary))
+        # Derived status summaries also cover pre-T2 frozen packages; do not
+        # mutate their frozen source bindings or historical package digests.
+        state['source_run_status'] = source_runs
         try:
             frame = state['framework']
             frames = source_state(frame['workspace']).get('frameworks', [])
@@ -185,6 +210,11 @@ class BatchWorkspace:
         state['material_status'] = 'needs_refresh' if stale else 'current'
         for decision in state['decisions']:
             decision['validity'] = 'current' if not stale and decision['package_sha256'] == state['package_sha256'] else 'needs_revalidation'
+        for issue in state['issues']:
+            issue['validity'] = 'needs_revalidation' if stale else 'current'
+        for run in state.get('analysis_runs', []):
+            from .batch_discovery import input_binding
+            run['validity'] = 'current' if not stale and run.get('input_sha256') == input_binding(state) else 'needs_revalidation'
         return state
 
     def review_template(self):
@@ -226,7 +256,8 @@ class BatchWorkspace:
             issues = {i['issue_id']: i for i in state['issues']}
             additions, seen = [], set()
             for row in payload['decisions']:
-                require(isinstance(row, dict) and set(row) == {'issue_id', 'decision_type', 'case_source_id', 'action', 'reason'}, 'E_BATCH_DECISION')
+                fields = {'issue_id', 'decision_type', 'case_source_id', 'action', 'reason'}
+                require(isinstance(row, dict) and set(row) in (fields, fields | {'alternative_id'}), 'E_BATCH_DECISION')
                 require(row['issue_id'] in issues and row['decision_type'] in {'case_decision', 'framework_proposal_review'} and
                         row['action'] in {'keep', 'change', 'need_material', 'defer'}, 'E_BATCH_DECISION')
                 case_ids = {r['source_id'] for kind in ('support', 'counter') for r in issues[row['issue_id']][kind]}
@@ -236,7 +267,21 @@ class BatchWorkspace:
                 require(key not in seen, 'E_BATCH_DECISION_DUPLICATE')
                 seen.add(key)
                 text(row['reason'])
+                issue = issues[row['issue_id']]
+                variants = {a['alternative_id']: a for a in issue.get('alternatives', [])}
+                selected_id = row.get('alternative_id')
+                if variants and row['action'] == 'change':
+                    require(isinstance(selected_id, str) and selected_id in variants and selected_id != 'retain', 'E_BATCH_ALTERNATIVE_REQUIRED')
+                else:
+                    require(selected_id is None or isinstance(selected_id, str) and selected_id in variants, 'E_BATCH_ALTERNATIVE')
+                if variants and row['action'] == 'keep':
+                    require(selected_id in (None, 'retain'), 'E_BATCH_ALTERNATIVE')
+                    selected_id = 'retain'
                 item = copy.deepcopy(row)
+                if variants:
+                    selected = variants.get(selected_id)
+                    item.update(alternative_id=selected_id, selected_after=copy.deepcopy(selected['after']) if selected else None,
+                                alternative_sha256=framework_digest(selected) if selected else None)
                 item.update(actor=payload['actor'], patch_reason=payload['reason'], at=now(), revision=state['revision'] + 1,
                             package_sha256=state['package_sha256'], issue_sha256=issues[row['issue_id']]['issue_sha256'],
                             patch_sha256=fingerprint, authority='unconfirmed', validity='current')
@@ -269,7 +314,8 @@ class BatchWorkspace:
         if input_path is not None:
             payload = read_json(input_path)
         bounded(payload)
-        require(isinstance(payload, dict) and set(payload) == {'schema_version', 'batch_id', 'base_revision', 'package_sha256', 'run_id', 'provenance', 'issues'} and
+        fields = {'schema_version', 'batch_id', 'base_revision', 'package_sha256', 'run_id', 'provenance', 'issues'}
+        require(isinstance(payload, dict) and set(payload) in (fields, fields | {'analysis'}) and
                 type(payload['schema_version']) is int and payload['schema_version'] == 1, 'E_BATCH_ANALYSIS')
         identifier(payload['run_id']); text(payload['provenance'])
         fingerprint = framework_digest(payload)
@@ -287,7 +333,10 @@ class BatchWorkspace:
             require(payload['package_sha256'] == state['package_sha256'], 'E_BATCH_PACKAGE')
             require(state['material_status'] == 'current', 'E_BATCH_STALE')
             additions = manual_issues(payload['issues'], state['sources'], state['framework'])
-            require(additions, 'E_BATCH_ISSUES')
+            require(additions or 'analysis' in payload, 'E_BATCH_ISSUES')
+            if 'analysis' in payload:
+                from .batch_discovery import validate_analysis
+                validate_analysis(payload['analysis'], additions, state)
             ids = {i['issue_id'] for i in state['issues']}
             require(not ids.intersection(i['issue_id'] for i in additions), 'E_BATCH_ISSUE_CONFLICT')
             for issue in additions:
@@ -296,7 +345,7 @@ class BatchWorkspace:
                 issue['issue_sha256'] = framework_digest(issue)
             state['issues'].extend(additions)
             state.setdefault('analysis_runs', []).append(dict(run_id=payload['run_id'], provenance=payload['provenance'], payload_sha256=fingerprint,
-                input_package_sha256=payload['package_sha256'], at=now(), issue_ids=[i['issue_id'] for i in additions]))
+                input_package_sha256=payload['package_sha256'], at=now(), issue_ids=[i['issue_id'] for i in additions], **copy.deepcopy(payload.get('analysis', {}))))
             package = {k: state[k] for k in ('sources', 'framework', 'issues')}
             state['package_sha256'] = framework_digest(package)
             state['revision'] += 1

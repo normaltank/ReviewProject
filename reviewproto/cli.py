@@ -18,6 +18,16 @@ def main(argv=None):
         parser = SafeParser(prog="python -m reviewproto", description="Offline trusted-editor evidence review; no author export.")
         sub = parser.add_subparsers(dest="command", required=True)
         sub.add_parser("desktop")
+        item = sub.add_parser('batch-discover')
+        item.add_argument('--workspace', default='work/batch-review')
+        item.add_argument('--method', choices=('baseline', 'local'), required=True)
+        item.add_argument('--run-id', required=True)
+        item.add_argument('--rule', action='append')
+        item.add_argument('--candidate', action='append')
+        item.add_argument('--endpoint', default='http://127.0.0.1:8766/v1')
+        item.add_argument('--model', default='reviewproject-qwen3-4b-q4km')
+        item.add_argument('--max-output-tokens', type=int, default=4096)
+        item.add_argument('--context-chars', type=int, default=10000)
         for command in ("batch-build", "batch-apply", "batch-recover", "batch-template", "batch-append-analysis"):
             item = sub.add_parser(command)
             if command in ("batch-build", "batch-apply", "batch-append-analysis"):
@@ -46,7 +56,15 @@ def main(argv=None):
         if args.command.startswith("batch-"):
             from .batch import BatchWorkspace, read_json
             workspace = BatchWorkspace(args.workspace)
-            if args.command == "batch-build":
+            if args.command == 'batch-discover':
+                from .batch_discovery import discover
+                summary = discover(workspace, method=args.method, run_id=args.run_id, rule_ids=args.rule,
+                                   candidate_ids=args.candidate,
+                                   endpoint=args.endpoint, model=args.model, max_output_tokens=args.max_output_tokens,
+                                   context_chars=args.context_chars)
+                print('DISCOVERY status=' + summary['status'] + ' issues=' + str(len(summary['issue_ids'])))
+                return 2 if summary['status'] in {'partial', 'failed'} else 0
+            elif args.command == "batch-build":
                 workspace.build(read_json(args.input), Path(args.input).absolute().parent)
             elif args.command == "batch-apply":
                 workspace.apply(input_path=args.input)
