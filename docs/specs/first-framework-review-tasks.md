@@ -2,7 +2,7 @@
 
 范围依据：[开发规格](first-framework-review.md)、Q1—Q13及用户对整体理解和自动继续项目流程的确认。常规技术选择由统筹承担；业务目标、人工最终取舍、保密和正式发布边界沿用既有决定。
 
-主要验证入口沿用规格中已提出的完整CLI操作路径和浏览器用户操作路径。每票以外部可观察行为验证；不增加要求用户理解的私有函数测试边界。规格及三个脱敏工作项已发布至GitHub：[规格 #1](https://github.com/normaltank/ReviewProject/issues/1)，依赖顺序为[T1 #2](https://github.com/normaltank/ReviewProject/issues/2)→[T2 #3](https://github.com/normaltank/ReviewProject/issues/3)→[T3 #4](https://github.com/normaltank/ReviewProject/issues/4)。当前T1已验收，T2实施中，T3等待前置成果。
+主要验证入口沿用规格中已提出的完整CLI操作路径和浏览器用户操作路径。每票以外部可观察行为验证；不增加要求用户理解的私有函数测试边界。规格及三个脱敏工作项已发布至GitHub：[规格 #1](https://github.com/normaltank/ReviewProject/issues/1)，依赖顺序为[T1 #2](https://github.com/normaltank/ReviewProject/issues/2)→[T2 #3](https://github.com/normaltank/ReviewProject/issues/3)→[T3 #4](https://github.com/normaltank/ReviewProject/issues/4)。当前三票均已本地集成验收，三项独立审查发现均复核关闭；用户本人首次体验未做。代码最终版本、逐版验证与GitHub状态分别见[交接状态](../STATE.md)。
 
 ## T1：多来源审核包与决定保存、恢复
 
@@ -16,7 +16,7 @@
 
 ## T2：主动候选发现、改法与可解释排序
 
-**工作项：[T2 #3](https://github.com/normaltank/ReviewProject/issues/3)，实施中。前置依赖：T1已集成并验收，已满足。**
+**工作项：[T2 #3](https://github.com/normaltank/ReviewProject/issues/3)，已关闭，本地集成验收完成。前置依赖：T1已集成并验收，已满足。** 初次集成`d140dc1bcceac46d209122006964151f3f9a1fbb`，后续审查修复包含在最终代码`b809a64bcebc1a472dbb13b33e891f62e1b7f51c`；真实本地提案只有retain对照，没有新增改写，不冒称真实多方案成功。
 
 读取同一审核包，按受控候选概念及现有规则资料主动形成可审查问题；运行一个本地主要分析方案与一个规则对照，经T1页面查支持/反对材料、原分关联及其未知状态、原规则与有据改法，沿T1保存决定。
 
@@ -26,7 +26,7 @@
 
 ## T3：桌面试用入口、体验记录与真实小批试跑
 
-**工作项：[T3 #4](https://github.com/normaltank/ReviewProject/issues/4)，等待实施。前置依赖：T2集成并验收，尚未满足。**
+**工作项：[T3 #4](https://github.com/normaltank/ReviewProject/issues/4)，已关闭，本地集成验收完成。前置依赖：T2集成并验收，已满足。** 初次集成`f069b6c142dde5f4dded05bb765133b6fed83d72`，最终代码及条件展示修复为`b809a64bcebc1a472dbb13b33e891f62e1b7f51c`。代理合成演练和真实小批探索与用户本人体验分开；后者尚未发生。
 
 通过现有桌面入口选择审核包、打开页面、查证或纠正、应用决定、重开核对，并导出本次体验记录；在隔离真实小批副本跑通本地模型与规则对照，保留实际失败。
 
@@ -35,6 +35,8 @@
 实现范围：现有桌面Controller和包页面薄连接，复用体验计时记录思路；独立输出本地试跑索引，敏感材料不进仓库测试或公开工作项。
 
 ## 集成、审查与完成条件
+
+当前实施、串行集成及双轴发现复核已完成。中间c75完整回归198/198通过；最终b809仅执行两个受影响测试文件，共20/20通过、零跳过，未在最终头重复全套。统筹已验证三份真实包无推理恢复及独立副本离线代理演练，并关闭三个子项（各一条完成说明）；父项#1保持OPEN、ready-for-human，本人体验与专业/标准效果继续待测。以下保留本轮实施约定。
 
 每票独立分支/worktree；一名merger串行接收，核对同步SHA和验收后才释放后票。三个结果集成后，对固定基线至集成版本分别进行Spec与Standards只读审查，集中返修并复核。执行所需回归和浏览器验收，交付可运行入口、可查看结果、实际错误及仍未验证结论。
 

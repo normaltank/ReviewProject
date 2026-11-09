@@ -1,8 +1,8 @@
-# 首轮条款审核体验：开发规格草案
+# 首轮条款审核体验：已确认开发规格
 
-> 状态：业务范围已确认，用户授权统筹自动按项目流程继续；脱敏规格已发布至[GitHub Issue #1](https://github.com/normaltank/ReviewProject/issues/1)，实施进度见[任务图](first-framework-review-tasks.md)与[交接状态](../STATE.md)。
+> 状态：业务范围已确认，三票代码已本地集成验收，独立审查发现已复核关闭；用户本人首次体验与正式效果验证待做。脱敏规格见[GitHub Issue #1](https://github.com/normaltank/ReviewProject/issues/1)，交付版本、实际验证与Issue状态见[任务图](first-framework-review-tasks.md)及[交接状态](../STATE.md)。
 > 需求依据：2026-11-09业务访谈Q1—Q13及其整体确认、现有项目计划、术语表与ADR-0001。
-> 本文描述待交付行为；已有能力、待补能力和真实效果证据分别说明。
+> 以下需求、问题描述与实现/测试决定保留规格冻结时语境；它们不是当前实施状态或效果已验证的声明，当前结果以交接状态为准。
 
 ## Problem Statement
 
