@@ -1,11 +1,13 @@
 """Synthetic acceptance through the CLI and browser; HTTP model is explicitly fake."""
 import json
+from contextlib import closing
 from contextlib import contextmanager
 import copy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import unittest
 import threading
+import sqlite3
 
 import test_batch_flow as fixture
 from reviewproto.store import encoded
@@ -72,6 +74,10 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(found['issues'][0]['after_provenance'], 'editorial_proposal')
         self.assertEqual(found['issues'][0]['ranking']['distinct_source_records'], 1)
         self.assertEqual(found['issues'][0]['score_links'][0]['provenance'], 'unknown')
+        retain = found['issues'][0]['alternatives'][0]
+        self.assertEqual(retain['support'], [])
+        self.assertEqual(retain['counter'], [])
+        self.assertIn('B支持/反对关系未判', ' '.join(retain['unknowns']))
         patch = self.patch(found)
         for row in patch['decisions']:
             row['issue_id'] = found['issues'][0]['issue_id']
@@ -175,6 +181,9 @@ class DiscoveryTests(unittest.TestCase):
             page.goto((self.batch / 'report.html').as_uri())
             issue = page.locator('.review-issue').first
             self.assertEqual(issue.locator('.alternative').count(), 2)
+            self.assertIn('B支持/反对关系未判', issue.locator('.alternative').first.inner_text())
+            self.assertNotIn('方案支持', issue.locator('.alternative').first.inner_text())
+            self.assertIn('方案支持', issue.locator('.alternative').last.inner_text())
             self.assertIn('明确适用条件候选', issue.inner_text())
             self.assertIn('增加核查负担', issue.inner_text())
             self.assertIn('inferred', issue.inner_text())
@@ -261,3 +270,114 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(saved['decisions'][1]['alternative_id'], 'option-1')
         self.assertEqual(saved['decisions'][1]['selected_after'], found['issues'][0]['alternatives'][1]['after'])
         self.assertEqual(saved['decisions'][1]['alternative_sha256'], digest(encoded(found['issues'][0]['alternatives'][1])))
+
+    def test_append_requires_first_unique_original_retain_and_rejects_whole_payload(self):
+        self.manifest['issues'] = []
+        self.build()
+        self.cli('batch-discover', '--method', 'baseline', '--run-id', 'retain-input')
+        found = self.read()
+        fields = {'issue_id', 'title', 'rule_id', 'support', 'counter', 'rationale', 'after', 'unknowns',
+                  'concept', 'alternatives', 'ranking', 'comparison', 'score_links'}
+        original = {k: copy.deepcopy(v) for k, v in found['issues'][0].items() if k in fields}
+        # Old producers attached discussion references to retain; it must still
+        # be rejected for an invalid identity, rather than for missing evidence.
+        original['alternatives'][0]['support'] = copy.deepcopy(original['support'])
+        missing = copy.deepcopy(original)
+        missing['alternatives'][0]['alternative_id'] = 'baseline'
+        swapped = copy.deepcopy(missing)
+        changed = copy.deepcopy(original['alternatives'][0])
+        changed['after']['requirement'] = '这是修改内容，不能称为保留。'
+        swapped['alternatives'].append(changed)
+        for name, malformed in [('missing', missing), ('swapped', swapped)]:
+            with self.subTest(name=name):
+                good = copy.deepcopy(original)
+                good['issue_id'] = 'valid-first-' + name
+                malformed['issue_id'] = 'invalid-second-' + name
+                payload = dict(schema_version=1, batch_id=found['batch_id'], base_revision=found['revision'],
+                    package_sha256=found['package_sha256'], run_id='invalid-' + name, provenance='synthetic-legacy-input',
+                    issues=[good, malformed])
+                path = self.root / 'append-retain.json'
+                path.write_bytes(encoded(payload))
+                self.assertIn('E_BATCH_RETAIN', self.cli('batch-append-analysis', path, ok=False).stderr)
+                self.cli('batch-recover')
+                self.assertEqual(self.read(), found)
+
+    def test_legacy_keep_rejects_missing_or_modified_retain_without_rewriting_history(self):
+        self.manifest['issues'] = []
+        self.build()
+        self.cli('batch-discover', '--method', 'baseline', '--run-id', 'legacy-retain')
+        found = self.read()
+        initial_patch = self.patch(found)
+        for row in initial_patch['decisions']:
+            row['issue_id'] = found['issues'][0]['issue_id']
+        self.apply(initial_patch)
+        saved = self.read()
+        # An already recorded erroneous historical result is not silently
+        # migrated or presented as a fresh model/human decision by this fix.
+        saved['decisions'][0]['selected_after'] = {'requirement': '历史错误保留结果，原样留待人工复核。'}
+        retain = saved['issues'][0]['alternatives'][0]
+        missing = copy.deepcopy(retain)
+        missing['alternative_id'] = 'baseline'
+        changed = copy.deepcopy(retain)
+        changed['after']['requirement'] = '这是历史包中的改写，不能保存成保留。'
+        cases = [('missing', [missing]), ('swapped', [missing, changed]), ('rewrite', [changed]),
+                 ('duplicate', [retain, changed]), ('empty', [])]
+        for field, value in [('applicable_when', []), ('exceptions', []), ('strength', 'mandatory'),
+                             ('strength_provenance', 'explicit'), ('checks', [])]:
+            hidden_change = copy.deepcopy(retain)
+            hidden_change['after'][field] = value
+            cases.append((field, [hidden_change]))
+        for name, alternatives in cases:
+            with self.subTest(name=name):
+                legacy = copy.deepcopy(saved)
+                legacy['issues'][0]['alternatives'] = copy.deepcopy(alternatives)
+                # Persisted prior-version input fixture only. Assertions and all
+                # business operations use the CLI/recovered public projection.
+                with closing(sqlite3.connect(self.batch / 'batch.sqlite3')) as db:
+                    db.execute('UPDATE state SET payload=? WHERE id=1', (encoded(legacy).decode('utf-8'),))
+                    db.commit()
+                self.cli('batch-recover')
+                reopened = self.read()
+                self.assertEqual(reopened['decisions'], saved['decisions'])
+                if name == 'missing':
+                    self.apply(initial_patch)
+                    self.assertEqual(self.read(), reopened)
+                patch = self.patch(reopened)
+                for row in patch['decisions']:
+                    row['issue_id'] = saved['issues'][0]['issue_id']
+                patch['decisions'][0]['action'] = 'defer'
+                patch['decisions'][1]['action'] = 'keep'
+                self.assertIn('E_BATCH_RETAIN', self.apply(patch, ok=False).stderr)
+                self.cli('batch-recover')
+                self.assertEqual(self.read(), reopened)
+
+    @unittest.skipUnless(fixture.CHROME.is_file() and importlib.util.find_spec('playwright'), 'local Chrome and Playwright needed')
+    def test_browser_legacy_retain_discussion_references_are_not_claimed_as_scheme_support(self):
+        from playwright.sync_api import sync_playwright
+        self.manifest['issues'] = []
+        self.build()
+        self.cli('batch-discover', '--method', 'baseline', '--run-id', 'legacy-role')
+        legacy = self.read()
+        legacy['issues'][0]['alternatives'][0]['support'] = copy.deepcopy(legacy['issues'][0]['support'])
+        with closing(sqlite3.connect(self.batch / 'batch.sqlite3')) as db:
+            db.execute('UPDATE state SET payload=? WHERE id=1', (encoded(legacy).decode('utf-8'),))
+            db.commit()
+        self.cli('batch-recover')
+        self.assertEqual(self.read(), legacy)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=str(fixture.CHROME), headless=True)
+            page = browser.new_page(offline=True)
+            errors, external = [], []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.on('request', lambda req: external.append(req.url) if not req.url.startswith('file:') else None)
+            page.goto((self.batch / 'report.html').as_uri())
+            retain = page.locator('.review-issue').first.locator('.alternative').first
+            self.assertIn('B支持/反对关系未判', retain.inner_text())
+            self.assertNotIn('方案支持', retain.inner_text())
+            self.assertNotIn('方案反例', retain.inner_text())
+            self.assertIn('历史关联引用', retain.inner_text())
+            retain.get_by_role('link').first.click()
+            self.assertIn('资料不足，应说明局限。', page.locator(':target').inner_text())
+            self.assertEqual(errors, [])
+            self.assertEqual(external, [])
+            browser.close()

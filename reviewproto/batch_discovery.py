@@ -63,6 +63,21 @@ def refs_valid(refs, allowed):
     return set(keys)
 
 
+def canonical_retain(alternatives, before):
+    """A keep choice is the first, unique original comparison, never a rewrite.
+
+    Alternative after is deliberately requirement-only: every other mutable
+    rule field inherits before. Reject extra fields even on stored legacy data.
+    """
+    require(isinstance(alternatives, list) and alternatives and
+            all(isinstance(a, dict) for a in alternatives), 'E_BATCH_RETAIN')
+    retain = alternatives[0]
+    require(retain.get('alternative_id') == 'retain' and
+            sum(a.get('alternative_id') == 'retain' for a in alternatives) == 1 and
+            retain.get('after') == {'requirement': before['requirement']}, 'E_BATCH_RETAIN')
+    return retain
+
+
 def validate_issue(issue, sources, rule):
     allowed = {(s['source']['source_id'], c['value']['candidate_id']) for s in sources for c in s['candidates']}
     scope = reference_keys(issue['support'] + issue['counter'])
@@ -73,6 +88,7 @@ def validate_issue(issue, sources, rule):
     for field in ('example', 'boundary_counterexample'):
         require(concept[field] is None or refs_valid([concept[field]], scope), 'E_BATCH_CONCEPT')
     require(isinstance(issue['alternatives'], list) and 1 <= len(issue['alternatives']) <= 6, 'E_BATCH_ALTERNATIVES')
+    canonical_retain(issue['alternatives'], rule)
     seen = set()
     for alternative in issue['alternatives']:
         require(isinstance(alternative, dict) and set(alternative) == {'alternative_id', 'label', 'after', 'support', 'counter', 'rationale', 'benefits', 'costs', 'unknowns', 'provenance'}, 'E_BATCH_ALTERNATIVE')
@@ -87,8 +103,7 @@ def validate_issue(issue, sources, rule):
         text(alternative['after']['requirement'])
         positive = refs_valid(alternative['support'], scope)
         negative = refs_valid(alternative['counter'], scope)
-        require(positive and not positive & negative, 'E_BATCH_ALTERNATIVE')
-    require(issue['alternatives'][0]['after']['requirement'] == rule['requirement'], 'E_BATCH_BEFORE')
+        require((positive or alternative['alternative_id'] == 'retain') and not positive & negative, 'E_BATCH_ALTERNATIVE')
     rank = issue['ranking']
     require(isinstance(rank, dict) and set(rank) == {'reasons', 'distinct_source_records', 'rare_important_hint'}, 'E_BATCH_RANKING')
     texts(rank['reasons'])
@@ -144,8 +159,8 @@ def make_issue(rule, support, counter, *, run_id, number, definition, boundary, 
                 '未提供作者回复或论文事实核验；学术与编辑负担取舍交人工。',
                 '原观点状态：' + ', '.join(sorted(set(candidate_status))) + '；抽取运行状态：' + ', '.join(sorted(set(run_status)) or ['unknown']),
                 '没有反例仅说明本次选定范围未列出；不代表没有反例。']
-    baseline = dict(alternative_id='retain', label='保留原规则对照', after=dict(requirement=rule['requirement']), support=copy.deepcopy(support or counter), counter=[],
-        rationale='保留当前候选规则作为人工对照；B引用仅用于本次讨论，A出处只支持before。', benefits=['保持现行要求的可预期性'], costs=['原条件是否足够清楚仍需核查'], unknowns=['未验证规则后果或正式效力'], provenance='editorial_proposal')
+    baseline = dict(alternative_id='retain', label='保留原规则对照', after=dict(requirement=rule['requirement']), support=[], counter=[],
+        rationale='保留当前候选规则作为原文对照；不将问题证据分配为保留方案的支持或反对，A出处只支持before。', benefits=['保持现行要求的可预期性'], costs=['原条件是否足够清楚仍需核查'], unknowns=['B支持/反对关系未判', '未验证规则后果或正式效力'], provenance='editorial_proposal')
     options = [baseline] + (alternatives or [])
     return dict(issue_id=f'{run_id}-{number}', title=rule['title'] + '：' + rationale[:60], rule_id=rule['rule_id'], support=support, counter=counter,
         rationale=rationale, after=copy.deepcopy(options[1]['after']) if len(options) > 1 else {}, unknowns=list(dict.fromkeys(unknowns + warnings)),

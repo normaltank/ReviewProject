@@ -134,7 +134,7 @@ python -m reviewproto batch-discover --workspace work/batch-review --method loca
 扩展issue保留T1基本字段及系统冻结的before，并增加：
 
 - `concept`：沿用规则ID的候选概念，定义、边界、candidate状态、有出处的讨论正例，边界反例未确证时为null（不把一般反对意见冒充概念边界反例）。
-- `alternatives`：第一项始终保留原规则文字，其余为有引用的编辑改法；每项有稳定局部ID、after.requirement、support/counter、理由、可能益处、代价/负担、未知及editorial_proposal。无反例明确仅限本次范围；原A引文仅支持before，不能支持新增草案文字。
+- `alternatives`：首项且唯一的 `retain` 为原规则对照，after严格仅含与before相同的requirement，其余可变字段全部沿用before，不能借保留改写条件、例外、强度或检查项。自动retain的support/counter为空，B支持/反对关系未判；其余为有合法支持引用的编辑改法。每项有稳定局部ID、after.requirement、support/counter、理由、可能益处、代价/负担、未知及editorial_proposal。无反例明确仅限本次范围；原A引文仅支持before，不能支持新增草案文字。
 - `comparison`：inferred，范围固定selected_candidate_package_only；uncovered仅说本候选包，不能推及完整A标准。
 - `ranking`：distinct_source_records、排序理由与rare_important_hint。按记录数、稳定ID全览，低频可能影响核心结论的线索另列。排序不是学术裁决，频率不变为标准权重。
 - `score_links`：生成后的来源/观点原分关联及explicit或unknown状态，原分仍在源记录原样展示。
@@ -146,3 +146,5 @@ python -m reviewproto batch-discover --workspace work/batch-review --method loca
 审核仍沿普通页面控件下载决定补丁，`batch-apply`后再recover重开查看；下载不等于保存。每行`case_decision`必须带当前问题证据源内的`case_source_id`；`framework_proposal_review`必须为null，两类决定分开。base_revision与package_sha256防旧包写入，重复补丁幂等，人工历史不被重跑覆盖。authority始终unconfirmed；不自动发布标准或替人裁决学术与商业取舍。
 
 扩展issue的`change`决定须由普通下拉选择具体非retain的`alternative_id`；缺失或非法ID整补丁拒收，不自动取第一项。服务端从绑定issue冻结`selected_after`与`alternative_sha256`到决定中，调用者不能伪造after；重开、排序或后续分析不改变该选择。`keep`绑定retain；补材料/暂缓不强迫选定改法。旧T1单after问题及其无alternative_id补丁沿旧语义兼容。
+
+新扩展输入与旧扩展问题新增keep时均检查首项唯一retain及其完整有效内容；缺失、歧义或藏有改动时整补丁原子拒收，不能退回T1语义。旧包恢复不迁移问题、模型响应或已存人工决定（含历史selected_after）；旧自动retain中复制的B引用只在页面中性展示为历史关联，支持/反对关系未判，不能继续当作保留依据。纠正须另行审核留痕，不能冒充新模型推理。

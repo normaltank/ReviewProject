@@ -360,6 +360,9 @@ class BatchWorkspace:
                 text(row['reason'])
                 issue = issues[row['issue_id']]
                 require(issue['validity'] == 'current', 'E_BATCH_ISSUE_STALE')
+                if 'alternatives' in issue and row['action'] == 'keep':
+                    from .batch_discovery import canonical_retain
+                    canonical_retain(issue['alternatives'], issue['before'])
                 variants = {a['alternative_id']: a for a in issue.get('alternatives', [])}
                 selected_id = row.get('alternative_id')
                 if variants and row['action'] == 'change':
