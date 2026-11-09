@@ -8,6 +8,7 @@ import importlib.util
 import unittest
 import threading
 import sqlite3
+from lxml import html as html_parser
 
 import test_batch_flow as fixture
 from reviewproto.store import encoded
@@ -90,6 +91,28 @@ class DiscoveryTests(unittest.TestCase):
         self.assertIn('相关词/条件线索', html)
         self.assertIn('排序理由', html)
         self.assertNotIn('PRIVATE-SYNTHETIC', html)
+
+    def test_cli_report_shows_original_conditions_and_inherited_retain_context(self):
+        self.manifest['issues'] = []
+        self.build()
+        self.cli('batch-discover', '--method', 'baseline', '--run-id', 'visible-context')
+        before = self.read()
+        self.cli('batch-recover')
+        self.assertEqual(self.read(), before)
+        report = html_parser.fromstring((self.batch / 'report.html').read_text(encoding='utf-8'))
+        scopes = [report.get_element_by_id('rule-rule-1')]
+        scopes += report.find_class('rule-before')
+        scopes += report.find_class('alternative')
+        self.assertGreaterEqual(len(scopes), 3)
+        for scope in scopes:
+            with self.subTest(scope=scope.get('class', 'rule-list')):
+                visible = scope.text_content()
+                for expected in ['适用条件', '资料有限时', '例外', '不预设必须新增资料',
+                                 '要求强度', '建议（recommended）', '强度来源', '推断（inferred）',
+                                 '规则未知项', '正式适用范围未知', '检查项', '核实条件']:
+                    self.assertIn(expected, visible)
+        self.assertTrue(report.find_class('rule-before'))
+        self.assertIn('沿用原规则', report.find_class('alternative')[0].text_content())
 
     def test_fake_local_proposals_preserve_opposition_and_failure_then_invalidate_after_correction(self):
         self.manifest['issues'] = []
@@ -181,6 +204,13 @@ class DiscoveryTests(unittest.TestCase):
             page.goto((self.batch / 'report.html').as_uri())
             issue = page.locator('.review-issue').first
             self.assertEqual(issue.locator('.alternative').count(), 2)
+            for context in [page.locator('#rule-rule-1'), issue.locator('.rule-before'),
+                            issue.locator('.alternative').first, issue.locator('.alternative').last]:
+                for expected in ['适用条件', '资料有限时', '例外', '不预设必须新增资料',
+                                 '要求强度', '建议（recommended）', '强度来源', '推断（inferred）',
+                                 '规则未知项', '正式适用范围未知', '检查项', '核实条件']:
+                    self.assertIn(expected, context.inner_text())
+            self.assertIn('仅修改要求文字', issue.locator('.alternative').last.inner_text())
             self.assertIn('B支持/反对关系未判', issue.locator('.alternative').first.inner_text())
             self.assertNotIn('方案支持', issue.locator('.alternative').first.inner_text())
             self.assertIn('方案支持', issue.locator('.alternative').last.inner_text())
