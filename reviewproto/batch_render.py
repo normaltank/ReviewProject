@@ -9,8 +9,18 @@ def render(state):
     parts = ['<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>多来源条款审核</title>',
              '<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{max-width:1100px;margin:auto;padding:24px;font:16px/1.6 system-ui;color:#202c36;background:#f5f6f8}article,section,fieldset{background:white;border:1px solid #b8c2cc;border-radius:8px;padding:20px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f6;padding:12px}label{display:block;margin:10px 0}select,input,textarea,button{font:inherit;max-width:100%;padding:8px}textarea{width:90%}button{cursor:pointer}a{color:#074b8b}:target{outline:3px solid #b78612}strong{color:#8a3b13}</style>',
              '<h1>多来源条款审核</h1><p>本机可信编辑材料，沿用来源权限。不是作者端导出。区分人工预填、规则相关词/条件线索与本地模型探索；不发布正式标准。</p><p>来源按原件指纹去重，不推定独立教师或稿件数。个案选择指向审稿记录，稿件身份关系仍待核。</p>']
-    parts.append(f'<p id="material-status">材料状态：{esc(state.get("material_status", "current"))}</p><p>静态页面无法实时监测原工作区。纠正后请运行 batch-recover 检查旧包，再用新修订清单 batch-build 刷新；历史决定仍须重新核对。</p>')
-    parts.append('<h2>分析运行与覆盖范围</h2><p>合法JSON与引用通过不等于业务通过。零候选、失败和部分完成分别保留；本机模型失败不自动回退规则。全部候选均列于下方，不按频率自动批准。</p>')
+    parts.append('<style>*{box-sizing:border-box}body{overflow-wrap:anywhere}select{width:100%}fieldset{min-width:0}button{margin:4px} @media(max-width:600px){body{padding:12px}article,section,fieldset{padding:12px}}</style>')
+    material_status = state.get('material_status', 'current')
+    material_label = {'current': '与当前来源版本一致', 'needs_refresh': '来源已变化，需刷新并复核'}.get(material_status, '版本状态待检查')
+    parts.append(f'<p id="material-status">材料状态：{esc(material_label)}</p><details><summary>版本与刷新说明</summary><p>版本状态代码：{esc(material_status)}。版本一致不表示判断已核实。静态页面无法实时监测原工作区。纠正后先在原来源应用观点补丁，再在桌面“刷新包”；拆分或补录后用“重选观点并刷新包”。旧决定需复核，旧建议需重新分析。</p></details>')
+    parts.append('''<section id="review-cost"><h2>体验计时（可选）</h2>
+<p>仅记录本页活动；原文纠正和桌面操作另记，不是总审核成本。隐藏后暂停，返回须手动继续。</p>
+<label>执行者类型（自报）<select id="cost-actor-kind"><option value="agent">代理演练</option><option value="user">用户本人体验</option></select></label>
+<label>比较方法（任务声明）<select id="cost-method"><option value="mixed_review">综合审核</option><option value="baseline">规则对照</option><option value="local">本地模型候选</option></select></label>
+<button id="cost-start" type="button">开始计时</button><button id="cost-pause" type="button" disabled>暂停</button><button id="cost-finish" type="button" disabled>结束会话</button><button id="cost-download" type="button" disabled>下载独立计时记录</button>
+<p id="cost-status" role="status">未开始；打开页面不计工时。</p><output id="cost-elapsed">活动 0.0 秒；暂停 0.0 秒</output>
+<details><summary>独立计时记录说明</summary><p>结束后下载独立JSON；刷新或关闭前未下载的记录会丢失。只保存包版本绑定、执行者类型、方法、用时和操作尝试数，不保存身份、原文或完整状态。类型是自报，不认证专业资质；尝试和下载不等于应用成功，代理耗时不代表人工收益。选择方法不切换分析。</p></details></section>''')
+    parts.append('<h2>分析运行与覆盖范围</h2><p>零候选、失败和部分完成分别保留；模型失败不自动回退规则。全部候选均可查看，审核顺序不代表批准。</p><details><summary>分析校验说明</summary><p>合法JSON与引用校验通过，仅说明格式及出处绑定通过，不等于业务判断已核实。</p></details>')
     for run in state.get('analysis_runs', []):
         parts.append(f'<article class="analysis-run"><p>{esc(run["run_id"])} · {esc(run.get("method", run["provenance"]))} · {esc(run.get("status", "legacy_unspecified"))} · {esc(run.get("validity", "unknown"))}</p><p>本地模型请求 {esc(run.get("model_requests", "unknown"))} · 错误 {esc(run.get("errors", []))}</p><p>输入指纹 {esc(run.get("input_sha256", run["input_package_sha256"]))}</p><p>{esc(run.get("limitations", []))}</p></article>')
     rare = [i for i in state['issues'] if i.get('ranking', {}).get('rare_important_hint')]
@@ -39,7 +49,7 @@ def render(state):
                 parts.append(f'<p>原文 [{evidence["start"]}, {evidence["end"]})</p><pre>{esc(evidence["quote"])}</pre>')
             parts.append('</article>')
         link = (Path(source['workspace']) / 'report.html').as_uri()
-        parts.append(f'<a href="{esc(link)}">在原工作区纠正观点</a><p>下载观点补丁后，须在原工作区 apply，再用新修订清单刷新本包；当前页面不会自动保存。</p></section>')
+        parts.append(f'<a href="{esc(link)}">在原工作区纠正观点</a><p>下载观点补丁后，在桌面下拉选择本来源并“打开所选原来源”，再用上方“选择下载补丁并应用”。随后刷新审核包并重开；本页不会自动保存。</p></section>')
     parts.append('<h2>规则候选 · authority=unconfirmed</h2><p>原规则引文只支持 before；after 是编辑建议，未经专业确认。</p>')
     for rule in state['framework']['book']['rules']:
         parts.append(f'<article id="rule-{esc(rule["rule_id"])}"><h3>{esc(rule["title"])}</h3><pre>{esc(rule["requirement"])}</pre>')
@@ -72,7 +82,15 @@ def render(state):
                 anchor = ref['source_id'] + '-' + ref['candidate_id']
                 parts.append(f'<a href="#candidate-{esc(anchor)}">{esc(ref["candidate_id"])}</a> ')
         parts.append(f'<p>未知：{esc(issue["unknowns"])}</p></article>')
-    options = ''.join(f'<option value="{esc(i["issue_id"])}">{esc(i["title"])}</option>' for i in state['issues'])
+    pending_ids = state.get('refresh_pending_issue_ids', [])
+    if pending_ids:
+        parts.append('<section id="refresh-pending"><h2>重选后待重新分析的问题（只读历史）</h2><p>旧证据不转绑新子项。以下问题已保存在包历史；请通过既有 batch-discover 重新分析选定材料。尚未自动重新分析。</p>')
+        for issue_id in pending_ids:
+            old = next((i for package in reversed(state['package_history']) for i in package['issues'] if i['issue_id'] == issue_id), None)
+            if old:
+                parts.append(f'<article><h3>{esc(old["title"])}</h3><p>{esc(issue_id)} · needs_revalidation</p><pre>{esc(old["after"])}</pre></article>')
+        parts.append('</section>')
+    options = ''.join(f'<option value="{esc(i["issue_id"])}">{esc(i["title"])}</option>' for i in state['issues'] if i.get('validity') != 'needs_revalidation')
     parts.append('<fieldset><legend>记录审核决定</legend><p>个案处理与通用条款讨论分别保存；选择修改也不发布正式标准。</p>'
                  f'<label>问题<select id="issue">{options}</select></label>'
                  '<label>决定类型<select id="decision-type"><option value="case_decision">个案处理决定</option><option value="framework_proposal_review">Framework候选提案审核</option></select></label>'
@@ -82,7 +100,7 @@ def render(state):
                  '<label>本项理由<textarea id="decision-reason"></textarea></label><button id="queue" type="button">加入决定队列</button>'
                  '<ul id="draft-list"></ul><label>操作者（声明）<input id="actor"></label><label>本次审核说明<textarea id="reason"></textarea></label>'
                  '<button id="download" type="button">下载决定补丁</button><p id="save-status" role="status">草稿尚未应用。本页关闭会丢失未下载草稿。</p>'
-                 '<p>下载不等于保存成功。用本机 batch-apply 应用补丁，再 batch-recover 并重开此页查看已应用历史。</p></fieldset>')
+                 '<p>下载不等于保存成功。在桌面“应用下载决定”，再“恢复审核包并重开”查看已应用历史。个案仅指所选来源记录；通用条款始终是草案讨论，未发布。</p></fieldset>')
     parts.append('<h2>已应用决定及历史</h2>')
     for decision in state['decisions']:
         parts.append(f'<article class="saved-decision"><p>{esc(decision["issue_id"])} · {esc(decision["decision_type"])} · {esc(decision["action"])} · <strong>{esc(decision["validity"])}</strong></p><p>个案来源：{esc(decision.get("case_source_id") or "不适用（通用条款讨论）")} · 修订 {decision["revision"]}</p><p>{esc(decision["reason"])}</p><p>{esc(decision["actor"])} · {esc(decision["at"])} · {esc(decision["decision_id"])}</p></article>')
@@ -93,5 +111,5 @@ def render(state):
     cases = {i['issue_id']: list(dict.fromkeys(r['source_id'] for kind in ('support', 'counter') for r in i[kind])) for i in state['issues']}
     alternatives = {i['issue_id']: [dict(alternative_id=a['alternative_id'], label=a['label']) for a in i.get('alternatives', [])] for i in state['issues']}
     data = json.dumps(dict(envelope=envelope, issue_cases=cases, alternatives=alternatives), ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
-    parts.append('<script id="batch-data" type="application/json">' + data + '</script><script>' + Path(__file__).with_name('batch_editor.js').read_text(encoding='utf-8') + '</script>')
+    parts.append('<script id="batch-data" type="application/json">' + data + '</script><script>' + Path(__file__).with_name('batch_editor.js').read_text(encoding='utf-8') + '</script><script>' + Path(__file__).with_name('batch_cost.js').read_text(encoding='utf-8') + '</script>')
     return '\n'.join(parts) + '</html>'

@@ -183,7 +183,7 @@ class BatchFlowTests(unittest.TestCase):
             self.cli('apply', correction, workspace=self.sources[0])
             self.cli('batch-recover')
             page.goto((self.batch / 'report.html').as_uri())
-            self.assertIn('needs_refresh', page.locator('#material-status').inner_text())
+            self.assertIn('来源已变化，需刷新并复核', page.locator('#material-status').inner_text())
             self.manifest['sources'][0]['revision'] = self.read(self.sources[0])['revision']
             self.build()
             page.reload()

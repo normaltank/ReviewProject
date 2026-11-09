@@ -211,7 +211,7 @@ class BatchWorkspace:
         for decision in state['decisions']:
             decision['validity'] = 'current' if not stale and decision['package_sha256'] == state['package_sha256'] else 'needs_revalidation'
         for issue in state['issues']:
-            issue['validity'] = 'needs_revalidation' if stale else 'current'
+            issue['validity'] = 'needs_revalidation' if stale or issue.get('requires_revalidation') else 'current'
         for run in state.get('analysis_runs', []):
             from .batch_discovery import input_binding
             run['validity'] = 'current' if not stale and run.get('input_sha256') == input_binding(state) else 'needs_revalidation'
@@ -221,6 +221,97 @@ class BatchWorkspace:
         state = self.state()
         return dict(schema_version=1, batch_id=state['batch_id'], base_revision=state['revision'], actor='', reason='',
                     package_sha256=state['package_sha256'], decisions=[])
+
+    def refresh_options(self):
+        """Current choices within the frozen permission and run boundary only."""
+        state = self.state()
+        result = dict(batch_id=state['batch_id'], base_revision=state['revision'],
+                      package_sha256=state['package_sha256'], sources=[])
+        for frozen in state['sources']:
+            actual = source_state(frozen['workspace'])
+            require(actual['source']['source_id'] == frozen['source']['source_id'], 'E_BATCH_SOURCE_ID')
+            sections = {s['section_id'] for s in frozen['sections']}
+            allowed = {s['section_id'] for s in actual['sections'] if s['section_id'] in sections and
+                       s['visibility'] in {'author_visible', 'visibility_unknown'}}
+            require(sections == allowed, 'E_BATCH_PRIVATE')
+            originals = {c['candidate_id']: c for c in actual['candidates']}
+            previous = [c['value']['candidate_id'] for c in frozen['candidates']]
+            choices = []
+            for candidate in current_views(actual):
+                if candidate['section_id'] not in allowed:
+                    continue
+                original = originals[candidate['candidate_id']]
+                # An explicit reselect may add human corrections or children,
+                # but cannot pull suggestions from another machine run.
+                if candidate['candidate_id'] not in previous and original.get('origin') not in {'human_decision', 'human_created'}:
+                    if frozen['view']['kind'] != 'run' or original.get('run_id') != frozen['view']['run_id']:
+                        continue
+                choices.append(copy.deepcopy(candidate))
+            selectable = {c['candidate_id'] for c in choices if c['status'] not in {'rejected', 'withdrawn', 'superseded'}}
+            result['sources'].append(dict(source_id=frozen['source']['source_id'], workspace=frozen['workspace'],
+                revision=actual['revision'], view=copy.deepcopy(frozen['view']), previous_ids=previous,
+                choices=choices, selection_changed=set(previous) != selectable))
+        return result
+
+    def refresh(self, selection=None):
+        """Refresh bindings, preserving history; changed selections require consent.
+
+        selection is the exact refresh_options envelope with each sources row
+        reduced to source_id/revision/candidate_ids. The desktop constructs it
+        from ordinary checkboxes, never from caller-provided paths or sections.
+        """
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            state, options = self.state(), self.refresh_options()
+            explicit = selection is not None
+            if explicit:
+                require(isinstance(selection, dict) and set(selection) == {'batch_id', 'base_revision', 'package_sha256', 'sources'}, 'E_BATCH_SELECTION')
+                require(all(selection[k] == options[k] for k in ('batch_id', 'base_revision', 'package_sha256')), 'E_BATCH_REVISION')
+                require(isinstance(selection['sources'], list) and len(selection['sources']) == len(options['sources']), 'E_BATCH_SELECTION')
+            else:
+                require(not any(s['selection_changed'] for s in options['sources']), 'E_BATCH_RESELECT_REQUIRED')
+            sources = []
+            for index, (frozen, current) in enumerate(zip(state['sources'], options['sources'])):
+                ids, view = current['previous_ids'], frozen['view']
+                if explicit:
+                    row = selection['sources'][index]
+                    require(isinstance(row, dict) and set(row) == {'source_id', 'revision', 'candidate_ids'} and
+                            row['source_id'] == current['source_id'] and row['revision'] == current['revision'], 'E_BATCH_SOURCE_REVISION')
+                    ids = row['candidate_ids']
+                    require(isinstance(ids, list) and ids and all(isinstance(cid, str) for cid in ids) and
+                            set(ids) <= {c['candidate_id'] for c in current['choices']}, 'E_BATCH_SELECTION')
+                    # The dialog explicitly labels this exploratory switch.
+                    view = dict(kind='selected', run_id=None)
+                sources.append(select_source(dict(workspace=frozen['workspace'], source_id=current['source_id'],
+                    revision=current['revision'], section_ids=[s['section_id'] for s in frozen['sections']],
+                    candidate_ids=ids, view=view), Path.cwd()))
+            if sources == state['sources']:
+                self._publish(state)
+                self.db.execute('COMMIT')
+                return state
+            refs = {(s['source']['source_id'], c['value']['candidate_id']) for s in sources for c in s['candidates']}
+            issues, pending = [], list(state.get('refresh_pending_issue_ids', []))
+            for issue in state['issues']:
+                if all((r['source_id'], r['candidate_id']) in refs for kind in ('support', 'counter') for r in issue[kind]):
+                    issue['requires_revalidation'] = True
+                    issues.append(issue)
+                else:
+                    if issue['issue_id'] not in pending:
+                        pending.append(issue['issue_id'])
+            state.update(sources=sources, issues=issues, refresh_pending_issue_ids=pending)
+            package = {k: state[k] for k in ('sources', 'framework', 'issues')}
+            state['package_sha256'] = framework_digest(package)
+            state['revision'] += 1
+            state['package_history'].append(dict(package_sha256=state['package_sha256'], at=now(), **copy.deepcopy(package)))
+            bounded(state)
+            self.db.execute('INSERT OR REPLACE INTO state VALUES (1, ?)', (encoded(state).decode('utf-8'),))
+            state = self.state()
+            self._publish(state)
+            self.db.execute('COMMIT')
+            return state
+        except Exception:
+            self.db.execute('ROLLBACK')
+            raise
 
     def recover(self):
         self.db.execute('BEGIN IMMEDIATE')
@@ -268,6 +359,7 @@ class BatchWorkspace:
                 seen.add(key)
                 text(row['reason'])
                 issue = issues[row['issue_id']]
+                require(issue['validity'] == 'current', 'E_BATCH_ISSUE_STALE')
                 variants = {a['alternative_id']: a for a in issue.get('alternatives', [])}
                 selected_id = row.get('alternative_id')
                 if variants and row['action'] == 'change':
