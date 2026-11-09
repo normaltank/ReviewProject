@@ -66,7 +66,15 @@ def render(state):
             parts.append(f'<p>规则对照（inferred）：{esc(issue["comparison"])}</p><p class="ranking">排序理由：{esc(issue["ranking"]["reasons"])}</p><p>原分关联（生成后连接）：{esc(issue["score_links"])}</p>')
             for alternative in issue['alternatives']:
                 parts.append(f'<section class="alternative"><h3>{esc(alternative["label"])}</h3><p>editorial_proposal · authority=unconfirmed</p><pre>{esc(alternative["after"]["requirement"])}</pre><p>理由：{esc(alternative["rationale"])}</p><p>可能益处：{esc(alternative["benefits"])}；代价/负担：{esc(alternative["costs"])}</p><p>未知：{esc(alternative["unknowns"])}</p>')
-                for kind, label in [('support', '方案支持'), ('counter', '方案反例')]:
+                if alternative['alternative_id'] == 'retain':
+                    # Old producers copied discussion evidence into retain.
+                    # Keep those records visible without endorsing their roles.
+                    parts.append('<p>保留对照记录；原规则见 before。B支持/反对关系未判；以下历史字段不表示已核实的方案依据。</p>')
+                    labels = [('support', '历史关联引用（原support字段，关系未判）'),
+                              ('counter', '历史关联引用（原counter字段，关系未判）')]
+                else:
+                    labels = [('support', '方案支持'), ('counter', '方案反例')]
+                for kind, label in labels:
                     parts.append(f'<p>{label}：')
                     for ref in alternative[kind]:
                         anchor = ref['source_id'] + '-' + ref['candidate_id']
