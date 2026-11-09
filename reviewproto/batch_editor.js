@@ -73,6 +73,6 @@
     a.download = "batch-decisions.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    status("补丁已下载，尚未应用；请通过本机 batch-apply 校验保存后重开。");
+    status("补丁已下载，尚未应用；请在桌面‘应用下载决定’，再‘恢复审核包并重开’核对保存结果。");
   });
 })();

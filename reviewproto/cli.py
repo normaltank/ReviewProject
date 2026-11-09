@@ -28,12 +28,14 @@ def main(argv=None):
         item.add_argument('--model', default='reviewproject-qwen3-4b-q4km')
         item.add_argument('--max-output-tokens', type=int, default=4096)
         item.add_argument('--context-chars', type=int, default=10000)
-        for command in ("batch-build", "batch-apply", "batch-recover", "batch-template", "batch-append-analysis"):
+        for command in ("batch-build", "batch-apply", "batch-recover", "batch-refresh", "batch-template", "batch-append-analysis"):
             item = sub.add_parser(command)
             if command in ("batch-build", "batch-apply", "batch-append-analysis"):
                 item.add_argument("input")
             if command == "batch-template":
                 item.add_argument("--output", default="decision-template.json")
+            if command == 'batch-refresh':
+                item.add_argument('--selection')
             item.add_argument("--workspace", default="work/batch-review")
         for command in ("run", "review", "export-template", "apply", "render", "recover", "ingest-candidates", "ingest-clauses", "ingest-framework", "framework-template", "apply-framework-review"):
             item = sub.add_parser(command)
@@ -70,6 +72,8 @@ def main(argv=None):
                 workspace.apply(input_path=args.input)
             elif args.command == "batch-recover":
                 workspace.recover()
+            elif args.command == 'batch-refresh':
+                workspace.refresh(read_json(args.selection) if args.selection else None)
             elif args.command == "batch-append-analysis":
                 workspace.append_analysis(input_path=args.input)
             else:

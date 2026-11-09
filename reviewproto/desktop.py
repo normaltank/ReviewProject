@@ -43,6 +43,8 @@ def safe_message(error):
         return code + '：修改已提交，但报告输出失败。请使用“恢复报告”，再重新打开核对；不要改写补丁修订号。'
     if code.startswith('E_LOCAL_MODEL') or code == 'E_MODEL_NOT_OWNED':
         return code + '：请核对本机已安装模型与项目服务状态。不会下载或接管其他实例；启动失败的实例请由原启动窗口或项目脚本核对停止。'
+    if code.startswith('E_BATCH_'):
+        return code + '：审核包操作未完成。请恢复审核包并重开核对；观点拆分或补录后用“重选观点并刷新包”。旧建议需重新分析，旧决定需复核。'
     return code + '：操作未完成；保存可能已提交。请保留所选文件，使用“恢复报告”核对当前修订后重试。'
 
 
@@ -76,6 +78,65 @@ def run_powershell(arguments):
 class Controller:
     def __init__(self):
         self.path = None
+        self.batch_path = None
+
+    def _batch_existing(self):
+        from .batch import checked_local
+        require(self.batch_path is not None, 'E_BATCH_MISSING')
+        path = checked_local(self.batch_path)
+        require((path / 'batch.sqlite3').is_file(), 'E_BATCH_MISSING')
+        return path
+
+    def _batch_result(self, state, **extra):
+        return dict(kind='batch', path=self.batch_path, batch_id=state['batch_id'], revision=state['revision'],
+                    material_status=state['material_status'],
+                    sources=[dict(source_id=s['source']['source_id'], workspace=s['workspace']) for s in state['sources']], **extra)
+
+    def open_batch(self, path):
+        from .batch import BatchWorkspace, checked_local
+        target = checked_local(path)
+        require((target / 'batch.sqlite3').is_file(), 'E_BATCH_MISSING')
+        self.batch_path = target
+        return self.recover_batch()
+
+    def recover_batch(self):
+        from .batch import BatchWorkspace
+        with closing(BatchWorkspace(self._batch_existing())) as ws:
+            return self._batch_result(ws.recover())
+
+    def apply_batch(self, patch):
+        from .batch import BatchWorkspace
+        with closing(BatchWorkspace(self._batch_existing())) as ws:
+            before = ws.state()['revision']
+            state = ws.apply(input_path=patch)
+            return self._batch_result(state, idempotent=state['revision'] == before)
+
+    def batch_refresh_options(self):
+        from .batch import BatchWorkspace
+        with closing(BatchWorkspace(self._batch_existing())) as ws:
+            return ws.refresh_options()
+
+    def refresh_batch(self, selection=None):
+        from .batch import BatchWorkspace
+        with closing(BatchWorkspace(self._batch_existing())) as ws:
+            return self._batch_result(ws.refresh(selection))
+
+    def open_batch_source(self, source_id):
+        from .batch import BatchWorkspace
+        with closing(BatchWorkspace(self._batch_existing())) as ws:
+            source = next((s for s in ws.state()['sources'] if s['source']['source_id'] == source_id), None)
+            require(source is not None, 'E_BATCH_SOURCE_ID')
+            path = source['workspace']
+        return self.open_workspace(path)
+
+    def open_batch_report(self):
+        path = self._batch_existing() / 'report.html'
+        require(path.is_file() and not linklike(path), 'E_REPORT_MISSING')
+        if os.name == 'nt':
+            os.startfile(path)
+        else:
+            import webbrowser
+            webbrowser.open(path.as_uri())
 
     @staticmethod
     def _existing(path):
@@ -191,18 +252,28 @@ def main():
 
     root = tk.Tk()
     root.title('ReviewProject · 可信编辑本机入口')
-    root.geometry('760x720')
+    root.geometry('800x920')
     controller, results = Controller(), queue.Queue()
     busy = False
     widgets = []
     status = tk.StringVar(value='选择新材料或已有工作区。材料、报告和补丁仅供可信编辑。')
     location = tk.StringVar(value='尚未打开工作区')
+    batch_location = tk.StringVar(value='尚未选择审核包；下载决定不等于已保存。')
+    batch_source = tk.StringVar()
     origin_labels = {'unknown': '未确认', 'original_review': '原始审稿', 'synthetic': '合成演示'}
     origin = tk.StringVar(value=origin_labels['unknown'])
     source_format = tk.StringVar(value='docx')
     section = tk.StringVar()
-    frame = ttk.Frame(root, padding=16)
-    frame.pack(fill='both', expand=True)
+    ttk.Label(root, textvariable=status, wraplength=750).pack(fill='x', padx=16, pady=10)
+    outer = tk.Canvas(root, highlightthickness=0)
+    outer_scroll = ttk.Scrollbar(root, orient='vertical', command=outer.yview)
+    outer.configure(yscrollcommand=outer_scroll.set)
+    outer_scroll.pack(side='right', fill='y')
+    outer.pack(fill='both', expand=True)
+    frame = ttk.Frame(outer, padding=16)
+    outer_window = outer.create_window((0, 0), window=frame, anchor='nw')
+    frame.bind('<Configure>', lambda e: outer.configure(scrollregion=outer.bbox('all')))
+    outer.bind('<Configure>', lambda e: outer.itemconfigure(outer_window, width=e.width))
     ttk.Label(frame, text='可信编辑工作区', font=('', 16)).pack(anchor='w')
     ttk.Label(frame, textvariable=location, wraplength=700).pack(anchor='w', pady=10)
     options = ttk.Frame(frame)
@@ -247,7 +318,16 @@ def main():
                     location.set(str(controller.path) + ' · 保存状态待恢复核对')
             else:
                 status.set(success)
-                if isinstance(result, dict):
+                if isinstance(result, dict) and result.get('kind') == 'batch':
+                    batch_location.set(str(result['path']) + ' · 审核包 ' + result['batch_id'] + ' · 已保存修订 ' + str(result['revision']) + ' · 材料 ' + result['material_status'])
+                    batch_source_box['values'] = [s['source_id'] for s in result['sources']]
+                    if batch_source.get() not in batch_source_box['values']:
+                        batch_source.set(result['sources'][0]['source_id'] if result['sources'] else '')
+                    if result.get('idempotent'):
+                        status.set('同一审核决定已应用；幂等重放，修订不变。请重开审核页核对。')
+                elif isinstance(result, dict) and result.get('show_refresh_choices'):
+                    show_refresh_choices(result['options'])
+                elif isinstance(result, dict):
                     location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · 来源 ' + origin_labels[result['origin']])
                     section_box['values'] = [s['section_id'] for s in result['sections']]
                     if section.get() not in section_box['values']:
@@ -295,6 +375,75 @@ def main():
     button('选择下载补丁并应用', choose_patch)
     button('恢复报告', lambda: submit(controller.recover, '报告已恢复，请重新打开核对。'))
     ttk.Separator(frame).pack(fill='x', pady=8)
+    ttk.Label(frame, text='多来源条款审核包', font=('', 14)).pack(anchor='w')
+    ttk.Label(frame, textvariable=batch_location, wraplength=750).pack(anchor='w')
+
+    def choose_batch():
+        path = filedialog.askdirectory(title='选择含 batch.sqlite3 的审核包目录')
+        if path:
+            submit(lambda: controller.open_batch(path), '审核包已恢复；请打开审核页。')
+
+    def choose_batch_decisions():
+        path = filedialog.askopenfilename(title='选择下载的审核决定（不是计时记录）', filetypes=[('JSON', '*.json')])
+        if path:
+            submit(lambda: controller.apply_batch(path), '审核决定已应用保存；请恢复并重开审核页核对。未发布正式标准。')
+
+    def show_refresh_choices(options):
+        dialog = tk.Toplevel(root)
+        dialog.title('重选授权普通观点并刷新')
+        dialog.geometry('780x560')
+        dialog.transient(root)
+        dialog.grab_set()
+        ttk.Label(dialog, text='明确选择后切换为 selected 探索视图；待核不变为已确认。\n仅列原授权普通分区及原运行/手工观点。旧建议不自动转绑新子项，需重新分析。', wraplength=730).pack(padx=12, pady=12)
+        canvas = tk.Canvas(dialog)
+        scroll = ttk.Scrollbar(dialog, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right', fill='y')
+        canvas.pack(fill='both', expand=True)
+        content = ttk.Frame(canvas)
+        window = canvas.create_window((0, 0), window=content, anchor='nw')
+        content.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>', lambda e: canvas.itemconfigure(window, width=e.width))
+        checks = []
+        for source in options['sources']:
+            ttk.Label(content, text='来源 ' + source['source_id'] + ' · 原视图 ' + source['view']['kind'], wraplength=700).pack(anchor='w', pady=10)
+            rows = []
+            for candidate in source['choices']:
+                enabled = candidate['status'] not in {'rejected', 'withdrawn', 'superseded'}
+                value = tk.BooleanVar(value=enabled and candidate['candidate_id'] in source['previous_ids'])
+                box = ttk.Checkbutton(content, text=candidate['candidate_id'] + ' · ' + candidate['status'] + ' · ' + candidate['origin'], variable=value)
+                box.pack(anchor='w')
+                if not enabled:
+                    box.configure(state='disabled')
+                preview = '\n'.join(e['quote'] for e in candidate['evidence'])
+                ttk.Label(content, text=preview + '\n父观点：' + str(candidate.get('parent_ids', [])) +
+                    ' · 替换：' + str(candidate.get('replaces', [])), wraplength=700).pack(anchor='w', padx=24)
+                rows.append((candidate['candidate_id'], value))
+            checks.append((source, rows))
+
+        def confirm_selection():
+            selection = {k: options[k] for k in ('batch_id', 'base_revision', 'package_sha256')}
+            selection['sources'] = [dict(source_id=s['source_id'], revision=s['revision'],
+                candidate_ids=[cid for cid, value in rows if value.get()]) for s, rows in checks]
+            dialog.destroy()
+            submit(lambda: controller.refresh_batch(selection), '已按所选观点刷新。旧决定需复核；旧建议需重新分析。请重开审核页。')
+        ttk.Button(dialog, text='明确选中并刷新（探索视图）', command=confirm_selection).pack(pady=10)
+
+    button('选择审核包', choose_batch)
+    button('打开审核页', lambda: submit(controller.open_batch_report, '审核页已交给本机浏览器；下载后仍须应用决定。'))
+    button('应用下载决定', choose_batch_decisions)
+    def recover_and_reopen():
+        result = controller.recover_batch()
+        controller.open_batch_report()
+        return result
+    button('恢复审核包并重开', lambda: submit(recover_and_reopen, '已恢复并打开当前已保存审核页。'))
+    button('刷新包（同一观点纠正后）', lambda: submit(controller.refresh_batch, '已刷新绑定；旧决定和旧建议需复核/重新分析。请重开审核页。'))
+    button('重选观点并刷新包（拆分/补录后）', lambda: submit(lambda: dict(show_refresh_choices=True, options=controller.batch_refresh_options())))
+    batch_source_box = ttk.Combobox(frame, textvariable=batch_source, state='readonly', width=65)
+    batch_source_box.pack(anchor='w')
+    widgets.append(batch_source_box)
+    button('打开所选原来源（纠正后在上方应用观点补丁）', lambda: submit(lambda: controller.open_batch_source(batch_source.get()), '已切换上方单来源工作区；用原报告纠正并应用观点补丁，再刷新审核包。'))
+    ttk.Separator(frame).pack(fill='x', pady=8)
     ttk.Label(frame, text='可选本地模型：仅处理所选普通分区；提取并导入的候选仍待人工复核。').pack(anchor='w')
     section_box = ttk.Combobox(frame, textvariable=section, state='readonly')
     section_box.pack(anchor='w')
@@ -305,7 +454,6 @@ def main():
         submit(lambda: controller.extract(chosen))
     button('抽取所选普通分区并导入', extract_selected)
     button('停止本窗口启动的模型', lambda: submit(controller.stop_model, '本窗口启动的模型已停止。'))
-    ttk.Label(frame, textvariable=status, wraplength=700).pack(anchor='w', pady=12)
 
     def close():
         if busy:
