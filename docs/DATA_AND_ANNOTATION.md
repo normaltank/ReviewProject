@@ -113,3 +113,36 @@ book 与 framework-review payload 的输入 bytes 和 canonical 编码各受 10,
 ## 进入 Framework 修订的条件
 
 当前允许用待核课程包做探索性对照和草案，但必须显式保留现行基线待确认；课程解释不能冒充对正式 A 要求的已确认修改。进入正式决策前仍需确认 A 有效版本与适用范围，核验稿件事实、独立稿件与审稿人分母、作者和编辑负担，并完成独立试评及回退设计。出版社授权人员负责正式发布。从候选观点到制度变更之间的这些判断分别留证。
+
+## 多来源审核包与候选发现
+
+`batch-build MANIFEST --workspace BATCH` 只读取清单选择的普通分区和观点，冻结源修订、观点指纹、所选视图、原分和规则包。原工作区只读打开；同source_id的相同副本只计一次。`selected` 是显式观点ID的当前人工覆盖视图（可待核）；`run` 绑定指定抽取运行及同ID人工覆盖；`effective` 仅限confirmed。被替换、拒绝或废弃的观点必须显式重新选择。真实原件、私密区及其派生产物不得进入仓库测试。
+
+清单已有的 `issues` 标为manual，允许空列表。候选发现入口：
+
+```powershell
+python -m reviewproto batch-discover --workspace work/batch-review --method baseline --run-id cue-01 --rule rule-1
+python -m reviewproto batch-discover --workspace work/batch-review --method local --run-id local-01 --rule rule-1 --candidate SELECTED_ID --endpoint http://127.0.0.1:8766/v1
+```
+
+`--rule`、`--candidate` 可重复，只能从当前包中选择；不指定时使用包中全部所选观点及规则（一次最多20条规则）。baseline是逐观点的字面相关词/条件线索，不声称理解、覆盖或矛盾，不把相反判断按主题合并；材料不足时只给保留原规则对照，不凑改写。local复用现有Qwen3-4B/llama.cpp的结构化请求和本机端点约束，不启动或停止服务，不使用环境代理、重定向或云回退。一个规则一个请求，选定观点保持完整；超过`--context-chars`或保守16K上下文预算拒绝该请求，不截断原句。失败不偷偷切换baseline。建议使用独立包在同一输入快照比较两个方法。
+
+提案生成仅传选定普通观点的逐字证据、必要观点字段和当前选定规则；排除原分字段、评分关系、身份元数据、原路径、未选分区、模型原始响应。源ID在请求中替换为运行内别名。普通原话自身可能含数字或身份，不能据此声称已脱敏。生成后才连接原分；`score_links`默认unknown，仅复用源观点已有、带证据的explicit `explains_score`关系。共现不等于给分原因，主题与高分并存不自动判矛盾。没有教师/稿件交叉结构时不生成严宽、群体权重或教师数/论文数推断。
+
+模型返回的每项引用严格核对本请求别名、选定观点及完整逐字quote，禁止修复改写、错误空白或非法ID。引用校验只说明出处绑定，不证明语义正确。合法JSON仍须逐项验证；坏提案拒收，其他合格提案可保留为partial。空且无错为zero_candidates，有错且无候选为failed；partial/failed退出2，但错误状态已保存供页面查看。pending观点、partial抽取及其错误计数原样标示，不升级为专业验证。
+
+扩展issue保留T1基本字段及系统冻结的before，并增加：
+
+- `concept`：沿用规则ID的候选概念，定义、边界、candidate状态、有出处的讨论正例，边界反例未确证时为null（不把一般反对意见冒充概念边界反例）。
+- `alternatives`：第一项始终保留原规则文字，其余为有引用的编辑改法；每项有稳定局部ID、after.requirement、support/counter、理由、可能益处、代价/负担、未知及editorial_proposal。无反例明确仅限本次范围；原A引文仅支持before，不能支持新增草案文字。
+- `comparison`：inferred，范围固定selected_candidate_package_only；uncovered仅说本候选包，不能推及完整A标准。
+- `ranking`：distinct_source_records、排序理由与rare_important_hint。按记录数、稳定ID全览，低频可能影响核心结论的线索另列。排序不是学术裁决，频率不变为标准权重。
+- `score_links`：生成后的来源/观点原分关联及explicit或unknown状态，原分仍在源记录原样展示。
+
+`batch-append-analysis INPUT` 兼容旧T1基本issue；新发现payload在旧顶层字段外可含 `analysis`。其method/status、输入及config/prompt/schema/adapter指纹、实际请求数、每次调用状态/请求响应指纹、错误和限制分别记录。空issues仅在有明确analysis运行状态时接收。实际指令/schema/config、请求、原始响应与可重放payload保存在可信包内`analysis-artifacts/RUN_ID/`；不复制私密源区，不向终端输出原话、路径或原始异常。中断但无完整payload的run不能冒充完成，需要新run_id；完整payload可受控重放。相同run及输入/config重试幂等，同run不同内容拒绝；不覆盖已有问题或人工决定。
+
+包状态、历史及规范JSON继续受10,000,000字节上限约束。`batch-recover`重新核验来源/观点/规则绑定；变化使当前建议及分析标needs_revalidation，冻结历史保留。旧T1包可恢复，缺失的选中抽取运行摘要从只读来源补充为派生状态，不改旧绑定指纹。静态已打开页面不实时监测源变化。
+
+审核仍沿普通页面控件下载决定补丁，`batch-apply`后再recover重开查看；下载不等于保存。每行`case_decision`必须带当前问题证据源内的`case_source_id`；`framework_proposal_review`必须为null，两类决定分开。base_revision与package_sha256防旧包写入，重复补丁幂等，人工历史不被重跑覆盖。authority始终unconfirmed；不自动发布标准或替人裁决学术与商业取舍。
+
+扩展issue的`change`决定须由普通下拉选择具体非retain的`alternative_id`；缺失或非法ID整补丁拒收，不自动取第一项。服务端从绑定issue冻结`selected_after`与`alternative_sha256`到决定中，调用者不能伪造after；重开、排序或后续分析不改变该选择。`keep`绑定retain；补材料/暂缓不强迫选定改法。旧T1单after问题及其无alternative_id补丁沿旧语义兼容。

@@ -8,10 +8,22 @@ def render(state):
     esc = lambda value: escape(str(value), quote=True)
     parts = ['<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>多来源条款审核</title>',
              '<meta name="viewport" content="width=device-width,initial-scale=1"><style>body{max-width:1100px;margin:auto;padding:24px;font:16px/1.6 system-ui;color:#202c36;background:#f5f6f8}article,section,fieldset{background:white;border:1px solid #b8c2cc;border-radius:8px;padding:20px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f6;padding:12px}label{display:block;margin:10px 0}select,input,textarea,button{font:inherit;max-width:100%;padding:8px}textarea{width:90%}button{cursor:pointer}a{color:#074b8b}:target{outline:3px solid #b78612}strong{color:#8a3b13}</style>',
-             '<h1>多来源条款审核</h1><p>本机可信编辑材料，沿用来源权限。不是作者端导出。人工预填问题，非自动发现；不发布正式标准。</p><p>来源按原件指纹去重，不推定独立教师或稿件数。个案选择指向审稿记录，稿件身份关系仍待核。</p>']
+             '<h1>多来源条款审核</h1><p>本机可信编辑材料，沿用来源权限。不是作者端导出。区分人工预填、规则相关词/条件线索与本地模型探索；不发布正式标准。</p><p>来源按原件指纹去重，不推定独立教师或稿件数。个案选择指向审稿记录，稿件身份关系仍待核。</p>']
     parts.append(f'<p id="material-status">材料状态：{esc(state.get("material_status", "current"))}</p><p>静态页面无法实时监测原工作区。纠正后请运行 batch-recover 检查旧包，再用新修订清单 batch-build 刷新；历史决定仍须重新核对。</p>')
+    parts.append('<h2>分析运行与覆盖范围</h2><p>合法JSON与引用通过不等于业务通过。零候选、失败和部分完成分别保留；本机模型失败不自动回退规则。全部候选均列于下方，不按频率自动批准。</p>')
+    for run in state.get('analysis_runs', []):
+        parts.append(f'<article class="analysis-run"><p>{esc(run["run_id"])} · {esc(run.get("method", run["provenance"]))} · {esc(run.get("status", "legacy_unspecified"))} · {esc(run.get("validity", "unknown"))}</p><p>本地模型请求 {esc(run.get("model_requests", "unknown"))} · 错误 {esc(run.get("errors", []))}</p><p>输入指纹 {esc(run.get("input_sha256", run["input_package_sha256"]))}</p><p>{esc(run.get("limitations", []))}</p></article>')
+    rare = [i for i in state['issues'] if i.get('ranking', {}).get('rare_important_hint')]
+    parts.append('<section id="rare-important"><h2>低频但可能重要的线索</h2><p>模型推断待核，不代表核心结论已判错。</p>')
+    for issue in rare:
+        parts.append(f'<a href="#issue-{esc(issue["issue_id"])}">{esc(issue["title"])}</a> ')
+    if not rare:
+        parts.append('<p>本次未提名单列线索；不表示没有重要问题。</p>')
+    parts.append('</section>')
     for source in state['sources']:
         parts.append(f'<section><h2>来源 {esc(source["source"]["source_id"])}</h2>')
+        summaries = next((r['runs'] for r in state.get('source_run_status', []) if r['source_id'] == source['source']['source_id']), source.get('extraction_status', []))
+        parts.append(f'<p>抽取运行状态：{esc(summaries or "unknown（规则基线或未记录）")}；pending/partial均不表示语义验证通过。</p>')
         for score in source['scores']:
             parts.append(f'<p>原分 {esc(score["label"])}：<pre>{esc(score["raw_value"])}</pre></p>')
         for section in source['sections']:
@@ -37,7 +49,22 @@ def render(state):
     parts.append(f'<p>所用规则版本：{esc(state["framework"]["book"]["version"])} · {esc(state["framework"]["sha256"])}</p>')
     for issue in state['issues']:
         origin = '人工预填' if issue['origin'] == 'manual' else '分析候选（待审核）'
-        parts.append(f'<article><h2>{esc(issue["title"])}</h2><p>{origin} · {esc(issue["rationale"])}</p><pre>before: {esc(issue["before"]["requirement"])}</pre><pre>after: {esc(issue["after"])}</pre>')
+        parts.append(f'<article class="review-issue" id="issue-{esc(issue["issue_id"])}"><h2>{esc(issue["title"])}</h2><p>{origin} · {esc(issue.get("provenance", "manual"))} · {esc(issue.get("validity", "unknown"))} · {esc(issue["rationale"])}</p><pre>before: {esc(issue["before"]["requirement"])}</pre><pre>after: {esc(issue["after"])}</pre>')
+        if 'concept' in issue:
+            concept = issue['concept']
+            parts.append(f'<p>候选概念 {esc(concept["concept_id"])} · {esc(concept["status"])}</p><p>定义：{esc(concept["definition"])}</p><p>边界：{esc(concept["boundary"])}</p><p>正例：{esc(concept["example"])}；边界反例：{esc(concept["boundary_counterexample"] or "本次未有，不编造")}</p>')
+            parts.append(f'<p>规则对照（inferred）：{esc(issue["comparison"])}</p><p class="ranking">排序理由：{esc(issue["ranking"]["reasons"])}</p><p>原分关联（生成后连接）：{esc(issue["score_links"])}</p>')
+            for alternative in issue['alternatives']:
+                parts.append(f'<section class="alternative"><h3>{esc(alternative["label"])}</h3><p>editorial_proposal · authority=unconfirmed</p><pre>{esc(alternative["after"]["requirement"])}</pre><p>理由：{esc(alternative["rationale"])}</p><p>可能益处：{esc(alternative["benefits"])}；代价/负担：{esc(alternative["costs"])}</p><p>未知：{esc(alternative["unknowns"])}</p>')
+                for kind, label in [('support', '方案支持'), ('counter', '方案反例')]:
+                    parts.append(f'<p>{label}：')
+                    for ref in alternative[kind]:
+                        anchor = ref['source_id'] + '-' + ref['candidate_id']
+                        parts.append(f'<a href="#candidate-{esc(anchor)}">{esc(ref["candidate_id"])}</a> ')
+                    if not alternative[kind]:
+                        parts.append('本次未有')
+                    parts.append('</p>')
+                parts.append('</section>')
         parts.append(f'<a href="#rule-{esc(issue["rule_id"])}">查看原规则与出处</a>')
         for kind, label in [('support', '支持材料'), ('counter', '反对材料')]:
             parts.append(f'<h3>{label}</h3>')
@@ -51,6 +78,7 @@ def render(state):
                  '<label>决定类型<select id="decision-type"><option value="case_decision">个案处理决定</option><option value="framework_proposal_review">Framework候选提案审核</option></select></label>'
                  '<label>本次个案的审稿记录<select id="case-source"></select></label>'
                  '<label>处理<select id="action"><option value="keep">保留</option><option value="change">修改</option><option value="need_material">补材料</option><option value="defer">暂缓</option></select></label>'
+                 '<label>修改方案（有候选方案时必选）<select id="alternative"></select></label>'
                  '<label>本项理由<textarea id="decision-reason"></textarea></label><button id="queue" type="button">加入决定队列</button>'
                  '<ul id="draft-list"></ul><label>操作者（声明）<input id="actor"></label><label>本次审核说明<textarea id="reason"></textarea></label>'
                  '<button id="download" type="button">下载决定补丁</button><p id="save-status" role="status">草稿尚未应用。本页关闭会丢失未下载草稿。</p>'
@@ -58,8 +86,12 @@ def render(state):
     parts.append('<h2>已应用决定及历史</h2>')
     for decision in state['decisions']:
         parts.append(f'<article class="saved-decision"><p>{esc(decision["issue_id"])} · {esc(decision["decision_type"])} · {esc(decision["action"])} · <strong>{esc(decision["validity"])}</strong></p><p>个案来源：{esc(decision.get("case_source_id") or "不适用（通用条款讨论）")} · 修订 {decision["revision"]}</p><p>{esc(decision["reason"])}</p><p>{esc(decision["actor"])} · {esc(decision["at"])} · {esc(decision["decision_id"])}</p></article>')
+        if 'alternative_id' in decision:
+            # Keep the frozen choice inside the decision card on reopen.
+            parts[-1] = parts[-1].replace('</article>', f'<p>所选方案：{esc(decision["alternative_id"] or "未选定（补材料/暂缓）")}</p><pre>{esc(decision.get("selected_after"))}</pre><p>方案指纹 {esc(decision.get("alternative_sha256"))}</p></article>')
     envelope = dict(schema_version=1, batch_id=state['batch_id'], base_revision=state['revision'], package_sha256=state['package_sha256'])
     cases = {i['issue_id']: list(dict.fromkeys(r['source_id'] for kind in ('support', 'counter') for r in i[kind])) for i in state['issues']}
-    data = json.dumps(dict(envelope=envelope, issue_cases=cases), ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
+    alternatives = {i['issue_id']: [dict(alternative_id=a['alternative_id'], label=a['label']) for a in i.get('alternatives', [])] for i in state['issues']}
+    data = json.dumps(dict(envelope=envelope, issue_cases=cases, alternatives=alternatives), ensure_ascii=True).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     parts.append('<script id="batch-data" type="application/json">' + data + '</script><script>' + Path(__file__).with_name('batch_editor.js').read_text(encoding='utf-8') + '</script>')
     return '\n'.join(parts) + '</html>'
