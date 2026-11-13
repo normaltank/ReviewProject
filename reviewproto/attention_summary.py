@@ -20,7 +20,7 @@ def summarize(state, filters=None):
 
     def matches(facet):
         expression = facet.get('expression') or {}
-        values = {'directions': (facet.get('qualifiers') or {}).get('direction'),
+        values = {'directions': (facet.get('qualifiers') or {}).get('direction') or '未说明',
                   'statuses': facet.get('status', 'working'), 'functions': expression.get('function')}
         for key, value in values.items():
             candidates = value if isinstance(value, list) else [value]

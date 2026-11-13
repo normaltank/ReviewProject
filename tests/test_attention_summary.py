@@ -46,6 +46,38 @@ def oracle_state():
 
 
 class AttentionSummary(unittest.TestCase):
+    def test_saved_workspace_correction_reopen_updates_summary_without_draft_effect(self):
+        from reviewproto.attention import AttentionWorkspace
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'analysis'
+            ws = AttentionWorkspace(path)
+            try:
+                saved = ws.build(dict(schema='attention-input/1', records=[dict(anchor='synthetic', visibility='visibility_unknown', text='合成原话', scores=[])], a_reference=dict(version='synthetic', items=[])))
+                record = saved['records'][0]
+                ev = dict(source_id=record['source_id'], section_id='synthetic', start=0, end=4, quote='合成原话')
+                facet = dict(facet_id='saved-f', kind='content', status='working', interpretation='合成解释', evidence=[ev], qualifiers=dict(direction='肯定'))
+                patch = dict(schema='attention-patch/2', analysis_id=saved['analysis_id'], base_revision=0, actor='合成编辑', reason='合成核对', edits=[dict(opinion_id='saved-o', record_id=record['record_id'], status='working', interpretation='合成解释', facets=[facet])])
+                self.assertEqual(summarize(ws.state())['hits']['count'], 0)
+                ws.apply(patch)
+                first = summarize(ws.state())
+                self.assertEqual(first['revision'], 1)
+                self.assertEqual(first['directions']['肯定']['record_ids'], [record['record_id']])
+                correction = copy.deepcopy(patch); correction['base_revision'] = 1
+                correction['edits'][0]['facets'][0]['qualifiers']['direction'] = '建议'
+                self.assertEqual(summarize(ws.state())['directions']['肯定']['count'], 1)
+                ws.apply(correction)
+            finally:
+                ws.close()
+            reopened = AttentionWorkspace(path)
+            try:
+                recovered = summarize(reopened.recover())
+                self.assertEqual(recovered['revision'], 2)
+                self.assertEqual(recovered['directions']['建议']['record_ids'], [record['record_id']])
+                self.assertNotIn('肯定', recovered['directions'])
+                self.assertEqual(first['directions']['肯定']['count'], 1)
+            finally:
+                reopened.close()
+
     def test_withdrawn_links_and_unmatched_relations_do_not_count_or_guess_identity(self):
         state = oracle_state()
         same_words = copy.deepcopy(state['records'][0]); same_words['record_id'] = 'separate-source'
@@ -178,6 +210,10 @@ class AttentionSummary(unittest.TestCase):
         self.assertEqual(actual['a_parts']['P1']['explicit']['record_ids'], ['r1', 'r2'])
         self.assertEqual(actual['a_parts']['P2']['explicit']['record_ids'], ['r2'])
         self.assertEqual(actual['a_parts']['P2']['partial']['record_ids'], ['r1'])
+        self.assertEqual(actual['a_items']['A1']['explicit']['record_ids'], ['r1', 'r2'])
+        self.assertEqual(actual['a_items']['A1']['related']['record_ids'], ['r2'])
+        self.assertEqual(actual['a_items']['A1']['undetermined']['record_ids'], ['r3'])
+        self.assertEqual(actual['a_items']['A2']['explicit']['record_ids'], ['r1'])
 
 
 if __name__ == '__main__':
