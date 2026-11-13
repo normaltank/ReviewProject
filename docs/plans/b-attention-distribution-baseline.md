@@ -41,8 +41,8 @@
 
 ## 验证证据及未验证范围
 
-原计划核对曾运行CLI帮助及 `test_core_understanding.py` 的10项：9通过，1因Chromium缺失跳过；这不是全套或浏览器验收。工作稿曾机械复算14记录、56原分、93方面、8关系、101处引文切片和13主题集合一致，未逐一重核全部Word转录、重复定位及解释。
+原计划核对曾运行CLI帮助及 `test_core_understanding.py` 的10项：9通过，1因当时未配置必需浏览器环境变量跳过；这不是全套或浏览器验收。工作稿曾机械复算14记录、56原分、93方面、8关系、101处引文切片和13主题集合一致，未逐一重核全部Word转录、重复定位及解释。
 
-本轮T0/[#8](https://github.com/normaltank/ReviewProject/issues/8)在隔离基线另实跑 `python -m unittest discover -s tests -v`：261项、267.755秒、0失败、0跳过，显式配置Chrome环境，证据仍本地，由T0关联实际版本。新增统一入口为 `scripts/check.ps1`，Windows CI为 `.github/workflows/check.yml`，环境和运行方式见[测试说明](../TESTING.md)。配置进入分支不表示远端CI已执行通过。
+本轮T0/[#8](https://github.com/normaltank/ReviewProject/issues/8)在隔离基线另实跑 `python -m unittest discover -s tests -v`：261项、267.755秒、0失败、0跳过，显式配置Chrome环境，证据仍本地，由T0关联实际版本。新增统一入口为 `scripts/check.ps1`，Windows CI为 `.github/workflows/check.yml`，环境和运行方式见[测试说明](../TESTING.md)。修正版 `6bed3d29` 的完整入口再次通过261项、0跳过；两组远端CI成功及实际main交付见本页上方PR #10和[STATE](../STATE.md)。
 
-本票只核对文档内容、状态、格式、链接、隐私白名单及差异；应用全套由T0承担。旧238项历史结果不替代本轮261项，也不能把261项底座回归当成新业务V01—V12、受控真实批次、双轴最终审查或用户本人体验。#6尚在整理，最终交付需核对各批集成、审查、PR及main证据。
+本票只核对文档内容、状态、格式、链接、隐私白名单及差异；应用全套由T0承担。旧238项历史结果不替代本轮261项，也不能把261项底座回归当成新业务V01—V12、受控真实批次、双轴最终审查或用户本人体验。#6的最终交付以各批集成、审查、PR及main证据为准，状态只在对应工作项维护。
