@@ -39,4 +39,6 @@ T0已在隔离基线实际运行全套：261项、267.755秒、0失败、0跳过
 
 [旧工程概要](history/legacy-engineering.md)仅用于维护兼容性；Framework修订、F0/Fd/Fg、评分优化和标准发布不自动回到当前任务。[本地材料定位](LOCAL_MATERIALS.md#historical-documents)保留完整原文及旧分支身份，不将私有报告复制入公开导航。
 
+47项历史提交与69项工作区积压的逐项去向见[处置清单](history/backlog-2026-11-13.md)。
+
 GitHub Issues/PR是任务状态台账，本页承担续接导航。未完成语义核对、用户本人体验、专业效果或人工收益均明确保留未知；工程测试、代理演练与用户验收分别记录。原件、派生产物、数据库及模型沿用本地授权和[数据契约](DATA_AND_ANNOTATION.md)权限。
