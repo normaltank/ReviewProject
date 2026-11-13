@@ -247,8 +247,9 @@ class OfflineRepairTests(unittest.TestCase):
 
     def test_artifact_links_and_existing_output_are_refused(self):
         _, folder, _ = self.fixture()
-        target = folder / 'grounding.json'
-        with patch('reviewproto.batch.linklike', side_effect=lambda p: Path(p) == target):
+        # Replay normalizes the workspace; TEMP can retain an 8.3 alias here.
+        target = (folder / 'grounding.json').resolve()
+        with patch('reviewproto.batch.linklike', side_effect=lambda p: Path(p).resolve() == target):
             with self.assertRaisesRegex(ReviewError, 'E_BATCH_LINK'):
                 replay(self.path, 'old-run', 'linked-run')
         (self.path / 'model-artifacts/existing').mkdir()
