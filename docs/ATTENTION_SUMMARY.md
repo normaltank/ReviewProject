@@ -34,7 +34,7 @@ A的五列为 `explicit/partial/related/undetermined/needs_review`。`working` �
 
 ## T5嵌入点与即时筛选
 
-`render_summary(result)` 返回带局部样式、无脚本、已转义的HTML `<section>`。可嵌入主页面已保存区；主题/A各列链接到同片段记录明细，键盘可展开原话与解释。同一页面只嵌入一次，避免重复锚点。T4不改变主页面接线，主页面和即时筛选由T5串行实施。
+`render_summary(result)` 返回带局部样式、无脚本、已转义的HTML `<section>`。可嵌入主页面已保存区；主题/A各列链接到同片段记录明细，键盘可展开原话与解释。同一页面只嵌入一次，避免重复锚点。主页面与即时筛选通过下述T5嵌入点使用本Interface。
 
 `contributions` 是逐方面贡献索引，每项带 `record_id/opinion_id/facet_id/kind/status/directions/expression/theme_ids/a_items/a_parts/a_unassigned/outside`。`theme_ids` 已展开父组，A条目/部分以 `{id,kind}` 给出Python已经判定的有效列；浏览器不得重新解释A版本/状态或从文字猜类型。列表可有同列重复贡献，汇总时必须取记录集合。
 

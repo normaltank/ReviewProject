@@ -1,10 +1,10 @@
 # 数据与标注契约 · 0.5.0
 
-当前业务目标见[关注位置与分布规格](specs/b-attention-distribution.md)。本文件记录已交付接口和权限契约；新A关注清单用于内容参照，不因旧规则接口含strength/authority字段而变成强制条款，也不直接改写旧包。独立定位、分布及可视化的目标不表示现有schema已经支持，具体新增接口由真实样张校准后另行记录。
+当前业务目标见[关注位置与分布规格](specs/b-attention-distribution.md)。本文件记录已交付接口和权限契约；新A关注清单用于内容参照，不因旧规则接口含strength/authority字段而变成强制条款，也不直接改写旧包。独立关注分析、记录分布及可选视图使用[关注分析契约](ATTENTION_CONTRACT.md)和[汇总接口](ATTENTION_SUMMARY.md)，与本页旧schema分别维护。
 
 当前接线安排见[正式施工计划](plans/b-attention-distribution-construction.md)，源码差距见[基线核对](plans/b-attention-distribution-baseline.md)。以下framework、clause、修订讨论及旧batch章节描述既有产品分支，供维护兼容性时查阅；它们不是新关注分析的入口、对象模型或必经步骤。旧接口继续保持兼容。新增无framework关注分析使用独立数据库及[attention/1契约](ATTENTION_CONTRACT.md)，不写穿以下旧schema。
 
-观点切分、内容主题和关系作用范围的分析方法见[试行规则v0.1](specs/opinion-coding-rules.md)。它已用6个已知案例形成校准解释与反例，尚未改变以下导入/补丁/保存接口；新方面身份、主题绑定和关系组不冒称当前生产schema已实现。
+观点切分、内容主题和关系作用范围的分析方法见[试行规则v0.1](specs/opinion-coding-rules.md)。它已用6个已知案例形成校准解释与反例；新方面身份、主题绑定和关系组由独立attention/1接口实现，以下旧导入/补丁/保存接口保持兼容。
 
 本文描述既有接口，不把接口字段扩成当前业务任务。`paper_verification=not_checked` 是兼容字段，不是关注分析的失败状态或待办；`confirmed` 表示分析记录已由人核对，不表示认可B的学术结论。旧抽取器不传评分的协议不限制本轮在分析层结合原分及必要论文语境。
 
@@ -77,7 +77,7 @@ JSON 的证据位置除字符偏移外保留 JSON pointer。作者不可见标�
 
 ## 概念、分数与 A 来源
 
-本节的concept注册表限单来源，clause_links是旧A条款关联；不能据此认定已具备跨记录B主题或A18逐方面对应。新内容参照及清单外状态按施工计划实现，不将旧字段改名后直接沿用。
+本节的concept注册表限单来源，clause_links是旧A条款关联；不能据此认定已具备跨记录B主题或A18逐方面对应。新内容参照及清单外状态使用ATTENTION_CONTRACT中的独立对象，不将旧字段改名后直接沿用。
 
 补丁顶层 `concepts` 的每条记录为 `concept_id/name/definition/positive_examples/negative_examples/boundary/status/sources`。状态为 `pending_confirmation / confirmed / deprecated`，修改追加 `concept_history`。同名异 ID 拒绝，观点通过 `concept_ids` 引用已存在概念。模型自由标签只是提名；定义、边界和反例需要单独整理，不按词频自动合并规模与代表性，也不将相反判断合并。概念确认不等于正式条款批准。
 

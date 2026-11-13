@@ -1,6 +1,6 @@
 # 关注分析 Interface · attention/1
 
-本页记录T1保存闭环与T2对象/迁入扩展，适用本地可信编辑目录；权限沿用[数据契约](DATA_AND_ANNOTATION.md)。来源、分析包、HTML和草稿均继承原材料权限，不提供作者导出或认证。真实材料不进测试、仓库或模型请求。
+本页记录当前关注分析的来源、对象、A对应、保存与视图接口，适用本地可信编辑目录；权限沿用[数据契约](DATA_AND_ANNOTATION.md)。来源、分析包、HTML和草稿均继承原材料权限，不提供作者导出或认证。真实材料不进测试、仓库或模型请求。
 
 ## 入口与恢复
 
@@ -40,7 +40,7 @@ python -m reviewproto desktop
 
 `status` 为 `working/needs_review/confirmed/withdrawn`，确认只指分析核对。每项观点T1有一个最小方面身份，持久保留 `replaces`、`themes`、`a_links`、`outside`、`expression(function/boilerplate_candidate)` 及 `qualifiers(object/direction/degree/negation/reasons/conditions/actions)`。这些附加字段在T1由系统初始化；T2新增实际编辑方式见下文。全包预留 `themes/relations`，主题/关系/多方面编辑按下文T2扩展，拆合时必须新建身份、保留沿革并使关联待核，禁止按首项自动继承。
 
-历史逐修订保存完整补丁、指纹、时间、修改者和理由；`state()` 返回当前保存视图及历史。输入/补丁使用既有10MB有界JSON读取，保存视图同样有界。备份恢复、失效/错误和草稿状态均不声称完成T2—T6的真实批次/分布/图形验收。
+历史逐修订保存完整补丁、指纹、时间、修改者和理由；`state()` 返回当前保存视图及历史。输入/补丁使用既有10MB有界JSON读取，保存视图同样有界。这些状态字段只说明保存及绑定状态；真实批次、分布和图形的验收证据另由[STATE](STATE.md)导航。
 
 ## T2 多方面、主题及关系（attention-objects/2）
 
@@ -51,7 +51,7 @@ python -m reviewproto desktop
 - 限定：qualifiers.object/direction/degree/negation/reasons/conditions/actions/examples/alternatives，值为文字或文字列表；不自动抽取、补全或裁判。expression.function是本次作用，boilerplate_candidate独立取true/false/null；候选不意味着删除。
 - 主题：theme_id/label/definition/parent_ids/status，可带legacy_aliases；系统提供version（初始缺省1）。改名不换ID；定义或父组变化增加版本并置待核。父组必须存在且无环。方面的themes是成员引用列表，每项严格为theme_id/reason/evidence/status，证据来自该方面所属记录。
 - 关系：relation_id/type/endpoints/direction/scope/evidence/reading/ambiguity/status，可带legacy_aliases。端点严格为{facet_id,role}；同一方面可承担不同角色。方向可明确说明无方向/未决，scope说明实际范围，不从成员顺序推理。证据逐项校验且来源属于端点记录。单端点可表示方面内部清单/时点范围。
-- A引用预留：方面a_links列表拟由T3使用{a_item_id,version,kind,scope,reason,evidence,status}，kind区分对应/部分/相关/暂未定；outside拟使用{scope,reason,evidence,status}。T3已通过统一事务校验和普通控件支持创建、修改及移除。
+- A对应：方面a_links列表使用{a_item_id,version,kind,scope,reason,evidence,status}，kind区分对应/部分/相关/暂未定；outside拟使用{scope,reason,evidence,status}。T3已通过统一事务校验和普通控件支持创建、修改及移除。
 
 attention-patch/2使用同一analysis_id/base_revision/actor/reason，可带edits/themes/relations三个列表，至少一个非空。edits每项是观点完整当前opinion_id/record_id/interpretation/status/facets，可带replaces/legacy_aliases；themes/relations按稳定ID新增或更新。未提交对象保持原样；禁止未知编辑字段。错误端点/来源/证据/循环父组整批拒收。系统字段superseded_by与主题version不通过补丁填写。
 
@@ -122,7 +122,7 @@ A来源失效时`a_material_status=needs_revalidation`，旧A关联和清单外�
 
 普通表单先选择观点方面及原话片段，在“A对应与清单外内容”选择种类、A条目、范围、理由和状态，点“关联加入草稿”；已有项可纠正或移除。下载后在本机应用并重开才保存。移除最后一条仍生成完整attention-patch/2，保留同观点其他方面及B关联。A完整条目、部分、定位、当前版本及旧版本快照可查；未出现项显示尚无当前采用的对应，不表示B不关注。明确、部分、相关和未定分别显示，不据通用认可点亮全部A。
 
-真实本地A18及111方面工作解释接续保存在受控work目录；不是公开测试材料，也不表示已通过独立语义审查、集成或用户体验。公开合成回归覆盖跨部分、同句在外与对应、数据年代、背景来源偏好、措辞与来源疑虑、通用认可六类结构；浏览器验证宽窄布局、键盘下载、Controller应用及重开，并验证清空最后关联实际持久化。
+真实本地A18及全部方面的工作解释接续保存在[受控工作包](LOCAL_MATERIALS.md#attention-delivery)；公开测试使用合成材料，集成、最终审查和用户本人体验分别见STATE与对应工作项。公开合成回归覆盖跨部分、同句在外与对应、数据年代、背景来源偏好、措辞与来源疑虑、通用认可六类结构；浏览器验证宽窄布局、键盘下载、Controller应用及重开，并验证清空最后关联实际持久化。
 
 ## T5 保存结果视图
 

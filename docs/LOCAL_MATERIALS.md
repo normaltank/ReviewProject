@@ -29,6 +29,13 @@
 
 13个暂定主题、93方面、8处局部关系是可纠正的迁入起点，不是唯一分类、专业金标或已交付的新产品。中文相关研究覆盖留在当前A清单外。101处切片复算只说明当轮机械一致性，不证明重复引文定位唯一或解释必然正确。
 
+<a id="attention-delivery"></a>
+## 当前关注分析包与贯通证据
+
+`work/attention-migration-20261114/analysis/` 是保留原analysis_id与历史的主包，当前工作解释为修订7；用当前集成代码recover后打开包内 `attention.html`。`work/attention-a-alignment-20261114/` 保存A18及全部方面去向，`work/attention-views-20261114/` 保存T5视图证据。
+
+`work/attention-delivery-20261114/HANDOFF.md` 是T6受控贯通入口，包含来源/输出指纹、逐记录与方面/关系核对、四类普通纠正演练、恢复及整包备份说明。名称含 `NOT-MAIN` 的副本仅供功能演练，其修订和数量变化不是主分析新发现。原件、A原文、旧draft与早期成果保持原样。此处仅导航本地证据，实际最终版本、独立审查与远端交付归STATE和Issue/PR；用户本人体验另记。
+
 <a id="engineering-evidence"></a>
 ## 既有工程与验证证据
 

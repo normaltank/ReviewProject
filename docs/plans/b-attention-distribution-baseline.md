@@ -1,6 +1,6 @@
 # B关注分析：现有成果与代码基线
 
-核对日期：2026-11-13。业务依据为[当前规格](../specs/b-attention-distribution.md)，实施安排沿用[正式计划](b-attention-distribution-construction.md)。本页从本地基线报告提取公开维护所需结论；原证据身份及位置见[本地材料说明](../LOCAL_MATERIALS.md)。后续状态归[STATE](../STATE.md)，计划和积压快照不表示main已交付。
+核对日期：2026-11-13。**本页保留当时固定基线的发现，以下“当前/尚缺”均指施工前；当前实现与交付见STATE。**业务依据为[当前规格](../specs/b-attention-distribution.md)，实施安排沿用[正式计划](b-attention-distribution-construction.md)。本页从本地基线报告提取公开维护所需结论；原证据身份及位置见[本地材料说明](../LOCAL_MATERIALS.md)。后续状态归[STATE](../STATE.md)，计划和积压快照不表示main已交付。
 
 ## 来源版本及当前整理
 
