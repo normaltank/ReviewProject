@@ -24,7 +24,7 @@
 
 ## A工作参照
 
-采用用户向A询问后提供的[A关注方向原文](../../Afeedback/RawMaterial/A关注方向_用户转述A_20261112.md)，工作版本 `a-focus-20261112-01`。共5部分18项：引言5项、方法论3项、结果结论4项、总结2项、其他4项；项目定位索引沿用原文文件中的 `A-F01` 至 `A-F05`。
+采用用户向A询问后提供的[A关注方向原文](../LOCAL_MATERIALS.md#a-focus)，工作版本 `a-focus-20261112-01`。共5部分18项：引言5项、方法论3项、结果结论4项、总结2项、其他4项；项目定位索引沿用原文文件中的 `A-F01` 至 `A-F05`。
 
 A清单只说明关注什么，不表示论文必须达到，也没有据此给定权重、合格线或扣分办法。“往往”“可以”“例如”“必要时”等限定保留。五部分不自动互斥、独立、等粒度或穷尽，“其他”也不是兜底区。
 
@@ -80,9 +80,9 @@ A五部分按记录取并集，不直接相加子项；多主题、多A对应允
 
 ## 实际状态与资料身份
 
-已有[早期26点样张](../../work/b-attention-real-sample-20261112/README.md)、[先看B的方法样张](../../work/b-first-method-20261112/README.md)、[六案例校准包](../../work/b-coding-calibration-20261112/README.md)及[切分规则v0.1](opinion-coding-rules.md)。它们是各轮解释与证据，旧ID、计数和待问安排不自动覆盖最新目标。
+已有[早期26点样张](../LOCAL_MATERIALS.md#early-sample)、[先看B的方法样张](../LOCAL_MATERIALS.md#early-sample)、[六案例校准包](../LOCAL_MATERIALS.md#calibration)及[切分规则v0.1](opinion-coding-rules.md)。它们是各轮解释与证据，旧ID、计数和待问安排不自动覆盖最新目标。
 
-本批原始材料和已有分析入口见[STATE](../STATE.md)。两份外部反馈按[既有吸收记录](../../work/ai-feedback-aligned-20261113/FEEDBACK_REVIEW.md)使用；核查论文或B专业正确性的建议不采纳为任务。接收进度与继续位置只在STATE维护；提问材料包保留历史资料身份，不再安排新一轮征询。
+本批原始材料和已有分析入口见[STATE](../STATE.md)。两份外部反馈按[既有吸收记录](../LOCAL_MATERIALS.md#working-analysis)使用；核查论文或B专业正确性的建议不采纳为任务。接收进度与继续位置只在STATE维护；提问材料包保留历史资料身份，不再安排新一轮征询。
 
 独立报告与既有产品分开验收。旧多来源条款审核包的规则依赖属于旧实现，不是本规格要求。现有原话导入、纠正、保存底座可复用；中性新流程的接入安排见[正式施工计划](../plans/b-attention-distribution-construction.md)，实际版本与证据见STATE，不以换名称或修改文档代替实现。
 
