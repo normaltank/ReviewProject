@@ -7,6 +7,107 @@ from reviewproto.attention_render import render
 from test_attention_summary import oracle_state
 
 class AttentionViews(unittest.TestCase):
+    def test_browser_a_source_list_uses_saved_classifications_without_view_filters(self):
+        import copy
+        state = oracle_state()
+        state.update(material_status='current', history=[])
+        state['opinions'] = state['opinions'][:1]
+        state['opinions'][0]['interpretation'] = '合成观点'
+        state['opinions'][0]['facets'] = state['opinions'][0]['facets'][:1]
+        facet = state['opinions'][0]['facets'][0]
+        facet['a_links'] = facet['a_links'][:1]
+        facet['themes'] = []
+        state['themes'] = []
+        state['relations'] = []
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for a in state['a_reference']['items']:
+            a['locator'] = '合成定位'
+        no_link = '尚无当前采用的对应；不表示不关注'
+        cases = [
+            ('facet-pending', '当前关联：待核对'),
+            ('valid', '当前关联：明确对应'),
+            ('b-stale', '当前关联：待核对'),
+            ('a-stale', '当前关联：待核对'),
+            ('old-a-version', '当前关联：待核对'),
+            ('link-pending', '当前关联：待核对'),
+            ('partial', '当前关联：部分对应'),
+            ('related', '当前关联：内容相关'),
+            ('undetermined', '当前关联：暂未定'),
+            ('withdrawn-link', no_link),
+            ('withdrawn-facet', no_link),
+            ('withdrawn-opinion', no_link),
+            ('superseded-opinion', no_link),
+            ('unassigned', no_link),
+            ('empty-a', None),
+        ]
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport={'width': 1440, 'height': 1000})
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            for case, expected in cases:
+                with self.subTest(case=case):
+                    saved = copy.deepcopy(state)
+                    opinion = saved['opinions'][0]
+                    facet = opinion['facets'][0]
+                    link = facet['a_links'][0]
+                    if case == 'facet-pending':
+                        facet['status'] = 'needs_review'
+                    elif case in ('b-stale', 'a-stale'):
+                        saved['material_status'] = 'needs_revalidation'
+                        saved['b_material_status'] = 'needs_revalidation' if case == 'b-stale' else 'current'
+                        saved['a_material_status'] = 'needs_revalidation' if case == 'a-stale' else 'current'
+                    elif case == 'old-a-version':
+                        link['version'] = 'synthetic-old-A'
+                    elif case == 'link-pending':
+                        link['status'] = 'needs_review'
+                    elif case in ('partial', 'related', 'undetermined'):
+                        link['kind'] = case
+                    elif case == 'withdrawn-link':
+                        link['status'] = 'withdrawn'
+                    elif case == 'withdrawn-facet':
+                        facet['status'] = 'withdrawn'
+                    elif case in ('withdrawn-opinion', 'superseded-opinion'):
+                        opinion['status'] = case.split('-')[0]
+                    elif case == 'unassigned':
+                        link.update(a_item_id=None, kind='undetermined')
+                    elif case == 'empty-a':
+                        saved['a_reference']['items'] = []
+                        facet['a_links'] = []
+                    path = Path(folder) / f'{case}.html'
+                    path.write_text(render(saved), encoding='utf-8')
+                    page.goto(path.as_uri())
+                    page.get_by_text('A条目原文与历史版本', exact=True).click()
+                    if expected is None:
+                        self.assertIn('A工作参照尚未导入', page.locator('#a-version').inner_text())
+                        self.assertEqual(page.locator('#a-items').inner_text(), '')
+                    else:
+                        self.assertEqual(page.locator('#a-items > p').first.inner_text(), 'P1 · A1 · 合成定位 · ' + expected)
+                        self.assertIn(no_link, page.locator('#a-items > p').nth(1).inner_text())
+                    original = page.locator('#a-items').inner_text()
+                    page.locator('#view-record').select_option('r4')
+                    self.assertEqual(page.locator('#view-hits').inner_text(), '命中 0/1 · 无命中记录')
+                    self.assertEqual(page.locator('#a-items').inner_text(), original)
+                    page.locator('#view-record').select_option('*')
+                    page.locator('#view-boiler').select_option('true')
+                    self.assertEqual(page.locator('#view-hits').inner_text(), '命中 0/4 · 无命中记录')
+                    self.assertEqual(page.locator('#a-items').inner_text(), original)
+                    for width in (1440, 420):
+                        page.set_viewport_size({'width': width, 'height': 1000})
+                        page.locator('#a-version').scroll_into_view_if_needed()
+                        self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                        if expected is not None:
+                            bounds = page.locator('#a-items').bounding_box()
+                            self.assertGreaterEqual(bounds['x'], 0)
+                            self.assertLessEqual(bounds['x'] + bounds['width'], width)
+                        evidence = os.environ.get('ATTENTION_REVIEW_FIX_EVIDENCE_DIR')
+                        if evidence and case in ('facet-pending', 'valid', 'b-stale', 'old-a-version', 'empty-a'):
+                            Path(evidence).mkdir(parents=True, exist_ok=True)
+                            page.screenshot(path=str(Path(evidence) / f'{case}-{width}.png'))
+            self.assertEqual(errors, [])
+            browser.close()
+
     def test_browser_saved_views_share_revision_and_record_sets(self):
         state = oracle_state()
         with tempfile.TemporaryDirectory() as folder:

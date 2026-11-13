@@ -195,10 +195,12 @@ if(state.material_status!=='current')for(const id of ['stage','split','merge','t
 state.records.forEach((r,i)=>option(el('record'),'记录 '+(i+1)+' · '+r.anchor,r.record_id));
 write('a-version',state.a_reference.items.length?'版本 '+state.a_reference.version+'；仅作内容参照，不表示强制要求。':'A工作参照尚未导入；当前仅显示B分析。');
 function paragraph(id,text){const p=document.createElement('p');p.textContent=text;el(id).append(p);}
-const kindNames={explicit:'明确对应',partial:'部分对应',related:'内容相关',undetermined:'暂未定',outside:'清单外'};
+const kindNames={explicit:'明确对应',partial:'部分对应',related:'内容相关',undetermined:'暂未定',outside:'清单外',needs_review:'待核对'};
+// Use the unfiltered saved contributions; A validity is decided by summarize().
+const savedAContributions=JSON.parse(el('attention-summary-data').textContent).contributions.flatMap(c=>c.a_items);
 option(el('a-item'),'尚未确定条目','');
 state.a_reference.items.forEach(a=>{const part=state.a_reference.parts?.find(p=>p.id===a.part_id)?.label||'未分组';option(el('a-item'),part+' · '+a.text,a.id);
- const found=state.opinions.filter(active).flatMap(o=>o.facets.filter(f=>!['superseded','withdrawn'].includes(f.status))).flatMap(f=>f.a_links).filter(l=>l.version===state.a_reference.version&&l.a_item_id===a.id&&!['withdrawn','needs_review'].includes(l.status));
+ const found=savedAContributions.filter(l=>l.id===a.id);
  paragraph('a-items',part+' · '+a.text+' · '+a.locator+' · '+(found.length?'当前关联：'+[...new Set(found.map(l=>kindNames[l.kind]))].join('、'):'尚无当前采用的对应；不表示不关注'));});
 for(const h of state.a_reference_history||[])paragraph('a-items','历史版本 '+h.a_reference.version+' · 替换修订 '+h.replaced_at_revision+' · '+h.a_reference.items.map(a=>a.text).join('；'));
 if(!state.opinions.length)write('saved','尚无已保存解释。请选择证据创建，整条评语不会自动成为已理解观点。');
