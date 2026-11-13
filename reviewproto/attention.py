@@ -32,8 +32,8 @@ def _records(payload, base):
             binding = {'kind': 'workspace', 'path': str(path), 'section_id': item['section_id'], 'revision': source['revision'], 'source_id': source['source']['source_id'], 'fingerprint': digest(encoded(record))}
         else:
             require(item.get('kind', 'transcription') == 'transcription', 'E_ATTENTION_SOURCE')
-            require(item.get('visibility') == 'author_visible', 'E_ATTENTION_PRIVATE')
-            record = {'anchor': _text(item['anchor']), 'text': _text(item['text']), 'scores': item.get('scores', []), 'visibility': 'author_visible', 'locator': item.get('locator', {'transcription_anchor': item['anchor']}), 'kind': 'transcription'}
+            require(item.get('visibility') in {'author_visible', 'visibility_unknown'}, 'E_ATTENTION_PRIVATE')
+            record = {'anchor': _text(item['anchor']), 'text': _text(item['text']), 'scores': item.get('scores', []), 'visibility': item['visibility'], 'locator': item.get('locator', {'transcription_anchor': item['anchor']}), 'kind': 'transcription'}
             record['source_id'] = digest(encoded(record))
             binding = None
         require(isinstance(record['scores'], list), 'E_ATTENTION_SCORES')

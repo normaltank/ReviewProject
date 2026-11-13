@@ -25,10 +25,10 @@ python -m reviewproto desktop
 
 来源有两个Adapter：
 
-- `kind=transcription`（缺省值）：显式 `visibility=author_visible`、`anchor`、逐字 `text`、`scores`，可给 `locator` 说明转录与原件映射。原分项为字符串 `label/raw_value`，不规范化；定位是转录锚点，不能冒称Word坐标。CLI绑定输入文件的真实字节指纹，包内另存规范输入指纹；程序化build以传入结构作为显式冻结输入。
+- `kind=transcription`（缺省值）：显式 `visibility=author_visible` 或 `visibility_unknown`（原值保留，不升级权限）、`anchor`、逐字 `text`、`scores`，可给 `locator` 说明转录与原件映射。`internal_only`、缺失或非法visibility拒收；`visibility_unknown`表示普通意见的作者可见性未确认，不提供公开或外发授权。原分项为字符串 `label/raw_value`，不规范化；定位是转录锚点，不能冒称Word坐标。CLI绑定输入文件的真实字节指纹，包内另存规范输入指纹；程序化build以传入结构作为显式冻结输入。
 - `kind=workspace`：`workspace` 为相对清单或绝对本地目录，`section_id` 选择普通分区。通过既有只读来源校验Interface读取，不调用会写源application_id的构造器。只复制所选普通分区、定位和记录层原分；不复制原表、私密区或旧候选。`internal_only`、不存在分区及不支持来源拒收。同一来源选多个普通分区合并为一个record，其 `sections` 保存各区坐标。
 
-`record_id` 与 `source_id`、输入绑定指纹分别保存；不含分析run、列表序号或整体分析JSON指纹。同一冻结来源及所选内容重排不改ID，同源多分区共享record；转录锚点是来源身份的一部分，不可随意重命名。这里没有跨不同原件自动去重或显式换源映射；这类操作需后续保留身份的Adapter，不能以语义相似推断同记录。R别名不是观点/方面ID。
+`record_id` 与 `source_id`、输入绑定指纹分别保存；不含分析run、列表序号或整体分析JSON指纹。同一冻结来源及所选内容重排不改ID，同源多分区共享record；转录锚点是来源身份的一部分，不可随意重命名。Workspace的source_id绑定原件字节；新建独立包若原件字节改变会采用新来源版本身份。转录source_id绑定单条规范内容（含锚点、原话、原分、定位、visibility）；仅改变清单JSON格式/A参照/记录顺序不改变record_id。已有包始终保留旧record_id并待核；改变转录锚点或源版本时不得把重算ID当作保留旧身份的迁移。这里没有跨不同原件自动去重或显式换源映射；这类操作需后续保留身份的Adapter，不能以语义相似推断同记录。R别名不是观点/方面ID。
 
 文件字节变化（包括A和选择）、源Workspace修订/原件变化或来源不可读使 `material_status=needs_revalidation`；旧原话、原分、A及分析保留，新的编辑拒收。静态已打开页不实时轮询；recover/open/apply重新检查绑定。输入选择变化不自动转绑旧观点。
 

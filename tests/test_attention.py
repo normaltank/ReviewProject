@@ -200,3 +200,33 @@ class AttentionAcceptance(unittest.TestCase):
         self.assertEqual(result['revision'], 0)
         self.assertEqual(result['kind'], 'attention')
         self.assertIsNone(controller.path)
+
+    def test_transcription_preserves_declared_public_visibility_and_refuses_private_or_undeclared(self):
+        import copy
+        from reviewproto.core import ReviewError
+        for visibility in ('author_visible', 'visibility_unknown'):
+            with self.subTest(visibility=visibility):
+                payload = copy.deepcopy(self.payload)
+                payload['records'][0]['visibility'] = visibility
+                ws = AttentionWorkspace(self.root / visibility)
+                try:
+                    state = ws.build(payload, base=self.root)
+                    self.assertEqual(state['records'][0]['visibility'], visibility)
+                    self.assertEqual(state['records'][0]['text'], '清晰😀。清晰😀。')
+                finally:
+                    ws.close()
+        for index, visibility in enumerate(('internal_only', None, 'invalid')):
+            with self.subTest(rejected=visibility):
+                payload = copy.deepcopy(self.payload)
+                if visibility is None:
+                    payload['records'][0].pop('visibility')
+                else:
+                    payload['records'][0]['visibility'] = visibility
+                ws = AttentionWorkspace(self.root / ('rejected-' + str(index)))
+                try:
+                    with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_PRIVATE'):
+                        ws.build(payload, base=self.root)
+                    with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_EMPTY'):
+                        ws.state()
+                finally:
+                    ws.close()
