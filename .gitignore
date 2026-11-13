@@ -2,11 +2,28 @@
 /Afeedback/
 /Bfeedback/
 /EssayCourse/
+/ResearchReport/
+# Supplied specifications and reports retain local source references.
+/CODEX_PROJECT_PLAN.md
+/docs/*.docx
+
+# Restricted audits, historical evidence and unapproved reports stay local.
+audits/
+/.planning/
+/docs/CODEX_REVIEW_REPORT.md
+/docs/TECHNICAL_LITERATURE_REVIEW.md
+/docs/history/STATE-*.md
+/docs/specs/first-framework-review.md
+/docs/specs/first-framework-review-tasks.md
+/docs/specs/selected-tool-integration.md
+/docs/specs/real-batch-review-friction.md
+/docs/specs/offline-review-repair.md
 
 # Local tools, working files and logs
 /.tools/
 /work/
 /logs/
+.pytest_cache/
 *.log
 .DS_Store
 Thumbs.db
