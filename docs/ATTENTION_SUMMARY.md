@@ -45,3 +45,5 @@ T5在离线页面使用无表达筛选的结果作为完整贡献索引：先按
 ## 验证
 
 `python -m unittest discover -s tests -p test_attention_summary.py -v` 使用独立四记录手算集合，覆盖并集、副本、多方面、失效引用、表达筛选、空N、处置/关系分列、贡献索引、转义及1440/420宽度键盘回查。`ATTENTION_SUMMARY_EVIDENCE_DIR` 可指定合成浏览器截图的本地输出目录。全套使用 `scripts/check.ps1 -Python python`，并设置真实Chrome的 `REVIEW_BROWSER_BINARY`。
+
+T5已将本Interface接入主关注页。`attention_views.js`从无筛选`summarize()`结果读取完整贡献索引，统一筛选后供无图数字/明细、矩阵与局部关系图使用；不重判A有效性。无脚本时保留`render_summary()`无图结果。交互及保存语义见[视图操作](ATTENTION_CONTRACT.md#t5-保存结果视图)。浏览器回归：`python -m unittest discover -s tests -p test_attention_views.py -v`。

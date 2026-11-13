@@ -69,7 +69,7 @@ function chooseRecord() {
 }
 function chooseSection() {
  const r=record(),sec=section();write('source',sec.text);
- write('locator',(r.kind==='transcription'?'可见转录锚点（不是Word位置）：':'冻结普通分区：')+sec.section_id+' · '+JSON.stringify(sec.locator));
+ write('locator',(r.kind==='transcription'?'可见转录锚点（不是Word位置）：':'冻结普通分区：')+sec.section_id+' · '+Object.entries(sec.locator||{}).map(([k,v])=>({table:'表',row:'行',cell:'格',paragraph:'段',pointer:'来源路径'}[k]||k)+' '+v).join(' · '));
  el('scores').replaceChildren();r.scores.forEach(s=>{const p=document.createElement('p');p.textContent=s.label+'：'+s.raw_value;el('scores').append(p);});
  write('record-note',r.expression_note?'旧稿记录级工作说明（可含正文以外语境，未核为正文证据，不自动成为方面判断）：'+r.expression_note:'');
  el('passage').replaceChildren();option(el('passage'),'请选择有依据的原话片段','');
@@ -189,7 +189,7 @@ el('download').onclick=()=>{
  a.href=url;a.download='attention-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  write('message','已下载草稿，尚未应用保存。请在本机窗口应用后重开。');
 };
-write('revision','已保存修订 '+state.revision+' · 规则 '+state.rules_version);
+write('revision','已保存修订 '+state.revision+' · 分析约定版本 '+state.rules_version);
 write('material',state.material_status==='current'?(state.a_reference.items.length?'输入绑定有效；原话和A参照已冻结。':'输入绑定有效；B原话原分已冻结，A参照尚未导入。'):'来源已变化或不可读：保留旧快照，待重新核对；禁止继续应用。');
 if(state.material_status!=='current')for(const id of ['stage','split','merge','theme-stage','member-add','member-withdraw','relation-stage','a-save','a-remove'])el(id).disabled=true;
 state.records.forEach((r,i)=>option(el('record'),'记录 '+(i+1)+' · '+r.anchor,r.record_id));
@@ -203,12 +203,13 @@ state.a_reference.items.forEach(a=>{const part=state.a_reference.parts?.find(p=>
 for(const h of state.a_reference_history||[])paragraph('a-items','历史版本 '+h.a_reference.version+' · 替换修订 '+h.replaced_at_revision+' · '+h.a_reference.items.map(a=>a.text).join('；'));
 if(!state.opinions.length)write('saved','尚无已保存解释。请选择证据创建，整条评语不会自动成为已理解观点。');
 for(const o of state.opinions){
- paragraph('saved','记录 '+(state.records.find(r=>r.record_id===o.record_id)?.anchor||'未知')+' · '+o.interpretation+' · '+statusNames[o.status]+((o.replaces||[]).length?' · 替换前身已保留':''));
- for(const f of o.facets)paragraph('saved',(f.kind==='disposition'?'流程/处置方面：':'内容方面：')+f.interpretation+' · '+statusNames[f.status]+' · 原话：'+f.evidence.map(e=>e.quote).join(' / ')+' · 限定：'+Object.entries(f.qualifiers||{}).filter(([,v])=>v.length).map(([k,v])=>qualifierLabels[k]+'：'+(Array.isArray(v)?v.join('；'):v)).join('；')+' · 表达作用：'+(f.expression?.function||'未说明')+' · 套话候选：'+(f.expression?.boilerplate_candidate==null?'未判断':f.expression.boilerplate_candidate?'是':'否')+' · 主题成员：'+f.themes.map(m=>(state.themes.find(t=>t.theme_id===m.theme_id)?.label||m.theme_id)+' / '+statusNames[m.status]+' / '+m.reason).join('；'));
+ const destination=active(o)?'saved':'saved-archive';
+ paragraph(destination,'记录 '+(state.records.find(r=>r.record_id===o.record_id)?.anchor||'未知')+' · '+o.interpretation+' · '+statusNames[o.status]+((o.replaces||[]).length?' · 替换前身已保留':''));
+ for(const f of o.facets)paragraph(['withdrawn','superseded'].includes(f.status)?'saved-archive':destination,(f.kind==='disposition'?'流程/处置方面：':'内容方面：')+f.interpretation+' · '+statusNames[f.status]+' · 原话：'+f.evidence.map(e=>e.quote).join(' / ')+' · 限定：'+Object.entries(f.qualifiers||{}).filter(([,v])=>v.length).map(([k,v])=>qualifierLabels[k]+'：'+(Array.isArray(v)?v.join('；'):v)).join('；')+' · 表达作用：'+(f.expression?.function||'未说明')+' · 套话候选：'+(f.expression?.boilerplate_candidate==null?'未判断':f.expression.boilerplate_candidate?'是':'否')+' · 主题成员：'+f.themes.map(m=>(state.themes.find(t=>t.theme_id===m.theme_id)?.label||m.theme_id)+' / '+statusNames[m.status]+' / '+m.reason).join('；'));
 }
 for(const t of state.themes)paragraph('saved-themes',t.label+' · '+t.definition+' · '+statusNames[t.status]+' · 定义版本 '+(t.version||1));
 for(const r of state.relations)paragraph('saved-relations',r.type+' · '+r.endpoints.map(e=>e.role+'：'+(state.opinions.flatMap(o=>o.facets).find(f=>f.facet_id===e.facet_id)?.interpretation||e.facet_id)).join('；')+' · '+r.direction+' · 范围：'+r.scope+' · '+r.reading+' · '+r.ambiguity+' · '+statusNames[r.status]+' · 原话：'+r.evidence.map(e=>e.quote).join(' / '));
-for(const o of state.opinions)for(const f of o.facets)for(const [field,links] of [['a_links',f.a_links],['outside',f.outside]])for(const l of links)paragraph('saved',f.interpretation+' · '+(field==='outside'?'清单外':kindNames[l.kind]+' / '+(l.a_item_id||'条目未定')+' / '+l.version)+' · '+l.scope+' · '+l.reason+' · '+statusNames[l.status]+' · 原话：'+l.evidence.map(e=>e.quote).join(' / '));
+for(const o of state.opinions)for(const f of o.facets)for(const [field,links] of [['a_links',f.a_links],['outside',f.outside]])for(const l of links)paragraph(active(o)&&!['withdrawn','superseded'].includes(f.status)&&!['withdrawn','superseded'].includes(l.status)?'saved':'saved-archive',f.interpretation+' · '+(field==='outside'?'清单外':kindNames[l.kind]+' / '+(l.a_item_id||'条目未定')+' / '+l.version)+' · '+l.scope+' · '+l.reason+' · '+statusNames[l.status]+' · 原话：'+l.evidence.map(e=>e.quote).join(' / '));
 if(!state.history.length)write('history','尚无修改修订。');
 state.history.forEach(h=>paragraph('history','修订 '+h.revision+' · '+h.actor+' · '+h.reason));
 el('record').onchange=chooseRecord;el('section').onchange=chooseSection;el('opinion').onchange=chooseOpinion;el('facet').onchange=chooseFacet;el('theme').onchange=chooseTheme;el('relation').onchange=chooseRelation;
