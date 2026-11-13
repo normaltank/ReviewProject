@@ -1,0 +1,4 @@
+# Optional offline evidence retrieval; core review and extraction do not require these.
+fastembed==0.7.4
+numpy==2.5.4
+scikit-learn==1.6.1

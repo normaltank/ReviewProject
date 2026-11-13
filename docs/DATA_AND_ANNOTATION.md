@@ -1,0 +1,190 @@
+# 数据与标注契约 · 0.5.0
+
+当前业务目标见[关注位置与分布规格](specs/b-attention-distribution.md)。本文件记录已交付接口和权限契约；新A关注清单用于内容参照，不因旧规则接口含strength/authority字段而变成强制条款，也不直接改写旧包。独立定位、分布及可视化的目标不表示现有schema已经支持，具体新增接口由真实样张校准后另行记录。
+
+当前接线安排见[正式施工计划](plans/b-attention-distribution-construction.md)，源码差距见[基线核对](plans/b-attention-distribution-baseline.md)。以下framework、clause、修订讨论及旧batch章节描述既有产品分支，供维护兼容性时查阅；它们不是新关注分析的入口、对象模型或必经步骤。本次未改变任何运行契约，新接口实现后再按实际版本补入。
+
+观点切分、内容主题和关系作用范围的分析方法见[试行规则v0.1](specs/opinion-coding-rules.md)。它已用6个已知案例形成校准解释与反例，尚未改变以下导入/补丁/保存接口；新方面身份、主题绑定和关系组不冒称当前生产schema已实现。
+
+本文描述既有接口，不把接口字段扩成当前业务任务。`paper_verification=not_checked` 是兼容字段，不是关注分析的失败状态或待办；`confirmed` 表示分析记录已由人核对，不表示认可B的学术结论。旧抽取器不传评分的协议不限制本轮在分析层结合原分及必要论文语境。
+
+一份 DOCX、CSV 或契约 JSON 对应一个可信编辑工作目录。目录整体继承原件权限。打开 HTML 的人可以读取其中的私密意见，隐藏或折叠界面元素不提供身份隔离。权限控制依赖本地目录访问控制。复核、备份和恢复时按整份受控材料管理。`actor` 是审计声明，不是经过身份认证的账号。
+
+## 从原件到评分和评语
+
+| 记录 | 取值与判读方法 |
+| --- | --- |
+| 来源 | `source.docx`、`source.csv` 或 `source.json` 保存逐字节副本。SHA-256 同时用作来源 ID，`source.origin` 保存操作人声明的 `original_review`、`synthetic` 或 `unknown`。报告里的转述另属研究资料。 |
+| 审稿关系 | 表上自报稿件 ID 保留原值和单元格位置。正式稿件配对、送审版本、教师匿名 ID、轮次、表单版本、独立完成状态分别保留未知。文件名、日期、姓名相似度均不足以完成配对。 |
+| 评分 | 四个原标签与 `raw_value` 原样保存，含空格和小数。可解释的 1–5 范围数值另存十进制字符串。空白、明确不适用、无法解析和越界的值分别标记为 `unfilled`、`not_applicable`、`unparseable`、`out_of_range`，解析值为空，原字符串可回看。 |
+| 分区 | 普通“评审意见”为 `visibility_unknown`，明确标注作者可见的表头可记 `author_visible`，明确的“作者不可见”区为 `internal_only`。覆盖范围限已核实的表内分区。正文出现混杂权限措辞时保守拒收，交编辑回原件判断。 |
+| 声明范围 | 解析器核验表格形态、分项标签及意见区边界。Word 样式链及文档默认样式有隐藏/编号歧义、纵向合并、公式、移动修订或无法表示节点时拒收。共享评分格不作为空分处理。历史工作区再次打开也会用当前规则核验冻结原件，不安全的旧解析需人工重导入。表外内容和其他表型不在本解析器核验范围；论文事实与A正式效力不属于当前关注分析的核查任务。 |
+
+`source_id + section_id + [start,end) + quote` 唯一定位一段引用。偏移基于冻结分区中的 Unicode 码点，从 0 计数；同格相邻 Word 段落之间放一个换行，保留段内换行、空段和空格。映射指向 `word/document.xml` 的物理表、行、格和段落，横向合并的格子只数一次。校验条件是 `text[start:end] == quote`，遇到重复句按所选区间定位。浏览器显示由 Python 切出的原句，手工修改高级偏移时使用码点计数。
+
+## 从候选到已复核观点
+
+首次模型提取只接收单个意见区的文本窗口，不传评分字段、表单身份元数据、其他分区或 A 条款。原文中的录用建议、数字或身份仍是原文的一部分，不能据此承诺内容已脱敏。规则每个非空段落产生一个 `rule_candidate / pending_review`；模型追加 `model_candidate / pending_review`，保留运行 ID 和原始响应。二者都用于安排复核，不直接充当独立业务观点或统计分母。
+
+- 原句可附多个不连续证据片段，全部来自同一来源、同一权限分区。`reasons`、`conditions` 与 `alternatives` 分别指向 `evidence_indices`；理由可跨句。`negation` 保留否定短语或 unknown。窄规则仅识别明确成对措辞；模型不保证保留条件，需查看完整上下文。
+- 对象、属性、方向、话语功能、要求强度、严重性与动作分别填写。样本数量与样本代表性可分别标注。正面判断与修改建议可以并存。“建议”不能自动升级为强制或严重缺陷。
+- `explicit` 表示审稿人明说，`inferred` 表示分析者推断，`unknown` 表示证据不足。连接评分时注明原分项和证据，缺乏理由时保留未知。`paper_verification=not_checked` 保留其未开展论文核验的兼容含义，当前不要求将它改为已核验。A 标准对齐为 `pending_comparison`。
+- 编辑可确认、拒绝或保留待核。补丁只允许改观点字段。每个决定追加记录修改人、时间、理由、来源 ID、修订号和补丁指纹。历史机器候选与历次人工决定并存，最新人工决定用于当前展示。
+
+拆分或补录使用补丁顶层 `creates`。每条包含 `candidate_id`、`section_id`、`fields`，可带 `parent_ids` 与 `replaces`。新 ID 使用 8–100 位 ASCII 字母、数字、下划线或连字符，工作区内唯一；新观点只能从 `needs_review` 或显式 `confirmed` 开始。被替换父项追加 `superseded` 决定，原记录不会删除。单条修正仍用 `edits`。确认、拒绝、待核、替换、废弃分别记录；只有当前 `confirmed` 的独立观点进入已确认视图。
+
+0.5.0 的普通表单复用以上同一补丁契约。DOM 拖选以选定位置换算 UTF-16 到 Unicode 码点，不以首次字符串搜索替代重复句位置；追加证据限当前观点同一分区。新观点或拆分子项默认 needs_review，不继承父项的人工确认状态。理由、条件及替代支由普通控件填写各自证据索引，条件字面来源与含义是否已知分别记录。引用中的证据不允许直接移除，移除未引用项同步重排其余索引。高级 JSON 的局部字段与最新同 ID 视图合并；非法 JSON 在验证成功前不替换当前草稿。
+
+浏览器草稿只在当前页面内存中；选择既有候选会排入队列，下载导出全队列，移出队列不删除数据库记录。下载不等于 apply，补丁仍需本机窗口/CLI 校验后提交；修订冲突不自动改号。概念、评分关系和 A 修改仍沿用高级/操作员入口。页面内容含私密原文，不能视为作者可见导出，也不能因来源选择 synthetic 就改变实际材料权限。
+
+模型重跑使用新的 `run_id`，通过 `ingest-candidates` 追加；旧观点 ID、人工修改及概念绑定不变。相同运行和内容重试幂等，同 ID 不同内容拒绝。抽取状态有 `complete / partial / failed / zero_candidates`；任何错误或候选拒收都会进入运行记录，接收成功不表示语义通过。严格校验冻结文本切片，禁止以模糊匹配掩盖改引号、空白或重复引文歧义。
+
+本地抽取 CLI 默认 `--protocol v3`，共享公开配置及 Flash 入口保持该默认。`--protocol v4` 是显式试验选项：新增 `branch_relation=none / unknown / either_or / conditional_branches`。none/unknown 不升级成分组；纯 either_or 只接收两个不同、位于同一观点引用内的逐字动作、空 branch_conditions，以及两动作间的显式“或/或者/要么”连接。存储时两支 condition 均为 unknown；不得补造“无法实验”等选择条件。有明确条件时仍逐项引用条件与动作。缺字段的旧 grounding 按 v3 回放，不据关键词猜 either_or。
+
+v4 的连接词检查仅为必要表面约束，不能确认两段真是可选动作；对象列举、引述或相容建议仍可能被模型误报，保留 `branch_relation_semantics_requires_review`。有分支提名时整组 action/requirement_strength 保留 unknown，不能用单一路径的模态覆盖全组。运行配置记录实际选定协议、指令/schema 指纹及输出 token 上限；协议选择不改变模型权重、候选概念或正式条款。
+
+真实v3试用另暴露“主建议＋一个显式条件下的备用动作”：一个条件/动作对在模型JSON列表中合法，但现有业务alternatives至少两支，converter会保留条件、完整原句及已有顶层动作，同时报E_MODEL_BRANCH_PAIRING，核心导入据错误派生partial。不能仅凭该错误断定模型漏掉了第二条件，也不能补造未说的条件或把顶层合并动作当作关系已经正确。这个观察不放宽现有分支契约；未完整分组的作用域仍待复核，原raw grounding和旧运行保留。
+
+新增可选`conditional_actions`单独保存条件与对应动作，每项为`{condition,action,meaning,provenance,evidence_indices}`，最多100项。一个条件/动作对即可成立为待核关联，不冒充至少两支的alternatives。meaning为known/unknown，provenance为explicit/inferred/unknown；两个非unknown短语都必须逐字存在于所引用证据中，索引按既有同来源/分区规则核验。unknown占位仅在meaning/provenance均unknown时允许，机器pending_review记录的meaning强制unknown。逐字支持不证明关联及作用域已核准。
+
+旧对象缺字段按空列表解释，读取不就地补字段或改指纹；新建项/模型导入可有空列表。普通表单可添加/编辑/删除、选择证据及含义/依据；本字段参与证据删除保护和索引重排，高级JSON保留，拆分子项清空。源页、批次页与后续分析请求均保留该字段，更新仍经原补丁及修订冲突校验，不改原分、源文或标准效力。
+
+`replay-grounding --workspace W --from-run OLD --run-id NEW`为显式离线再转换：只读核验已导入原payload、冻结普通分区及旧grounding/windows，生成全新artifact中的candidates与diagnostics，不自动导入或确认。v3/v4模型schema/指令/示例及默认legacy转换不改；新策略仅将同一opinion内逐字唯一的一对条件/动作保存到新字段，保留主动作文字、将合并范围的强度保守置unknown，不补造另一条件。新配置区分canonical原payload指纹与文件bytes指纹，并记录当前读取的grounding/windows指纹、策略/adapter及零抽取请求；旧配置没提供指纹时不声称历史哈希已验真。
+
+不能证明修复的上游错误、失败/拒收或缺失窗口继续影响新状态；旧partial/原始响应不重写。新转换无处理错误可在新运行complete，但候选仍pending_review、论文not_checked、标准pending_comparison。随后用原ingest-candidates和recover进入复核；离线重放不读取密钥、不联网或消费已有API额度。
+
+可选分步入口 `extract_staged.py` 仅接受既有工作区、显式普通分区和新运行ID。第一步的逐字 span/kind、原文字面cue及其上下文队列都是旁车，语义状态固定未知，绝不充作已理解观点。第二步仅接收同一区域的连续原文和公开合成例子，不接收第一步kind或语义结论、评分、身份字段、私密区或A条款；实际候选复用v4逐字转换及待核状态。该入口同时改变了上下文安排和调用次数，不是纯关系分类器或分阶段方法的单变量消融。
+
+同区重叠cue上下文先按坐标闭包合并，相交召回继承完整范围。第一阶段窗口固定600码点；第二阶段用 `--context-chars 600|1000` 指定完整上下文上限，默认600。超过所选上限保留 `boundary_pending`，不得用碎片绕过。原span、ID、来源和原句仍可回看；纯召回不按主题互相合并。cue字面表是有限提示，不保证发现所有语言条件或理解其含义。默认总请求12、局部复核4，队列排序不因扩容改变；新可处理的早期上下文可能挤出后续预算，未处理项保留原因，不能算已完成业务复核。config和coverage分别记录实际window_chars/context_chars，旧未记录context_chars的历史产物按当时window_chars=600解释，不改写旧文件。
+
+每请求前重验源文件、所选文本及权限，采用相同本地端点/禁代理/禁重定向约束，先落盘attempted再发送。中断时 pending 只证明客户端已记尝试，不证明服务已接收或完成。`recall.json / queue.json / grounding.json / coverage.json / response-*.json` 的实际指纹放入config；队列processed只表示送模型处理，绝不是语义正确。coverage可为partial，同时零候选伴错误的候选payload为failed且退出2；合法无错空为complete并导入zero_candidates，有错非空由核心派生partial。旁车进展不会将失败升级为充分支持。旧默认入口、概念审批及正式规则权限不变。
+
+## 结构化输入
+
+`--format csv` 当前只支持已核的 6×6 业务表单：第 0 行是三组元数据，第 1 行标题，第 2–3 行四项评分，第 4–5 行普通/私密意见。它是 **一份审稿表，不是多条 CSV 记录**。位置保存为零基 `row/cell`；原分字符串、空格和意见区字节来源均保留。
+
+通用导出可先转换为下列 JSON，`raw_value` 必须是字符串。`scores` 可为空；量表按当前 1–5 分契约解释，其他量表须另行适配，不借标签猜测。`metadata` 可选，仅用于保留来源声明；不参与身份配对或模型抽取。
+
+```json
+{
+  "schema_version": 1,
+  "scores": [{"label": "创新性与科学性（1-5分）", "raw_value": "4"}],
+  "sections": [{"section_id": "comments", "label": "评审意见", "text": "合成示例：论点清楚。建议调整章节顺序。", "visibility": "visibility_unknown"}]
+}
+```
+
+JSON 的证据位置除字符偏移外保留 JSON pointer。作者不可见标签必须 `internal_only`；只有明确的作者可见表头才允许 `author_visible`。混杂权限措辞继续拒收。
+
+## 概念、分数与 A 来源
+
+本节的concept注册表限单来源，clause_links是旧A条款关联；不能据此认定已具备跨记录B主题或A18逐方面对应。新内容参照及清单外状态按施工计划实现，不将旧字段改名后直接沿用。
+
+补丁顶层 `concepts` 的每条记录为 `concept_id/name/definition/positive_examples/negative_examples/boundary/status/sources`。状态为 `pending_confirmation / confirmed / deprecated`，修改追加 `concept_history`。同名异 ID 拒绝，观点通过 `concept_ids` 引用已存在概念。模型自由标签只是提名；定义、边界和反例需要单独整理，不按词频自动合并规模与代表性，也不将相反判断合并。概念确认不等于正式条款批准。
+
+`relations` 中 `explains_score` 指向原始评分标签，并带 `explicit/inferred/unknown` 与证据下标。同主题只能支持候选关联，不能自动认定实际给分因果，更不能据高分和局部建议直接判矛盾。缺少交叉评分与稿件版本时不估计审稿人严宽、质量或跨稿结论。
+
+`ingest-clauses` 输入为 `{"schema_version":1,"clauses":[...]}`，每条只有 `clause_id/text/source_kind/sources`。`source_kind` 区分 `direct_source_quote / machine_synthesis / machine_transcript`。来源需 `source_id/sha256` 及页码、时间戳或 locator；逐字引文还需 `quote` 与 `text` 相等。导入器验证声明结构，实际来源文件的字节与引文须由整理者核对；不得据此声称自动验真。所有条款强制 `candidate/pending_source_review/authority=unconfirmed/framework_version=unknown`。
+
+观点的 `clause_links` 记录 `clause_id/relation/provenance/evidence_indices`；关系可为 covered、partial、condition_difference、potential_conflict 或 pending_comparison。目标仍是候选来源时不能据该关联发布正式要求。
+
+## 有原文证据的候选规则包
+
+`ingest-framework BOOK` 在现有单份 B 工作区中导入本地规则包。包顶层严格为 `schema_version=1 / framework_id / version / title / coverage_notes / sources / rules`。来源文件相对路径仅允许 `sources/<文件名>`；拒绝绝对路径、目录穿越、链接、重复 JSON 字段、超限来源与 ZIP 解压膨胀。当前复用 `python-docx` 已有的 lxml 和标准库 ZIP/JSON/SQLite，不新增文档服务或外部请求。
+
+- `sources` 每项为 `source_id/kind/file/sha256/verification`。`pptx_native` 固定 `native_text`，`transcript_json` 固定 `machine_unchecked`。导入检查真实文件 SHA，数据库保存来源 bytes，`frameworks/<内容指纹>/sources/` 再保存冻结副本。原始包的美化 JSON 文件 SHA 可不同于 canonical 内容指纹；后者由 `framework_digest()` 计算并绑定对照。
+- `rules` 每项为 `rule_id/dimension_id/title/requirement/rule_type/strength/strength_provenance/applicable_when/exceptions/unknowns/checks/derivation/evidence`。类型区分 `evaluation_question / recommendation / requirement_candidate`；强度为 `unknown / recommended / mandatory / optional`，依据为 `explicit / inferred / unknown`。`derivation` 区分来源转述 `source_paraphrase` 和整理者操作化 `editorial_operationalization`。mandatory 可记录来源自身措辞，绝不等于出版社正式效力。
+- 每处证据为 `source_id/locator/start/end/quote`，逐字校验 Unicode 切片。PPT `locator={page,paragraph}` 使用 `ppt/slides/slideN.xml` 的页号与零基 `a:p` 段号；段内文字拼接 `a:t`，`a:br` 为换行，不验证图像或备注。转写 `locator={pointer}` 可加 `segment_id/time_range/ppt_page`，均与实际 JSON 记录核验。语音识别错误仍须回听，字节或切片通过不能消除它。
+- 导入统一强制 `status=candidate / authority=unconfirmed / source_status=pending / formal_version=unknown`。同 framework_id、version、内容重复幂等；同版本不同内容拒绝，新内容必须另起版本。`recover` 只能补回缺失的冻结文件，不能静默覆盖被改动的规则或来源。
+
+book 与 framework-review payload 的输入 bytes 和 canonical 编码各受 10,000,000 bytes 上限约束；文件入口与内存入口同样执行 canonical 预检。紧凑输入变为带缩进的规范 JSON 后可能增大，须在冻结文件或修改业务状态前拒收，保证后续读取、恢复与重放不会因自身输出超限锁死工作区。失败仍可留下运行错误记录，不添加规则、来源或对照。
+
+旧 `ingest-clauses` 仍兼容旧记录，其声明型来源校验不等于新包的真实来源文件校验；两者不会自动转换或冒称同一正式版本。
+
+## B 对照与修订讨论草案
+
+`framework-template` 可指定一个 `--candidate` 和 `--rule`，产生一条 `pending_comparison/unknown` 草稿，不生成全体观点与条款的笛卡尔积。`apply-framework-review` 的 payload 严格包含 `schema_version/source_id/base_revision/actor/reason/framework_sha256/alignments/proposals`，至少一条对照或提案；需填写真实声明，不能直接应用空模板。
+
+每条 `alignments` 为 `candidate_id/rule_id/relation/provenance/evidence_indices/rationale`；relation 为 `covered / partial / condition_difference / potential_conflict / uncovered / pending_comparison`。uncovered 仅说当前候选包未覆盖，不能推出完整 A 标准没有此项，更不能凭主题相同确认覆盖或冲突。
+
+每条 `proposals` 为 `proposal_id/rule_id/kind/after/rationale/support_candidate_ids/counter_candidate_ids/validation_plan/rollback_condition/unknowns`。`kind` 区分 `source_interpretation`（解释或操作化）和 `publisher_requirement_change`（业务要求变更建议）。`after` 只能修改 `requirement/applicable_when/exceptions/strength/strength_provenance/checks`，至少有一处真实变化；完整 before 由系统从绑定规则冻结，调用者不能伪造。输出 after 固定 `derivation=editorial_operationalization`，提案标 `after_provenance=editorial_proposal / evidence_scope=baseline_only`；原来源引文仅支持修改前规则，不能为草案新增文字冒认课程出处。支持与反例不能重复，合计至少一项，全部来自同一来源、同一分区和权限区。当前不支持跨稿合并提案证据；专业观点可以相反，不作同主题去重。
+
+系统冻结所用观点、最新决定 ID 与候选视图指纹；提案统一 `draft / needs_professional_review / baseline_confirmation_required / authority=unconfirmed`。观点变更后整份工作区历史对照与提案保守标 `needs_revalidation`，即使改的是无关观点也先复核；新对照记录追加而不改旧证据，提案 ID 不重用。`current` 只说明观点快照未变。规则版本通过 SHA 显式绑定，导入新版本不会自动替换旧提案依据。概念调整、模型调参、课程解释和出版社要求变更分别留证，均无自动正式发布路径。
+
+## 合成条件示例
+
+演示表中有一句“若能取得逐周记录，可补一张对照表；否则请说明资料的覆盖范围。”这两路可以引用同一句中的不同片段。第一路以能取得记录为条件，动作是“可补一张对照表”。第二路以不能取得记录为条件，动作是“说明资料的覆盖范围”。它们在 `alternatives` 内属于同一组 `conditional_branches`，每支都写自己的 `evidence_indices`。这份合成输入也演示了较宽泛句式需要人工填写的情形。新的手工字段与机器候选分别保留。
+
+## 保存与恢复
+
+`review.sqlite3` 保存状态、运行记录、成功补丁和机器导入 payload。事务按 `base_revision` 检测冲突。重复补丁复用原决定；使用新文件名导出后续草稿。`imports/` 保存可重放导入，`model-artifacts/<run_id>/` 保存实际响应、定位结果与失败。直接编辑 `state.json` 或 HTML 会在重建时消失。
+
+`state.json`、`report.html`、`runs/` 和 `patches/` 是本地可读产物，均继承组内权限。运行记录列出实际版本、状态、命令、参数、来源或输入指纹、输出哈希及调用数。命令行输出安全错误代号，原文仅在受控原件、复核材料及其备份中查看。可按 README 的 `recover` 命令重新生成展示文件。
+
+本机窗口沿用相同持久化路径。新导入使用专用空目录，打开已有工作区经 recover 重建当前 HTML、业务修订不变。错误不能一概解释为未保存：output_failed 表示数据库已提交、展示输出失败，应先恢复核对；同补丁可幂等重放。后台工作期间禁止关闭窗口和再次发起修改。模型仅显式启动、检查自有 run_id/进程/回环监听后抽取普通分区；停止在生命周期互斥锁内再次核验该 run_id。此检查为请求前快照，不是覆盖整个请求期的进程租约。窗口不管理外部服务，空闲关闭不自动停模型。
+
+## 本机候选查找与获准抽取接入
+
+`batch-retrieve`只查审核包已经选择的普通观点证据，保持原source_id、candidate_id与每段evidence身份。source_id同时是冻结原件SHA；旁车另保留来源修订、观点/分区指纹、visibility、evidence_index及Unicode `[start,end)`与逐字quote。不连续证据分别编码，不带原分、身份元数据、私密区、未选观点或A条款。现有页面仍展示已授权普通区完整上下文以便查证；未选观点不进检索索引，不要求从该上下文隐藏。
+
+查询为本地UTF-8文本，最多4000码点；run-id为1—100位ASCII字母、数字、下划线或连字符，top-k为1—100。候选项最多10000、序列化最多2000000 bytes；`retrieval-runs`最多100个旁车，每份最多2000000 bytes。目录和文件拒绝链接；损坏、非法或数值溢出的旁车标invalid，不伪装为当前命中。输入变化时历史结果为needs_revalidation，不转绑新观点。
+
+新排名策略v2的top-k单位为精确`(source_id,candidate_id)`，按该观点最高evidence分数保留原evidence_index及完整引文，同分沿原语料顺序稳定排序；不按主题或语义合并观点。`ranking_version=2`、`ranking_unit=source_candidate`及`aggregation=max_evidence_score`进入请求指纹。缺这些字段的旧旁车仍解释为历史证据片段排名，不改原字节/顺序，不静默去重；新策略重用旧run-id应冲突。
+
+BGE使用显式本地普通模型目录、FastEmbed与ONNX CPU表示，禁止操作内下载或联网；模型全部文件、库版本、tokenizer最大512 tokens及表示参数均记录。词面方法显式使用scikit-learn字符TF-IDF。缺依赖、模型错误或编码失败不自动切方法。缓存/旁车与查询继承可信工作区权限；高相似度仅安排查阅顺序，不能确认同立场、证据存在、概念或标准效力，空结果也不能证明论文无证据。
+
+旁车不进入业务数据库payload、package SHA或决定历史；`state.json`/HTML恢复时派生展示。相同run与输入幂等，变动查询、模型配置或输入后复用同run拒收。旧源码的BatchWorkspace构造器会设置SQLite application_id，故物理SQLite文件可变化；不据此声称整个包文件逐字节只读。源工作区通过只读入口读取，业务payload、原分、revision和人工决定不由检索改写。
+
+所选普通分区的“未被本次所选观点引用的原文”是全部所选evidence区间并集的补集，仅作只读派生展示；不证明语义遗漏、论文缺证据或新的独立观点。区间链接不携带原文，以来源ID、base_revision、分区及Unicode起止绑定来源表单；只捕获和高亮，用户显式点击后才创建needs_review/未知语义草稿。候选纠正链接以来源ID、base_revision、candidate_id绑定，不能与区间参数混用；重复、无效、错来源或旧修订拒绝，不回退首候选，已有草稿/未载入高级JSON不被hashchange覆盖。fragment不授予权限，源页需用当前renderer生成；旧HTML或原来源变化均不由静态页实时修复。
+
+漏引展示把标点/空白/符号片段单列折叠，保留原坐标和定位入口，不把折叠当覆盖完成。主引文重合是所选普通来源内的只读提示，每来源至多展示200对，达到上限明确提示尚需继续复核；重合不证明同一观点，不按相似度或主题自动合并。补录、追加上下文证据和撤回重复项仍由编辑显式下载/应用补丁，保留历史；需要混合新补录与模型观点时以selected视图明确重选，不把旧问题/决定自动转绑新ID。
+
+`extract-approved`与窗口获准Flash入口复用既有真实v3协议、逐字converter、DPAPI启动链和唯一预算账本，先核计划/批准、当前工作区/普通分区与可用预算，再解密。预算检查是请求前快照，发送时仍由事务原子预留；任何pending/unknown用量阻断后续。相同生产运行ID不能再次发起；有合法失败payload也经原核心导入保留失败审计，不以进程退出码代替派生抽取状态。CheckOnly不解密、不发送；不自动生成批准、改用诊断schema、要求Qwen进程所有权或回退其他服务。
+
+## 可选外部试验与成本观察
+
+`deepseek_trial.py` 仅处理明确授权计划中的一个普通意见分区，固定官方 `deepseek-flash`。计划绑定原始来源 ID、冻结分区 hash、待发文本 hash、等长遮蔽区间、模型、端点、总费用与调用上限；批准记录绑定整个计划 bytes hash。请求前重新检查来源和授权，禁止 internal_only、评分、身份字段、原稿、A 材料及额外工具。遮蔽范围外文本必须逐字不变，模型引文跨遮蔽区间拒收。普通区的 visibility_unknown 不等于可公开；本轮外发效力来自明确用户授权。
+
+每计划一个 `deepseek-budget.sqlite3`，批准必须绑定规范绝对 `ledger_path` 及 `ledger_identity=SHA256(plan_sha256 + 换行 + ledger_path)`；复制/移动计划或批准仍须引用原账本，缺失绑定拒绝。identity 是一致性检查，批准记录依赖可信本地操作，不是签名认证。事务先预留按最高公布单价计算的保守费用。响应 token 用量、估算与实际账单分别记录；pending 或未知用量阻断后续请求，失败不自动重试。更换模型或扩大文本范围需重新绑定批准，不能因持有密钥而推定允许任意材料外发。密钥通过当前 Windows 用户 DPAPI 加密保存，调用时在本次进程树环境中传递，退出后恢复原环境。
+
+复核计时导出独立 `review_cost_observation` JSON 旁车，不进入候选或 apply schema。记录 source_id、base_revision、会话 ID、修改人及自报角色、选定方法、UTC 起止、活动/暂停毫秒及操作尝试计数，不含原文或原分。显式开始后计时，暂停/隐藏停止活动时间；选择方法只作任务声明，不会过滤队列。自报身份不是认证，页面计时不证明持续注意、专业资质或修改已应用。真实人工数据为零时必须报告未测，不将合成浏览器或代理耗时改称节省人工。
+
+## 进入 Framework 修订的条件
+
+本节只在用户另行提出标准修订任务时适用，不是当前关注分析的前置。
+
+当前允许用待核课程包做探索性对照和草案，但必须显式保留现行基线待确认；课程解释不能冒充对正式 A 要求的已确认修改。进入正式决策前仍需确认 A 有效版本与适用范围，核验稿件事实、独立稿件与审稿人分母、作者和编辑负担，并完成独立试评及回退设计。出版社授权人员负责正式发布。从候选观点到制度变更之间的这些判断分别留证。
+
+## 多来源审核包与候选发现
+
+`batch-build MANIFEST --workspace BATCH` 只读取清单选择的普通分区和观点，冻结源修订、观点指纹、所选视图、原分和规则包。原工作区只读打开；同source_id的相同副本只计一次。`selected` 是显式观点ID的当前人工覆盖视图（可待核）；`run` 绑定指定抽取运行及同ID人工覆盖；`effective` 仅限confirmed。被替换、拒绝或废弃的观点必须显式重新选择。真实原件、私密区及其派生产物不得进入仓库测试。
+
+清单已有的 `issues` 标为manual，允许空列表。候选发现入口：
+
+```powershell
+python -m reviewproto batch-discover --workspace work/batch-review --method baseline --run-id cue-01 --rule rule-1
+python -m reviewproto batch-discover --workspace work/batch-review --method local --run-id local-01 --rule rule-1 --candidate SELECTED_ID --endpoint http://127.0.0.1:8766/v1
+```
+
+`--rule`、`--candidate` 可重复，只能从当前包中选择；不指定时使用包中全部所选观点及规则（一次最多20条规则）。baseline是逐观点的字面相关词/条件线索，不声称理解、覆盖或矛盾，不把相反判断按主题合并；材料不足时只给保留原规则对照，不凑改写。local复用现有Qwen3-4B/llama.cpp的结构化请求和本机端点约束，不启动或停止服务，不使用环境代理、重定向或云回退。一个规则一个请求，选定观点保持完整；超过`--context-chars`或保守16K上下文预算拒绝该请求，不截断原句。失败不偷偷切换baseline。建议使用独立包在同一输入快照比较两个方法。
+
+提案生成仅传选定普通观点的逐字证据、必要观点字段和当前选定规则；排除原分字段、评分关系、身份元数据、原路径、未选分区、模型原始响应。源ID在请求中替换为运行内别名。普通原话自身可能含数字或身份，不能据此声称已脱敏。生成后才连接原分；`score_links`默认unknown，仅复用源观点已有、带证据的explicit `explains_score`关系。共现不等于给分原因，主题与高分并存不自动判矛盾。没有教师/稿件交叉结构时不生成严宽、群体权重或教师数/论文数推断。
+
+模型返回的每项引用严格核对本请求别名、选定观点及完整逐字quote，禁止修复改写、错误空白或非法ID。引用校验只说明出处绑定，不证明语义正确。合法JSON仍须逐项验证；坏提案拒收，其他合格提案可保留为partial。空且无错为zero_candidates，有错且无候选为failed；partial/failed退出2，但错误状态已保存供页面查看。pending观点、partial抽取及其错误计数原样标示，不升级为专业验证。
+
+扩展issue保留T1基本字段及系统冻结的before，并增加：
+
+- `concept`：沿用规则ID的候选概念，定义、边界、candidate状态、有出处的讨论正例，边界反例未确证时为null（不把一般反对意见冒充概念边界反例）。
+- `alternatives`：首项且唯一的 `retain` 为原规则对照，after严格仅含与before相同的requirement，其余可变字段全部沿用before，不能借保留改写条件、例外、强度或检查项。自动retain的support/counter为空，B支持/反对关系未判；其余为有合法支持引用的编辑改法。每项有稳定局部ID、after.requirement、support/counter、理由、可能益处、代价/负担、未知及editorial_proposal。无反例明确仅限本次范围；原A引文仅支持before，不能支持新增草案文字。
+- `comparison`：inferred，范围固定selected_candidate_package_only；uncovered仅说本候选包，不能推及完整A标准。
+- `ranking`：distinct_source_records、排序理由与rare_important_hint。按记录数、稳定ID全览，低频可能影响核心结论的线索另列。排序不是学术裁决，频率不变为标准权重。
+- `score_links`：生成后的来源/观点原分关联及explicit或unknown状态，原分仍在源记录原样展示。
+
+`batch-append-analysis INPUT` 兼容旧T1基本issue；新发现payload在旧顶层字段外可含 `analysis`。其method/status、输入及config/prompt/schema/adapter指纹、实际请求数、每次调用状态/请求响应指纹、错误和限制分别记录。空issues仅在有明确analysis运行状态时接收。实际指令/schema/config、请求、原始响应与可重放payload保存在可信包内`analysis-artifacts/RUN_ID/`；不复制私密源区，不向终端输出原话、路径或原始异常。中断但无完整payload的run不能冒充完成，需要新run_id；完整payload可受控重放。相同run及输入/config重试幂等，同run不同内容拒绝；不覆盖已有问题或人工决定。
+
+包状态、历史及规范JSON继续受10,000,000字节上限约束。`batch-recover`重新核验来源/观点/规则绑定；变化使当前建议及分析标needs_revalidation，冻结历史保留。旧T1包可恢复，缺失的选中抽取运行摘要从只读来源补充为派生状态，不改旧绑定指纹。静态已打开页面不实时监测源变化。
+
+审核仍沿普通页面控件下载决定补丁，`batch-apply`后再recover重开查看；下载不等于保存。每行`case_decision`必须带当前问题证据源内的`case_source_id`；`framework_proposal_review`必须为null，两类决定分开。base_revision与package_sha256防旧包写入，重复补丁幂等，人工历史不被重跑覆盖。authority始终unconfirmed；不自动发布标准或替人裁决学术与商业取舍。
+
+扩展issue的`change`决定须由普通下拉选择具体非retain的`alternative_id`；缺失或非法ID整补丁拒收，不自动取第一项。服务端从绑定issue冻结`selected_after`与`alternative_sha256`到决定中，调用者不能伪造after；重开、排序或后续分析不改变该选择。`keep`绑定retain；补材料/暂缓不强迫选定改法。旧T1单after问题及其无alternative_id补丁沿旧语义兼容。
+
+新扩展输入与旧扩展问题新增keep时均检查首项唯一retain及其完整有效内容；缺失、歧义或藏有改动时整补丁原子拒收，不能退回T1语义。旧包恢复不迁移问题、模型响应或已存人工决定（含历史selected_after）；旧自动retain中复制的B引用只在页面中性展示为历史关联，支持/反对关系未判，不能继续当作保留依据。纠正须另行审核留痕，不能冒充新模型推理。
