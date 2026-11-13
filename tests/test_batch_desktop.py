@@ -46,8 +46,10 @@ class BatchDesktopTests(unittest.TestCase):
         self.assertFalse(applied['idempotent'])
         self.assertTrue(controller.apply_batch(decision)['idempotent'])
         controller.open_batch_source(initial['sources'][0]['source']['source_id'])
-        self.assertEqual(controller.path, self.sources[0])
-        self.assertEqual(controller.batch_path, self.batch)
+        # Windows TEMP may use an 8.3 alias; compare workspace identities.
+        self.assertTrue(controller.path.samefile(self.sources[0]))
+        self.assertTrue(controller.batch_path.samefile(self.batch))
+        self.assertFalse(controller.path.samefile(controller.batch_path))
         self.assertEqual(controller.recover_batch()['revision'], applied['revision'])
         with self.assertRaisesRegex(ReviewError, 'E_BATCH_SOURCE_ID'):
             controller.open_batch_source('unrelated')
