@@ -12,7 +12,7 @@ A工作版本 `a-focus-20261112-01` 为5部分18项关注方向，保留原话�
 <a id="方法检查与规则校准"></a>
 ## 当前实现与真实包
 
-T1—T5已由独立merger串行验收并集成到 `codex/b-attention-distribution` 的 `532a585eb1150091dd86996d526f0668771884bd`。关注流程使用独立attention.sqlite3，不要求framework、旧issue或模型请求；旧单来源与batch保持兼容。可用入口、补丁及版本/失效规则见[关注分析契约](ATTENTION_CONTRACT.md)，集合、分母和筛选见[汇总接口](ATTENTION_SUMMARY.md)。
+T1—T6及最终审查返修已由独立merger串行验收并集成到 `codex/b-attention-distribution`，运行代码固定于 `4c2da43c3da7cf09f4fc5301b6e654c051a01f3a`。关注流程使用独立attention.sqlite3，不要求framework、旧issue或模型请求；旧单来源与batch保持兼容。可用入口、补丁及版本/失效规则见[关注分析契约](ATTENTION_CONTRACT.md)，集合、分母和筛选见[汇总接口](ATTENTION_SUMMARY.md)。
 
 - 本机窗口和CLI可建立/迁入/打开分析包、导入A版本、应用草稿、恢复重开。下载仍是未应用草稿。
 - 普通页面可补录/拆合多方面观点，纠正限定/表达作用/套话候选、主题及成员依据、带角色和范围的关系、多个A对应及清单外内容；身份和历史保留，受影响关联待核。
@@ -28,11 +28,11 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
 
-当前父任务为[Issue #12](https://github.com/normaltank/ReviewProject/issues/12)，施工沿[正式计划](plans/b-attention-distribution-construction.md)的M1—M3/T0—T6/V01—V12；交付归[PR #19](https://github.com/normaltank/ReviewProject/pull/19)。T6本地贯通和文档收口由任务分支交接；统筹接着核对最终固定版本的独立Standards/Spec审查、集中返修、集成和获授权远端交付，任务未提前关闭。本页不预告最终main或CI已完成。
+当前父任务为[Issue #12](https://github.com/normaltank/ReviewProject/issues/12)，施工沿[正式计划](plans/b-attention-distribution-construction.md)的M1—M3/T0—T6/V01—V12；交付归[PR #19](https://github.com/normaltank/ReviewProject/pull/19)。T6贯通、集中返修和两轴审查已完成：Spec无未解决项；Standards的A原文列表待核误显明确问题已修复并独立复核通过。原Standards角色入口失效后，由fresh default代理按同一角色约定接续复核，实际覆盖及限制留在PR证据。新功能是否已合入main以PR实际状态为准，任务随实际交付关闭。后续从主包修订7继续使用，不重复施工或把NOT-MAIN演练回灌主包。
 
 本地运行须使用包含上述集成成果的代码工作树；原可信D盘工作区保留旧分支及未提交历史材料，其旧runtime不能当作新工具。私有打开脚本明确指向保留的集成工作树，见本地HANDOFF；仓库克隆只包含合成样例。
 
-积压#6已由[PR #10](https://github.com/normaltank/ReviewProject/pull/10)（运行，77a69f2）和[PR #11](https://github.com/normaltank/ReviewProject/pull/11)（文档，48e8356）交付并关闭，T0不重做。T5固定532a585的完整本地检查为296项、291.331秒、0失败/错误/跳过；该历史证据不能代替T6最终固定提交检查。当前源码及最终验证以Issue/PR与本地HANDOFF为准。
+积压#6已由[PR #10](https://github.com/normaltank/ReviewProject/pull/10)（运行，77a69f2）和[PR #11](https://github.com/normaltank/ReviewProject/pull/11)（文档，48e8356）交付并关闭，T0不重做。最终运行代码4c2da43的完整本地检查为297项、297.922秒、0失败/错误/跳过，对应push与pull_request两组CI均成功；本页仅状态导航，后续文档提交的检查与最终交付以Issue/PR为准。最新本地HANDOFF记录投影刷新、关闭备份、原始资料指纹及实际运行位置。
 
 <a id="历史资料与文档维护"></a>
 ## 历史与工程边界

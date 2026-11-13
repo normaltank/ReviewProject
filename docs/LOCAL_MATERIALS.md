@@ -34,7 +34,9 @@
 
 `work/attention-migration-20261114/analysis/` 是保留原analysis_id与历史的主包，当前工作解释为修订7；用当前集成代码recover后打开包内 `attention.html`。`work/attention-a-alignment-20261114/` 保存A18及全部方面去向，`work/attention-views-20261114/` 保存T5视图证据。
 
-`work/attention-delivery-20261114/HANDOFF.md` 是T6受控贯通入口，包含来源/输出指纹、逐记录与方面/关系核对、四类普通纠正演练、恢复及整包备份说明。名称含 `NOT-MAIN` 的副本仅供功能演练，其修订和数量变化不是主分析新发现。原件、A原文、旧draft与早期成果保持原样。此处仅导航本地证据，实际最终版本、独立审查与远端交付归STATE和Issue/PR；用户本人体验另记。
+`work/attention-final-20261114/HANDOFF.md` 和同目录 `OPERATIONS.md` 是最新打开、纠正与恢复入口，启动器为 `Open-Attention.ps1`。最终代码重建的主包仍修订7，数据/历史及26来源指纹不变；1440/420的A18页面已实际回查，整包关闭备份和投影绑定单独保留。
+
+`work/attention-delivery-20261114/HANDOFF.md` 保留T6受控贯通入口及a85/102文件的历史证据，包含来源/输出指纹、逐记录与方面/关系核对、四类普通纠正演练、恢复及整包备份说明。名称含 `NOT-MAIN` 的副本仅供功能演练，其修订和数量变化不是主分析新发现。原件、A原文、旧draft与早期成果保持原样。此处仅导航本地证据，实际最终版本、独立审查与远端交付归STATE和Issue/PR；用户本人体验另记。
 
 <a id="engineering-evidence"></a>
 ## 既有工程与验证证据
