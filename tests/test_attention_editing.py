@@ -175,6 +175,83 @@ class AttentionEditing(unittest.TestCase):
         self.assertEqual(saved['opinions'][5]['facets'][2]['qualifiers']['conditions'], '无论能否补')
         self.assertEqual(saved['opinions'][14]['facets'][1]['kind'], 'disposition')
 
+    def test_browser_clears_rich_fields_without_losing_other_facets_or_associations(self):
+        import json
+        import os
+        from playwright.sync_api import sync_playwright
+        from reviewproto.desktop import Controller
+        qualifiers = ['object', 'direction', 'degree', 'negation', 'reasons', 'conditions', 'actions', 'examples', 'alternatives']
+        cases = [('reported-clear', {'degree': '基本'}, {'function': '总体肯定', 'boilerplate_candidate': True}, 'content', False)]
+        cases += [(key, {key: ['合成限定'] if key in {'reasons', 'conditions', 'actions', 'examples', 'alternatives'} else '合成限定'}, {'function': '', 'boilerplate_candidate': None}, 'content', False) for key in qualifiers]
+        cases += [('function', {}, {'function': '总体肯定', 'boilerplate_candidate': None}, 'content', False),
+                  ('candidate-true', {}, {'function': '', 'boilerplate_candidate': True}, 'content', False),
+                  ('candidate-false', {}, {'function': '', 'boilerplate_candidate': False}, 'content', False),
+                  ('kind', {}, {'function': '', 'boilerplate_candidate': None}, 'disposition', False),
+                  ('compound', {'degree': '基本'}, {'function': '总体肯定', 'boilerplate_candidate': True}, 'content', True)]
+        with sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY', 'C:/Program Files/Google/Chrome/Application/chrome.exe'), headless=True)
+            for name, initial_qualifiers, expression, kind, compound in cases:
+                with self.subTest(case=name):
+                    path = self.root / name
+                    target = AttentionWorkspace(path)
+                    self.addCleanup(target.close)
+                    state = target.build({'schema': 'attention-input/1', 'records': [{'anchor': 'S1', 'visibility': 'visibility_unknown', 'text': self.state['records'][0]['text'], 'scores': []}], 'a_reference': {'version': 'synthetic-a', 'items': []}})
+                    record = state['records'][0]
+                    ev = {'source_id': record['source_id'], 'section_id': 'S1', 'start': 6, 'end': 11, 'quote': '基本清晰😀'}
+                    first = {'facet_id': 'f-first', 'interpretation': '总体清晰', 'evidence': [ev], 'status': 'working', 'kind': kind, 'qualifiers': initial_qualifiers, 'expression': expression}
+                    facets = [first]
+                    themes, relations = [], []
+                    if compound:
+                        member = {'theme_id': 't', 'reason': '保留其他方面的原有归属', 'evidence': [ev], 'status': 'confirmed'}
+                        first['themes'] = [copy.deepcopy(member)]
+                        facets.append({'facet_id': 'f-other', 'interpretation': '另一内容范围', 'evidence': [ev], 'status': 'working', 'qualifiers': {'degree': '一定', 'conditions': ['仅在另一范围']}, 'expression': {'function': '另一功能', 'boilerplate_candidate': False}, 'themes': [member]})
+                        themes = [{'theme_id': 't', 'label': '合成主题', 'definition': '两个范围分别保留', 'parent_ids': [], 'status': 'working'}]
+                        relations = [{'relation_id': 'rel-other', 'type': 'scope', 'endpoints': [{'facet_id': 'f-other', 'role': '另一范围'}], 'direction': '无方向', 'scope': '仅另一范围', 'evidence': [ev], 'reading': '原关系保留', 'ambiguity': '', 'status': 'confirmed'}]
+                    target.apply({'schema': 'attention-patch/2', 'analysis_id': state['analysis_id'], 'base_revision': 0, 'actor': '合成编辑', 'reason': '初始化已有富对象', 'edits': [{'opinion_id': 'op', 'record_id': record['record_id'], 'interpretation': '合成观点', 'status': 'working', 'facets': facets}], 'themes': themes, 'relations': relations})
+                    before = target.state()
+                    page = browser.new_page(accept_downloads=True, offline=True, viewport={'width': 1440, 'height': 1000})
+                    page.on('dialog', lambda dialog: dialog.accept())
+                    page.goto((path / 'attention.html').as_uri())
+                    page.locator('#opinion').select_option('op')
+                    page.locator('#facet').select_option('f-first')
+                    for field in qualifiers:
+                        page.locator('#' + field).fill('')
+                    page.locator('#function').fill('')
+                    page.locator('#boilerplate').select_option('unknown')
+                    page.locator('#facet-kind').select_option('content')
+                    page.locator('#actor').fill('合成浏览器编辑')
+                    page.locator('#reason').fill('清除限定与表达判断')
+                    page.locator('#stage').click()
+                    with page.expect_download() as download:
+                        page.locator('#download').focus(); page.keyboard.press('Enter')
+                    patchfile = self.root / (name + '-clear.json')
+                    download.value.save_as(patchfile)
+                    patch = json.loads(patchfile.read_text(encoding='utf-8'))
+                    self.assertEqual(patch['schema'], 'attention-patch/2')
+                    controller = Controller(); controller.open_attention(path)
+                    controller.apply_attention(patchfile); controller.recover_attention()
+                    after = target.state()
+                    saved = after['opinions'][0]['facets'][0]
+                    self.assertEqual(after['revision'], 2)
+                    self.assertEqual(saved['facet_id'], 'f-first')
+                    self.assertTrue(all(saved['qualifiers'][key] == '' for key in qualifiers))
+                    self.assertEqual(saved['expression'], {'function': '', 'boilerplate_candidate': None})
+                    self.assertEqual(saved['kind'], 'content')
+                    if compound:
+                        self.assertEqual(after['opinions'][0]['facets'][1], before['opinions'][0]['facets'][1])
+                        self.assertEqual(after['relations'], before['relations'])
+                        self.assertEqual(saved['themes'][0]['theme_id'], 't')
+                        self.assertEqual(saved['themes'][0]['status'], 'needs_review')
+                    page.reload()
+                    page.locator('#opinion').select_option('op')
+                    page.locator('#facet').select_option('f-first')
+                    for field in qualifiers + ['function']:
+                        self.assertEqual(page.locator('#' + field).input_value(), '')
+                    self.assertEqual(page.locator('#boilerplate').input_value(), 'unknown')
+                    self.assertEqual(page.locator('#facet-kind').input_value(), 'content')
+                    page.close()
+            browser.close()
+
     def test_browser_multi_aspect_split_merge_theme_relation_download_apply_reopen(self):
         import json
         import os

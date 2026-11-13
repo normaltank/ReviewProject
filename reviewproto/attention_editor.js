@@ -103,6 +103,8 @@ function stageFacet() {
  }
  facet.expression={function:el('function').value,boilerplate_candidate:el('boilerplate').value==='unknown'?null:el('boilerplate').value==='true'};
  if(facet.expression.function||facet.expression.boilerplate_candidate!==null)rich=true;
+ // Empty values can be explicit corrections; a legacy edit cannot carry them.
+ if(prior&&['kind','qualifiers','expression'].some(key=>JSON.stringify(prior[key])!==JSON.stringify(facet[key])))rich=true;
  const op=old?cleanOpinion(old):{opinion_id:uuid('op'),record_id:record().record_id,interpretation:facet.interpretation,status:'working',facets:[],replaces:[]};
  if(prior)op.facets[op.facets.findIndex(f=>f.facet_id===prior.facet_id)]=facet;else op.facets.push(facet);
  if(op.facets.length===1){op.interpretation=facet.interpretation;op.status=facet.status;}else rich=true;
