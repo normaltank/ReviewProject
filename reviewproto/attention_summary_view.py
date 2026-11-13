@@ -10,6 +10,8 @@ _LABELS = {'explicit': '明确对应', 'partial': '部分对应', 'related': '�
 def render_summary(summary):
     """Return a complete HTML section; consume only summarize()'s saved result."""
     def text(value):
+        if isinstance(value, bool):
+            value = '是' if value else '否'
         if isinstance(value, list):
             value = '；'.join(str(v) for v in value)
         return escape(str(value if value is not None else '未说明'), quote=True)
@@ -67,7 +69,7 @@ def render_summary(summary):
             output.append('<details><summary>' + text(definition[id_key]) + ' · ' + text(definition[name_key]) + '</summary><ul>')
             output.extend('<li>' + label(kind) + ' ' + metric(value) + '</li>' for kind,value in summary[key][definition[id_key]].items())
             output.append('</ul></details>')
-    output.append(rows('未能确定条目的A关联', summary['a_unassigned']))
+    output.append(rows('无当前条目归属的A关联', summary['a_unassigned']))
     output.append(rows('当前清单外（按核对状态）', summary['outside']))
     output.append(rows('判断方向', summary['directions']))
     output.append(rows('内容方面核对状态', summary['statuses']))
@@ -101,8 +103,10 @@ def render_summary(summary):
             output.append('<ul>' + ''.join('<li>' + name + '：' + text(facet.get('qualifiers', {}).get(k)) + '</li>' for k,name in qualifiers.items() if facet.get('qualifiers', {}).get(k)) + '</ul>')
             for link in facet.get('a_links', []):
                 output.append('<p>A关联：' + text(link.get('a_item_id')) + ' · ' + label(link.get('kind')) + ' · ' + label(link.get('status')) + ' · 版本：' + text(link.get('version')) + '</p><p>范围：' + text(link.get('scope')) + '；依据：' + text(link.get('reason')) + '</p>')
+                output.append(evidence(link.get('evidence', [])))
             for entry in facet.get('outside', []):
                 output.append('<p>清单外范围：' + text(entry.get('scope')) + '；依据：' + text(entry.get('reason')) + ' · ' + label(entry.get('status')) + '</p>')
+                output.append(evidence(entry.get('evidence', [])))
         output.append('</details>')
     output.append('</section>')
     return ''.join(output)
