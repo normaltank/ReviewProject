@@ -1,6 +1,6 @@
 # ReviewProject
 
-处理本项目开发、维护、规格、任务拆分或审查交付时，先读 [工作流](docs/agents/workflow.md)，使用项目级 `reviewproject-coordinator` 技能承接对应阶段。
+处理本项目开发、维护、规格、任务拆分或审查交付时，先读 [Matt工作流](docs/agents/workflow.md)，直接读取并使用已安装的通用Matt技能，沿用OpenSource和DataBase的接入方式。主代理负责统筹，不另设项目专属技能。
 
 ## 唯一统筹入口
 
