@@ -86,6 +86,8 @@ class AttentionWorkspace:
         from .attention_model import upgrade
         upgrade(state)
         state['material_status'] = 'current'
+        state['b_material_status'] = 'current'
+        state['a_material_status'] = 'current'
         for binding in state['bindings']:
             try:
                 if binding['kind'] == 'file':
@@ -93,10 +95,19 @@ class AttentionWorkspace:
                 else:
                     source = source_state(binding['path'])
                     unchanged = source['revision'] == binding['revision'] and source['source']['source_id'] == binding['source_id']
-                if not unchanged:
-                    state['material_status'] = 'needs_revalidation'
             except Exception:
+                unchanged = False
+            if not unchanged:
                 state['material_status'] = 'needs_revalidation'
+                state['a_material_status' if binding.get('role') == 'a_reference' else 'b_material_status'] = 'needs_revalidation'
+        if state['a_material_status'] != 'current':
+            from .attention_model import project
+            for op in state['opinions']:
+                for facet in op['facets']:
+                    for field in ('a_links', 'outside'):
+                        for link in facet[field]:
+                            if link['status'] != 'withdrawn': link['status'] = 'needs_review'
+                project(op)
         state['history'] = [json.loads(r[0]) for r in self.db.execute('SELECT payload FROM history ORDER BY revision')]
         return state
 
@@ -110,14 +121,8 @@ class AttentionWorkspace:
         require(isinstance(payload.get('records'), list), 'E_ATTENTION_SOURCE')
         records, bindings = _records(payload, Path(base or '.'))
         a = payload.get('a_reference')
-        require(isinstance(a, dict) and isinstance(a.get('items'), list), 'E_ATTENTION_A')
-        _text(a.get('version'))
-        ids = set()
-        for item in a['items']:
-            for key in ('id', 'text', 'locator'):
-                _text(item.get(key))
-            require(item['id'] not in ids, 'E_ATTENTION_A')
-            ids.add(item['id'])
+        from .attention_a import validate_reference
+        validate_reference(a)
         if input_path:
             bindings.append({'kind': 'file', 'path': str(input_path), 'fingerprint': digest(input_bytes)})
         state = {'schema': SCHEMA, 'analysis_id': str(uuid.uuid4()), 'revision': 0, 'records': records, 'bindings': bindings, 'a_reference': copy.deepcopy(a), 'input_fingerprint': digest(encoded(payload)), 'rules_version': 'manual-evidence/1', 'opinions': [], 'themes': [], 'relations': []}
@@ -158,11 +163,15 @@ class AttentionWorkspace:
             existing = self.db.execute('SELECT 1 FROM history WHERE fingerprint=?', (fingerprint,)).fetchone()
             if not existing:
                 state = self.state()
-                require(state['material_status'] == 'current', 'E_ATTENTION_REVALIDATION')
-                require(patch.get('schema') in {'attention-patch/1', 'attention-patch/2'} and patch.get('analysis_id') == state['analysis_id'], 'E_ATTENTION_PATCH')
+                changing_a = patch.get('schema') == 'attention-a-patch/1'
+                require(state['b_material_status' if changing_a else 'material_status'] == 'current', 'E_ATTENTION_REVALIDATION')
+                require(patch.get('schema') in {'attention-patch/1', 'attention-patch/2', 'attention-a-patch/1'} and patch.get('analysis_id') == state['analysis_id'], 'E_ATTENTION_PATCH')
                 require(type(patch.get('base_revision')) is int and patch['base_revision'] == state['revision'], 'E_ATTENTION_CONFLICT')
                 _text(patch.get('actor')); _text(patch.get('reason'))
-                if patch['schema'] == 'attention-patch/2':
+                if changing_a:
+                    from .attention_a import apply_reference
+                    apply_reference(state, patch)
+                elif patch['schema'] == 'attention-patch/2':
                     from .attention_model import apply_objects
                     apply_objects(state, patch)
                 else:
@@ -171,9 +180,13 @@ class AttentionWorkspace:
                 state['revision'] += 1
                 audit = {'revision': state['revision'], 'actor': patch['actor'], 'reason': patch['reason'], 'at': now(), 'fingerprint': fingerprint, 'patch': patch}
                 self.db.execute('INSERT INTO history VALUES(?,?,?)', (state['revision'], fingerprint, encoded(audit).decode()))
-                state.pop('history', None); state.pop('material_status', None)
+                for key in ('history','material_status','b_material_status','a_material_status'): state.pop(key, None)
                 self.db.execute('UPDATE state SET payload=? WHERE id=1', (encoded(state).decode(),))
         return self.recover()
+
+    def import_a(self, input_path, *, actor, reason):
+        from .attention_a import prepare_import
+        return self.apply(prepare_import(input_path, self.state(), actor, reason))
 
     def _apply_legacy(self, state, patch):
         from .attention_model import apply_objects, normalize_facet

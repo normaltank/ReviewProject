@@ -14,7 +14,7 @@
 
 ## 新关注流程的复用边界
 
-按[正式计划](plans/b-attention-distribution-construction.md)复用证据、事务、来源快照和编辑机械能力；旧batch仍要求framework，不能改名冒充新中性入口。无framework分析包、跨记录主题/稳定方面、表达作用与套话候选分离、带作用域关系、A18对应、记录并集和可选图形尚待实施。旧schema和条款决定语义继续保持兼容。
+按[正式计划](plans/b-attention-distribution-construction.md)复用证据、事务、来源快照和编辑机械能力；旧batch仍要求framework，不能改名冒充新中性入口。无framework分析包、跨记录主题/稳定方面、表达作用与套话候选分离、带作用域关系、A18对应、记录并集和可选图形按[关注分析契约](ATTENTION_CONTRACT.md)及其后续汇总接口实施；实际集成与验收状态见对应Issue/PR和STATE。旧schema和条款决定语义继续保持兼容。
 
 已有独立工作稿可迁入，保留旧别名与新身份映射并核对重复片段及关系作用域。A18是内容参照，不转为强制条款；中文相关研究覆盖留在清单外；原分和论文只按需解释语境，分析确认表示处理忠实。
 
