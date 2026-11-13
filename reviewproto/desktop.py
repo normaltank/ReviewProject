@@ -80,6 +80,52 @@ class Controller:
         self.path = None
         self.batch_path = None
 
+    def build_attention(self, source, destination):
+        from .attention import AttentionWorkspace
+        self.attention_path = Path(destination).absolute()
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.build(input_path=source))
+        finally:
+            ws.close()
+
+    def _attention_result(self, state):
+        return {'kind': 'attention', 'path': self.attention_path, 'revision': state['revision'], 'material_status': state['material_status']}
+
+    def open_attention(self, path):
+        from .attention import AttentionWorkspace
+        path = Path(path).absolute()
+        require((path / 'attention.sqlite3').is_file(), 'E_ATTENTION_EMPTY')
+        self.attention_path = path
+        return self.recover_attention()
+
+    def recover_attention(self):
+        from .attention import AttentionWorkspace
+        require(getattr(self, 'attention_path', None) is not None, 'E_ATTENTION_EMPTY')
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.recover())
+        finally:
+            ws.close()
+
+    def apply_attention(self, patch):
+        from .attention import AttentionWorkspace
+        require(getattr(self, 'attention_path', None) is not None, 'E_ATTENTION_EMPTY')
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.apply(input_path=patch))
+        finally:
+            ws.close()
+
+    def open_attention_report(self):
+        self.recover_attention()
+        if os.name == 'nt':
+            os.startfile(self.attention_path / 'attention.html')
+        else:
+            import webbrowser
+            require(webbrowser.open((self.attention_path / 'attention.html').as_uri()), 'E_BROWSER_OPEN')
+        return self.recover_attention()
+
     def _batch_existing(self):
         from .batch import checked_local
         require(self.batch_path is not None, 'E_BATCH_MISSING')
@@ -339,7 +385,9 @@ def main():
                     location.set(str(controller.path) + ' · 保存状态待恢复核对')
             else:
                 status.set(success)
-                if isinstance(result, dict) and result.get('kind') == 'batch':
+                if isinstance(result, dict) and result.get('kind') == 'attention':
+                    attention_location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · ' + result['material_status'])
+                elif isinstance(result, dict) and result.get('kind') == 'batch':
                     batch_location.set(str(result['path']) + ' · 审核包 ' + result['batch_id'] + ' · 已保存修订 ' + str(result['revision']) + ' · 材料 ' + result['material_status'])
                     batch_source_box['values'] = [s['source_id'] for s in result['sources']]
                     if batch_source.get() not in batch_source_box['values']:
@@ -390,6 +438,35 @@ def main():
         b.pack(anchor='w', pady=3)
         widgets.append(b)
 
+    attention_location = tk.StringVar(value='尚未打开关注分析；下载草稿不等于已保存。')
+    ttk.Label(frame, text='B关注分析', font=('', 14)).pack(anchor='w')
+    ttk.Label(frame, textvariable=attention_location, wraplength=700).pack(anchor='w')
+
+    def new_attention():
+        source = filedialog.askopenfilename(title='选择关注来源清单（可见转录或已有普通工作区）', filetypes=[('JSON', '*.json')])
+        if not source:
+            return
+        parent = filedialog.askdirectory(title='选择分析包父目录')
+        if parent:
+            destination = Path(parent) / ('attention-' + uuid.uuid4().hex[:12])
+            submit(lambda: controller.build_attention(source, destination), '关注分析已建立；请打开关注页。')
+
+    def choose_attention():
+        path = filedialog.askdirectory(title='选择含 attention.sqlite3 的分析包')
+        if path:
+            submit(lambda: controller.open_attention(path), '关注分析已打开。')
+
+    def choose_attention_patch():
+        patch = filedialog.askopenfilename(title='选择关注草稿补丁', filetypes=[('JSON', '*.json')])
+        if patch:
+            submit(lambda: controller.apply_attention(patch), '关注补丁已保存，请重开关注页。')
+
+    button('建立关注分析', new_attention)
+    button('打开关注分析包', choose_attention)
+    button('打开关注页', lambda: submit(controller.open_attention_report))
+    button('应用关注草稿补丁', choose_attention_patch)
+    button('恢复关注页', lambda: submit(controller.recover_attention))
+    ttk.Separator(frame).pack(fill='x', pady=8)
     button('新导入（创建专用子目录）', new_import)
     button('打开已有工作区', open_existing)
     button('打开报告', lambda: submit(controller.open_report, '报告已交给本机浏览器打开。'))

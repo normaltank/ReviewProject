@@ -25,13 +25,13 @@
 <a id="下一步"></a>
 ## 当前继续位置
 
-**先完成 [Issue #6](https://github.com/normaltank/ReviewProject/issues/6) 的历史提交与工作区积压整理，再回到B关注本职T1—T6。** 本次盘点为47个历史提交及69项工作区积压；这是待核对的来源清单规模，不是已交付数量。按范围分批固定、验证、双轴审查并合入main，不整体发布旧分支或真实材料。
+积压#6已由PR #10（运行，77a69f2）和PR #11（文档，48e8356）交付并关闭，T0不重做。当前施工集成分支为 `codex/b-attention-distribution`，T1从固定基线48e83566实施；远端状态由统筹在Issue/PR更新。
 
-#6分批交付：运行与检查入口已由[#8](https://github.com/normaltank/ReviewProject/issues/8)及PR #10验证、审查并合main；本维护稿及隐私导航由[#9](https://github.com/normaltank/ReviewProject/issues/9)承接。#6的完成状态以两批实际交付及逐项处置证据为准；前置完成后直接接回T1，不重复实施T0。`codex/attention-integration` 是本轮隔离集成分支；本维护稿初始文档基线为 `b5d405d0ee449d94e1b070f3d5f548a986ceaa1f`。通用Matt流程已由PR #7 / `e984e02` 交付，不重新建设专属技能。应用快照、各批成果、集成头、远端PR及main状态分别在对应Issue/PR核对，本页不宣称它们已经合并或部署。
+T1任务分支实现了无framework的独立关注分析建包、普通表单创建/纠正一项解释、下载草稿、本机apply及recover/reopen。CLI与桌面入口及数据形状见[关注分析契约](ATTENTION_CONTRACT.md)。这是T1最小保存闭环，尚待统筹独立审查和集成，不表示T2—T6或真实14记录/A18迁入已经完成。旧源Workspace通过只读Adapter选择普通区，不复制私密原表。
 
 T0修正版 `6bed3d29` 的本地完整入口为261项、269.713秒、0失败/错误/跳过；两组[远端PR检查](https://github.com/normaltank/ReviewProject/actions/runs/43445505747)与[push检查](https://github.com/normaltank/ReviewProject/actions/runs/43445494942)均成功。此前两项Windows路径别名失败保留，修复仅涉及测试路径身份比较。main接收树与该受审版本一致。本票文档检查不替代T1—T6新业务验收。
 
-#6 完成后沿用[正式施工计划](plans/b-attention-distribution-construction.md)的M1—M3、T0—T6依赖和V01—V12验收；T0的基线与检查入口验收通过后才释放T1。该计划的业务路径不因基线整理另立一套路线，统筹继续承担后续交付。
+后续沿用[正式施工计划](plans/b-attention-distribution-construction.md)的M1—M3、T0—T6依赖和V01—V12验收；T0的基线与检查入口验收通过后才释放T1。该计划的业务路径不因基线整理另立一套路线，统筹继续承担后续交付。
 
 <a id="续接点与远端记录"></a>
 <a id="历史资料与文档维护"></a>

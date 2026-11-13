@@ -2,7 +2,7 @@
 
 当前业务目标见[关注位置与分布规格](specs/b-attention-distribution.md)。本文件记录已交付接口和权限契约；新A关注清单用于内容参照，不因旧规则接口含strength/authority字段而变成强制条款，也不直接改写旧包。独立定位、分布及可视化的目标不表示现有schema已经支持，具体新增接口由真实样张校准后另行记录。
 
-当前接线安排见[正式施工计划](plans/b-attention-distribution-construction.md)，源码差距见[基线核对](plans/b-attention-distribution-baseline.md)。以下framework、clause、修订讨论及旧batch章节描述既有产品分支，供维护兼容性时查阅；它们不是新关注分析的入口、对象模型或必经步骤。本次未改变任何运行契约，新接口实现后再按实际版本补入。
+当前接线安排见[正式施工计划](plans/b-attention-distribution-construction.md)，源码差距见[基线核对](plans/b-attention-distribution-baseline.md)。以下framework、clause、修订讨论及旧batch章节描述既有产品分支，供维护兼容性时查阅；它们不是新关注分析的入口、对象模型或必经步骤。旧接口继续保持兼容。新增无framework关注分析使用独立数据库及[attention/1契约](ATTENTION_CONTRACT.md)，不写穿以下旧schema。
 
 观点切分、内容主题和关系作用范围的分析方法见[试行规则v0.1](specs/opinion-coding-rules.md)。它已用6个已知案例形成校准解释与反例，尚未改变以下导入/补丁/保存接口；新方面身份、主题绑定和关系组不冒称当前生产schema已实现。
 
