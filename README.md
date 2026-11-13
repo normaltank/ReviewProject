@@ -4,7 +4,7 @@
 
 A工作参照 `a-focus-20261112-01` 为5部分18项关注方向，保留原话限定，不是强制评分标准；中文相关研究覆盖留在当前清单外，不再问A。原话、原分及分析确认的含义见[数据契约](docs/DATA_AND_ANNOTATION.md)与[术语表](GLOSSARY.md)。本地原件、工作稿及旧报告见[材料定位说明](docs/LOCAL_MATERIALS.md)，新克隆不包含这些受限材料。
 
-当前先整理 [Issue #6](https://github.com/normaltank/ReviewProject/issues/6) 的历史提交和工作区积压；运行批次[#8](https://github.com/normaltank/ReviewProject/issues/8)、文档与隐私边界批次[#9](https://github.com/normaltank/ReviewProject/issues/9)分别验证、双轴审查并合入main，再继续B关注本职。[正式施工计划](docs/plans/b-attention-distribution-construction.md)保留T0—T6行为、依赖与验收，[基线核对](docs/plans/b-attention-distribution-baseline.md)区分已有底座与真实缺口。新无framework关注分析、分布、可选视图及统一保存闭环尚待实施；独立工作稿和未合并快照不表示main已交付。
+交付衔接由 [Issue #6](https://github.com/normaltank/ReviewProject/issues/6) 记录：运行批次[#8](https://github.com/normaltank/ReviewProject/issues/8)已通过[PR #10](https://github.com/normaltank/ReviewProject/pull/10)合入main，文档与隐私边界由[#9](https://github.com/normaltank/ReviewProject/issues/9)承接。确认#6全部处置完成后，直接继续B关注本职，不重做已验证底座。[正式施工计划](docs/plans/b-attention-distribution-construction.md)保留T0—T6行为、依赖与验收，[基线核对](docs/plans/b-attention-distribution-baseline.md)区分已有底座与真实缺口。新无framework关注分析、分布、可选视图及统一保存闭环尚待实施；独立工作稿和未合并快照不表示main已交付。
 
 ## 使用既有底座
 

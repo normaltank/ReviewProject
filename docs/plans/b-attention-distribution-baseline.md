@@ -8,6 +8,8 @@
 
 本轮[#6](https://github.com/normaltank/ReviewProject/issues/6)按来源整理47个历史提交及69项工作区积压；文档批次[#9](https://github.com/normaltank/ReviewProject/issues/9)从 `b5d405d0ee449d94e1b070f3d5f548a986ceaa1f` 创建，隔离集成分支为 `codex/attention-integration`。这是来源和起始点，不是最终集成/审查结论；各批交接必须同步最新集成头并重验，最终提交与main状态归对应Issue/PR。仓库维护去标识化的[逐项处置清单](../history/backlog-2026-11-13.md)，完整盘点与原报告证据仍留本地。
 
+运行批次已由[PR #10](https://github.com/normaltank/ReviewProject/pull/10)合入main `77a69f2fd9fc2845543efdd2fa7772f2de60ebef`，接收树与受审 `6bed3d29` 一致；本地261项完整检查及两组远端CI成功。文档与完整积压的最终状态继续以#9/#6为准。
+
 ## 已有成果怎样使用
 
 - [既有反馈和工作稿](../LOCAL_MATERIALS.md#working-analysis)已吸收表达措辞与作用分开、主题与意见分开、关系范围、多重A对应、原分语境和记录并集。已有14记录、56原分、13暂定主题、93方面、8关系可作迁入起点，数量与分类可纠正，不继续等待新意见。

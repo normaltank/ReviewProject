@@ -18,7 +18,7 @@
 <a id="方法检查与规则校准"></a>
 ## 已有能力和未完成部分
 
-积压工程快照包含原话/原分导入、观点补录/拆分/纠正、条件与替代保留、出处定位、受控补丁保存重开，以及可选候选抽取和本机证据查找。兼容接口见[数据契约](DATA_AND_ANNOTATION.md)，采用边界见[复用决策](REUSE_DECISIONS.md)。这些底座及各历史验证须按实际提交核对，不能据本地快照宣称main已交付。
+积压工程快照包含原话/原分导入、观点补录/拆分/纠正、条件与替代保留、出处定位、受控补丁保存重开，以及可选候选抽取和本机证据查找。兼容接口见[数据契约](DATA_AND_ANNOTATION.md)，采用边界见[复用决策](REUSE_DECISIONS.md)。运行批次已由[PR #10](https://github.com/normaltank/ReviewProject/pull/10)交付到main，提交 `77a69f2fd9fc2845543efdd2fa7772f2de60ebef`；这不表示新B关注产品或各历史业务效果已完成。
 
 当前旧batch仍要求framework规则包，页面围绕条款问题和决定。新B主题、方面、A18对应、记录分布、可选视图及同修订保存闭环仍待T1—T6实施；单来源纠正能力不等于新通用产品。差距及现有证据见[基线核对](plans/b-attention-distribution-baseline.md)。
 
@@ -27,9 +27,9 @@
 
 **先完成 [Issue #6](https://github.com/normaltank/ReviewProject/issues/6) 的历史提交与工作区积压整理，再回到B关注本职T1—T6。** 本次盘点为47个历史提交及69项工作区积压；这是待核对的来源清单规模，不是已交付数量。按范围分批固定、验证、双轴审查并合入main，不整体发布旧分支或真实材料。
 
-#6 基线整理正在进行：运行与检查入口由[#8](https://github.com/normaltank/ReviewProject/issues/8)承接，本维护稿及隐私导航由[#9](https://github.com/normaltank/ReviewProject/issues/9)承接；#9最终交付依赖#8已集成并验证。`codex/attention-integration` 是本轮隔离集成分支；本维护稿初始文档基线为 `b5d405d0ee449d94e1b070f3d5f548a986ceaa1f`。通用Matt流程已由PR #7 / `e984e02` 交付，不重新建设专属技能。应用快照、各批成果、集成头、远端PR及main状态分别在对应Issue/PR核对，本页不宣称它们已经合并或部署。
+#6分批交付：运行与检查入口已由[#8](https://github.com/normaltank/ReviewProject/issues/8)及PR #10验证、审查并合main；本维护稿及隐私导航由[#9](https://github.com/normaltank/ReviewProject/issues/9)承接。#6的完成状态以两批实际交付及逐项处置证据为准；前置完成后直接接回T1，不重复实施T0。`codex/attention-integration` 是本轮隔离集成分支；本维护稿初始文档基线为 `b5d405d0ee449d94e1b070f3d5f548a986ceaa1f`。通用Matt流程已由PR #7 / `e984e02` 交付，不重新建设专属技能。应用快照、各批成果、集成头、远端PR及main状态分别在对应Issue/PR核对，本页不宣称它们已经合并或部署。
 
-T0已在隔离基线实际运行全套：261项、267.755秒、0失败、0跳过，显式配置Chrome环境；证据仍本地，由统筹/T0关联实际源码与环境。本票仅做文档检查，不复跑应用套件，也不把该结果当作T1—T6验收。
+T0修正版 `6bed3d29` 的本地完整入口为261项、269.713秒、0失败/错误/跳过；两组[远端PR检查](https://github.com/normaltank/ReviewProject/actions/runs/43445505747)与[push检查](https://github.com/normaltank/ReviewProject/actions/runs/43445494942)均成功。此前两项Windows路径别名失败保留，修复仅涉及测试路径身份比较。main接收树与该受审版本一致。本票文档检查不替代T1—T6新业务验收。
 
 #6 完成后沿用[正式施工计划](plans/b-attention-distribution-construction.md)的M1—M3、T0—T6依赖和V01—V12验收；T0的基线与检查入口验收通过后才释放T1。该计划的业务路径不因基线整理另立一套路线，统筹继续承担后续交付。
 

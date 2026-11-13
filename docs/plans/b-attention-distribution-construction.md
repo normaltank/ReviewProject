@@ -1,6 +1,6 @@
 # B关注内容、联系与分布：正式施工计划
 
-日期：2026-11-13。状态：**#6积压与T0基线整理进行中；T1—T6新业务功能待实施**。业务目标和边界以[唯一业务规格](../specs/b-attention-distribution.md)为准；本计划安排实现，不另立业务标准。已核对的成果、源码位置、工作区版本和实际验证见[基线记录](b-attention-distribution-baseline.md)。后续进展归[STATE](../STATE.md)。
+日期：2026-11-13。状态：**T0运行基线已交付；#6其余处置完成后实施T1—T6新业务功能**。业务目标和边界以[唯一业务规格](../specs/b-attention-distribution.md)为准；本计划安排实现，不另立业务标准。已核对的成果、源码位置、工作区版本和实际验证见[基线记录](b-attention-distribution-baseline.md)。后续进展归[STATE](../STATE.md)。
 
 ## 交付范围与先后结果
 
