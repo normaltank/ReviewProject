@@ -55,8 +55,11 @@ class AttentionAcceptance(unittest.TestCase):
         ws.apply(good); ws.apply(good)
         self.assertEqual(len(ws.state()['history']), 1)
         stale = copy.deepcopy(good); stale['reason'] = '另一次修改'
-        with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_CONFLICT'):
+        with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_CONFLICT') as failure:
             ws.apply(stale)
+        from reviewproto.desktop import safe_message
+        self.assertIn('过期', safe_message(failure.exception))
+        self.assertIn('恢复关注页', safe_message(failure.exception))
         for key, value, error in [('source_id', 'wrong', 'E_ATTENTION_QUOTE'), ('start', -1, 'E_ATTENTION_RANGE'), ('section_id', 'wrong', 'E_ATTENTION_SECTION')]:
             patch = self.patch(ws.state()); patch['edits'][0]['evidence'][0][key] = value
             with self.assertRaisesRegex(ReviewError, error):
@@ -65,11 +68,17 @@ class AttentionAcceptance(unittest.TestCase):
 
     def test_commit_then_output_failure_recovers_without_duplicate_revision(self):
         from reviewproto.core import ReviewError
+        from reviewproto.desktop import Controller, safe_message
+        import json
         ws = AttentionWorkspace(self.path); self.addCleanup(ws.close)
         state = ws.build(input_path=self.input); patch = self.patch(state)
+        controller = Controller(); controller.open_attention(self.path)
+        patch_path = self.root / 'patch.json'
+        patch_path.write_text(json.dumps(patch), encoding='utf-8')
         html = self.path / 'attention.html'; html.unlink(); html.mkdir()
-        with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_OUTPUT_RECOVER'):
-            ws.apply(patch)
+        with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_OUTPUT_RECOVER') as failure:
+            controller.apply_attention(patch_path)
+        self.assertIn('恢复关注页', safe_message(failure.exception))
         self.assertEqual(ws.state()['revision'], 1)
         html.rmdir(); ws.recover(); ws.apply(patch)
         self.assertEqual(ws.state()['revision'], 1)
@@ -119,8 +128,11 @@ class AttentionAcceptance(unittest.TestCase):
         state = ws.recover()
         self.assertEqual(state['material_status'], 'needs_revalidation')
         self.assertEqual(state['records'], before['records'])
-        with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION'):
+        with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION') as failure:
             ws.apply(self.patch(before))
+        from reviewproto.desktop import safe_message
+        self.assertIn('来源或A参照待核', safe_message(failure.exception))
+        self.assertIn('恢复关注页', safe_message(failure.exception))
 
     def test_browser_form_download_cli_apply_controller_reopen_and_edit(self):
         import json, os, subprocess, sys

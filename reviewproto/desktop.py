@@ -37,6 +37,14 @@ try {
 
 def safe_message(error):
     code = str(error) if isinstance(error, ReviewError) and re.fullmatch(r'E_[A-Z0-9_]+', str(error)) else 'E_INTERNAL'
+    if code == 'E_ATTENTION_CONFLICT':
+        return code + '：关注补丁修订已过期。请恢复关注页并重开，重新导出修改；不会自动改写修订号。'
+    if code == 'E_ATTENTION_REVALIDATION':
+        return code + '：来源或A参照待核，旧快照已保留。请恢复关注页核对输入绑定；不能继续应用或静默转绑。'
+    if code == 'E_ATTENTION_OUTPUT_RECOVER':
+        return code + '：关注修改可能已提交，但页面输出失败。请恢复关注页并重开核对保存修订；不要改写补丁修订号。'
+    if code.startswith('E_ATTENTION_'):
+        return code + '：关注分析操作未完成。请保留所选文件，使用“恢复关注页”核对当前修订。'
     if code in {'E_REVISION_CONFLICT', 'E_PATCH_REVISION'}:
         return code + '：补丁修订已过期。请重新打开报告，重新导出修改；不会自动改写修订号。'
     if code == 'E_OUTPUT_FAILED':
