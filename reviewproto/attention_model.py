@@ -98,9 +98,8 @@ def apply_objects(state, patch):
             expr = facet['expression']
             require(isinstance(expr, dict) and set(expr) == {'function', 'boilerplate_candidate'} and isinstance(expr['function'], str) and (expr['boilerplate_candidate'] is None or type(expr['boilerplate_candidate']) is bool), 'E_ATTENTION_EXPRESSION')
             require(isinstance(facet['qualifiers'], dict) and set(facet['qualifiers']) <= QUALIFIERS and all(isinstance(v, str) or isinstance(v, list) and all(isinstance(item, str) for item in v) for v in facet['qualifiers'].values()), 'E_ATTENTION_QUALIFIERS')
-            # T3 owns A edits; T2 cannot silently invent or transfer an A association.
-            for field in ('a_links', 'outside'):
-                require(facet[field] == (old[1][field] if old else []), 'E_ATTENTION_A_EDIT')
+            from .attention_a import validate_links
+            validate_links(state, record, facet, old[1] if old else None)
             if old and any(facet.get(k) != old[1].get(k) for k in ('interpretation', 'evidence', 'qualifiers', 'kind')):
                 affected.add(fid)
                 for field in ('a_links', 'outside'):

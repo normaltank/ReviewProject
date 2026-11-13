@@ -134,6 +134,15 @@ class Controller:
         finally:
             ws.close()
 
+    def import_attention_a(self, source, actor, reason):
+        from .attention import AttentionWorkspace
+        require(getattr(self, 'attention_path', None) is not None, 'E_ATTENTION_EMPTY')
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.import_a(source, actor=actor, reason=reason))
+        finally:
+            ws.close()
+
     def open_attention_report(self):
         self.recover_attention()
         if os.name == 'nt':
@@ -494,6 +503,16 @@ def main():
         if patch:
             submit(lambda: controller.apply_attention(patch), '关注补丁已保存，请重开关注页。')
 
+    def choose_attention_a():
+        source = filedialog.askopenfilename(title='选择A参照清单 attention-a-input/1', filetypes=[('JSON', '*.json')])
+        if not source:
+            return
+        actor = simpledialog.askstring('修改者声明', '谁在导入此A参照？')
+        reason = simpledialog.askstring('导入理由', '为何显式导入此版本？')
+        if actor and reason:
+            submit(lambda: controller.import_attention_a(source, actor, reason), 'A参照已保存；旧版本及绑定保留在历史，请重开核对。')
+
+    button('导入A参照版本', choose_attention_a)
     button('建立关注分析', new_attention)
     button('迁入B关注工作稿', migrate_attention)
     button('打开关注分析包', choose_attention)

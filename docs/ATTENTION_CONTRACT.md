@@ -17,11 +17,11 @@ python -m reviewproto desktop
 
 下载只表示未应用草稿。`apply` 在一个SQLite事务中校验全部编辑，任一错误整批回滚；同一规范JSON指纹重放不增加修订。修改者是自报审计声明。`base_revision` 必须等于当前修订，同分析包身份绑定，旧修订返回 `E_ATTENTION_CONFLICT`。提交后输出失败返回 `E_ATTENTION_OUTPUT_RECOVER`；提交可能已经成功，运行recover并重开核对，不另造补丁重复修改。完全相同补丁可安全重放。
 
-备份须在关闭本机操作后复制整个分析目录，包含SQLite；仅HTML不能恢复。复制到新目录后可recover，绑定仍指向原输入位置；来源不可读时保留快照并标待核，不静默改路径。当前没有刷新/换源命令。
+备份须在关闭本机操作后复制整个分析目录，包含SQLite；仅HTML不能恢复。复制到新目录后可recover，绑定仍指向原输入位置；来源不可读时保留快照并标待核，不静默改路径。B来源没有刷新/换源命令；A参照可按下文显式版本事务导入。
 
 ## 输入 attention-input/1
 
-可运行的纯合成例见 [fixture](../tests/fixtures/synthetic_attention_input.json)。顶层 `records` 是所选来源，`a_reference` 包含 `version` 和 `items`，每项有独立 `id`、完整 `text` 和 `locator`。不需要framework、旧issue、强度或权重。T1只冻结并显示A，完整A18迁入及对应编辑属于T3。
+可运行的纯合成例见 [fixture](../tests/fixtures/synthetic_attention_input.json)。顶层 `records` 是所选来源，`a_reference` 包含 `version` 和 `items`，每项有独立 `id`、完整 `text` 和 `locator`。不需要framework、旧issue、强度或权重。A按完整条目冻结；T3的分组、版本接续和方面对应编辑见下文。
 
 来源有两个Adapter：
 
@@ -51,7 +51,7 @@ python -m reviewproto desktop
 - 限定：qualifiers.object/direction/degree/negation/reasons/conditions/actions/examples/alternatives，值为文字或文字列表；不自动抽取、补全或裁判。expression.function是本次作用，boilerplate_candidate独立取true/false/null；候选不意味着删除。
 - 主题：theme_id/label/definition/parent_ids/status，可带legacy_aliases；系统提供version（初始缺省1）。改名不换ID；定义或父组变化增加版本并置待核。父组必须存在且无环。方面的themes是成员引用列表，每项严格为theme_id/reason/evidence/status，证据来自该方面所属记录。
 - 关系：relation_id/type/endpoints/direction/scope/evidence/reading/ambiguity/status，可带legacy_aliases。端点严格为{facet_id,role}；同一方面可承担不同角色。方向可明确说明无方向/未决，scope说明实际范围，不从成员顺序推理。证据逐项校验且来源属于端点记录。单端点可表示方面内部清单/时点范围。
-- A引用预留：方面a_links列表拟由T3使用{a_item_id,version,kind,scope,reason,evidence,status}，kind区分对应/部分/相关/暂未定；outside拟使用{scope,reason,evidence,status}。T2只保留已有值，不接受创建/修改A关系。T3落实校验及普通控件后才算可编辑。
+- A引用预留：方面a_links列表拟由T3使用{a_item_id,version,kind,scope,reason,evidence,status}，kind区分对应/部分/相关/暂未定；outside拟使用{scope,reason,evidence,status}。T3已通过统一事务校验和普通控件支持创建、修改及移除。
 
 attention-patch/2使用同一analysis_id/base_revision/actor/reason，可带edits/themes/relations三个列表，至少一个非空。edits每项是观点完整当前opinion_id/record_id/interpretation/status/facets，可带replaces/legacy_aliases；themes/relations按稳定ID新增或更新。未提交对象保持原样；禁止未知编辑字段。错误端点/来源/证据/循环父组整批拒收。系统字段superseded_by与主题version不通过补丁填写。
 
@@ -92,7 +92,7 @@ attention-patch/2使用同一analysis_id/base_revision/actor/reason，可带edit
       }]
     }
 
-T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_objects方面校验。新增A参照版本须明确独立事务，保存新文件绑定与旧参照历史，并保留B记录/方面身份；禁止修改旧输入文件或重建包来偷偷换源。现尚无A更换/导入命令。T4消费state.records/opinions[].facets/themes/relations与显式状态，不用T1顶层投影、旧coverage或方面数作记录分布。空A参照明确显示尚未导入，不声称A18已冻结。
+T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_objects方面校验。新增A参照版本须明确独立事务，保存新文件绑定与旧参照历史，并保留B记录/方面身份；禁止修改旧输入文件或重建包来偷偷换源。A导入命令及版本事务见下文。T4消费state.records/opinions[].facets/themes/relations与显式状态，不用T1顶层投影、旧coverage或方面数作记录分布。空A参照明确显示尚未导入，不声称A18已冻结。
 
 ### 显式工作稿迁入
 
@@ -103,3 +103,23 @@ T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_ob
 旧记录ID作为转录anchor及旧别名保留；已给材料分组保存在record.locator.paper_id，T4可按这个显式字段筛选材料组，不从R编号/教师/文件名猜组。它表示给定论文材料组关系，不确认精确送审版、轮次或教师身份。普通评审可见性记visibility_unknown；记录expression_function只进入expression_note，不复制为各方面套话判断。每个旧方面先迁为一个工作观点/方面，再以有理由补丁调整。旧主题有持久随机ID；旧关系先保留范围/证据/工作读法，角色/方向明确待核，后续逐条纠正。新包legacy_aliases列出{kind,alias,id,disposition}，kind为record/facet/theme/relation；方面及主题另保留legacy_aliases。旧关系无ID时用旧record别名加:relation:原序号说明首次迁入位置；迁入后按持久relation_id编辑，不用序号重算身份。
 
 迁入不接纳旧A对应、旧计数、教师/稿件身份猜测或私密原表，A参照初始为空并明确未导入。真实迁入及解释核对只留本地受控work目录；公开回归全用合成材料。迁入成功、语义核对、独立审查、集成与用户本人体验分别报告。
+
+## T3 A版本接续与逐方面对应
+
+在现有包导入A参照，无需重建包或修改旧B输入：
+
+```powershell
+python -m reviewproto attention-import-a A_INPUT_JSON --workspace EXISTING_ANALYSIS --actor 编辑声明 --reason 接续理由
+```
+
+桌面先打开分析包，再点“导入A参照版本”。Controller提供`import_attention_a(source,actor,reason)`，Workspace提供`import_a(input_path,actor=...,reason=...)`，与普通补丁共用`apply`事务、修订、历史及recover。`attention-a-input/1`包含`a_reference`和可选`source:{path,fingerprint}`；source路径相对清单或为绝对本地路径，fingerprint为原文件字节SHA-256。清单本身始终绑定字节指纹；可选source同时绑定原文，两者变化或不可读都保留旧快照并待核。
+
+`a_reference`为`{version,parts:[{id,label}],items:[{id,text,locator,part_id}]}`；旧无分组参照可省parts/part_id，显示未分组，不猜新分组。完整条目包括原文限定、条件、例子和原字样，不按子句扩写新要求。所有ID唯一、part_id指向已知部分。同version下任何条目、文字、定位或分组变化均拒收；显式换版本保存旧参照与旧A绑定到`a_reference_history`，其中`replaced_at_revision`指向接续修订。原B身份及全部旧历史保持不变。内容完全相同的同版本可显式重绑到新文件，保留审计及旧绑定。
+
+A来源失效时`a_material_status=needs_revalidation`，旧关联显示待核；B绑定另以`b_material_status`报告。总`material_status`仍表达任一失效并拒收普通编辑。旧A失效允许显式A事务接续；B绑定失效继续阻止A导入。新参照不自动转绑旧关联：它们保留原version并待核，撤回状态保持撤回。旧版本引用仅能作为待核/撤回的原关联保留；不能新造旧版或未知条目引用。换版没有自动确认任何B专业判断。
+
+方面`a_links`严格使用`{a_item_id,version,kind,scope,reason,evidence,status}`；kind为explicit/partial/related/undetermined。前三类必须指向当前参照的已知条目；暂未定可指具体条目或null。`outside`严格使用`{scope,reason,evidence,status}`。范围与理由必填，证据使用所属记录的五字段逐字区间，状态为working/needs_review/confirmed/withdrawn。同方面可同时保存多个不同关系及清单外、未定范围。新关联不能仅凭版本字符串接受已变化的含义。
+
+普通表单先选择观点方面及原话片段，在“A对应与清单外内容”选择种类、A条目、范围、理由和状态，点“关联加入草稿”；已有项可纠正或移除。下载后在本机应用并重开才保存。移除最后一条仍生成完整attention-patch/2，保留同观点其他方面及B关联。A完整条目、部分、定位、当前版本及旧版本快照可查；未出现项显示尚无当前采用的对应，不表示B不关注。明确、部分、相关和未定分别显示，不据通用认可点亮全部A。
+
+真实本地A18及111方面工作解释接续保存在受控work目录；不是公开测试材料，也不表示已通过独立语义审查、集成或用户体验。公开合成回归覆盖跨部分、同句在外与对应、数据年代、背景来源偏好、措辞与来源疑虑、通用认可六类结构；浏览器验证宽窄布局、键盘下载、Controller应用及重开，并验证清空最后关联实际持久化。

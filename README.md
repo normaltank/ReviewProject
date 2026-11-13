@@ -50,8 +50,10 @@ python -m unittest discover -s tests -v
 
 原始课程、评语、论文、审计、完整旧报告及 `work/` 产物继续留本地；`.gitignore` 不能替代暂存白名单检查。历史资料保留原任务身份，不能依据旧“当前/下一步”自动追加任务或外发授权。
 
-## B关注分析（T1—T2）
+## B关注分析（T1—T3）
 
 无需规则包即可建立独立本地分析：`python -m reviewproto attention-build tests/fixtures/synthetic_attention_input.json --workspace work/attention-demo`，打开包内 `attention.html`。选择证据并填写解释后下载草稿，用 `attention-apply 草稿路径 --workspace work/attention-demo` 实际保存，`attention-recover --workspace work/attention-demo` 恢复并重开。也可从 `desktop` 的B关注分析区域建立、打开、应用及恢复。
 
-原话原分保持冻结；下载不等于已保存。合成样例与两种来源Adapter、修订/恢复/权限详见[关注分析契约](docs/ATTENTION_CONTRACT.md)。当前任务分支补充多方面、补录/拆合、主题成员、限定/表达作用及带角色关系的普通控件；显式工作稿可用attention-migrate或桌面“迁入B关注工作稿”建立新包。旧身份与待核关联保留。A18对应、分布和图形由后续票交付；任务分支实现不表示已合入main。
+原话原分保持冻结；下载不等于已保存。合成样例与两种来源Adapter、修订/恢复/权限详见[关注分析契约](docs/ATTENTION_CONTRACT.md)。当前任务分支补充多方面、补录/拆合、主题成员、限定/表达作用及带角色关系的普通控件；显式工作稿可用attention-migrate或桌面“迁入B关注工作稿”建立新包。旧身份与待核关联保留。T3支持A参照显式版本导入、逐方面多重对应及清单外范围的普通纠正控件；分布和图形由后续票交付，任务分支实现不表示已合入main。
+
+在现有包可运行 `python -m reviewproto attention-import-a A_INPUT_JSON --workspace ANALYSIS_DIRECTORY --actor 编辑声明 --reason 接续理由`，或在桌面选择“导入A参照版本”。A清单格式及旧版本、原文绑定与待核规则见[关注分析契约](docs/ATTENTION_CONTRACT.md#t3-a版本接续与逐方面对应)。导入保留B身份和全部历史，不重建包。关联普通控件可添加、纠正和移除；下载后实际apply再重开核对，最后一条清空同样保存。

@@ -1,0 +1,110 @@
+{
+  "cases": [
+    {
+      "id": "cross-parts",
+      "text": "抽样方案尚未交代，结果区间也未列出。",
+      "facets": [
+        {
+          "scope": "抽样方案",
+          "links": [
+            [
+              "method",
+              "partial"
+            ]
+          ],
+          "outside": false
+        },
+        {
+          "scope": "结果区间",
+          "links": [
+            [
+              "result",
+              "partial"
+            ]
+          ],
+          "outside": false
+        }
+      ]
+    },
+    {
+      "id": "coverage-and-format",
+      "text": "本地语种的研究覆盖不足，外语书目著录也不一致。",
+      "facets": [
+        {
+          "scope": "语种研究覆盖",
+          "links": [],
+          "outside": true
+        },
+        {
+          "scope": "书目著录",
+          "links": [
+            [
+              "citation",
+              "partial"
+            ]
+          ],
+          "outside": false
+        }
+      ]
+    },
+    {
+      "id": "data-age",
+      "text": "观测止于多年前，结论能否用于目前？",
+      "facets": [
+        {
+          "scope": "数据时效",
+          "links": [],
+          "outside": true
+        }
+      ]
+    },
+    {
+      "id": "background-preference",
+      "text": "背景最好采用行业协会的白皮书支撑。",
+      "facets": [
+        {
+          "scope": "背景与具体来源偏好",
+          "links": [
+            [
+              "background",
+              "related"
+            ]
+          ],
+          "outside": true
+        }
+      ]
+    },
+    {
+      "id": "wording-and-provenance",
+      "text": "此处术语不准确，也怀疑是机器改写。",
+      "facets": [
+        {
+          "scope": "措辞",
+          "links": [
+            [
+              "wording",
+              "related"
+            ]
+          ],
+          "outside": false
+        },
+        {
+          "scope": "来源猜疑",
+          "links": [],
+          "outside": true
+        }
+      ]
+    },
+    {
+      "id": "generic-approval",
+      "text": "总体上达到研究文章形态，有若干收获。",
+      "facets": [
+        {
+          "scope": "总体认可",
+          "links": [],
+          "outside": true
+        }
+      ]
+    }
+  ]
+}
