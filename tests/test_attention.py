@@ -177,6 +177,8 @@ class AttentionAcceptance(unittest.TestCase):
             cli('attention-apply', patchfile); cli('attention-recover')
             page.reload()
             self.assertIn('已保存修订 1', page.locator('#revision').inner_text())
+            if not page.locator('#saved').is_visible():
+                page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('对结构清晰的肯定', page.locator('#saved').inner_text())
             oid = patch['edits'][0]['opinion_id']; page.locator('#opinion').select_option(oid)
             page.locator('#interpretation').fill('纠正后的结构肯定（合成）')
@@ -187,6 +189,8 @@ class AttentionAcceptance(unittest.TestCase):
             download.value.save_as(patchfile)
             self.assertEqual(controller.apply_attention(patchfile)['revision'], 2)
             controller.recover_attention(); page.reload()
+            if not page.locator('#saved').is_visible():
+                page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('纠正后的结构肯定', page.locator('#saved').inner_text())
             for width, filename in [(1440, 'desktop-saved.png'), (420, 'mobile-saved.png')]:
                 page.set_viewport_size({'width': width, 'height': 1000})

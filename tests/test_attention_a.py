@@ -94,6 +94,8 @@ class AttentionA(unittest.TestCase):
                 d.value.save_as(patchfile);controller.apply_attention(patchfile);controller.recover_attention();page.reload();page.locator('#opinion').select_option('o')
             save()
             self.assertEqual(len(self.ws.state()['opinions'][0]['facets'][0]['a_links']),4)
+            if not page.locator('#saved').is_visible():
+                page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('内容相关',page.locator('#saved').inner_text())
             page.locator('#actor').fill('浏览器编辑');page.locator('#reason').fill('纠正关联范围')
             page.locator('#a-link').select_option('a_links:0');page.locator('#a-scope').fill('纠正后的范围');page.locator('#a-save').click();save()

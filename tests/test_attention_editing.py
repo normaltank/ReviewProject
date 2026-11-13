@@ -310,9 +310,17 @@ class AttentionEditing(unittest.TestCase):
             controller = Controller(); controller.open_attention(self.root / 'analysis')
             controller.apply_attention(patchfile); controller.recover_attention()
             page.reload()
+            if not page.locator('#saved').is_visible():
+                page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('总体基本清晰', page.locator('#saved').inner_text())
+            if not page.locator('#saved').is_visible():
+                page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('并不', page.locator('#saved').inner_text())
+            if not page.locator('#saved-themes').is_visible():
+                page.get_by_text('全部保存主题定义', exact=True).click()
             self.assertIn('表达清晰程度', page.locator('#saved-themes').inner_text())
+            if not page.locator('#saved-relations').is_visible():
+                page.get_by_text('全部保存关系与沿革（当前筛选的角色/范围见上方明细）', exact=True).click()
             self.assertIn('局部否定', page.locator('#saved-relations').inner_text())
             before = self.ws.state()
             page.locator('#actor').fill('合成编辑'); page.locator('#reason').fill('修正主题范围和关系范围')
@@ -330,6 +338,8 @@ class AttentionEditing(unittest.TestCase):
             after = self.ws.state()
             self.assertEqual(after['themes'][0]['theme_id'], before['themes'][0]['theme_id'])
             self.assertEqual(after['relations'][0]['relation_id'], before['relations'][0]['relation_id'])
+            if not page.locator('#saved-relations').is_visible():
+                page.get_by_text('全部保存关系与沿革（当前筛选的角色/范围见上方明细）', exact=True).click()
             self.assertIn('修正工作范围', page.locator('#saved-relations').inner_text())
             evidence_dir = Path(os.environ.get('ATTENTION_T2_EVIDENCE_DIR', self.root / 'screens'))
             evidence_dir.mkdir(parents=True, exist_ok=True)

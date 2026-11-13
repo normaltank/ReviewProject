@@ -52,6 +52,10 @@ class AttentionViews(unittest.TestCase):
                 self.assertIn('3/4',page.locator('#view-hits').inner_text())
                 self.assertIn('已保存修订 7',page.locator('#view-matrix').inner_text())
                 edge=page.get_by_role('link',name='关系端点：指定角色',exact=False).first
+                line_start=edge.locator('line').evaluate('(e)=>{const p=new DOMPoint(e.x1.baseVal.value,e.y1.baseVal.value).matrixTransform(e.getScreenCTM());return {x:p.x,y:p.y};}')
+                aspect=page.locator('#view-graph svg a[href="#view-facet-f1"] rect').bounding_box()
+                self.assertAlmostEqual(line_start['x'],aspect['x']+aspect['width'],delta=1)
+                self.assertAlmostEqual(line_start['y'],aspect['y']+23,delta=1)
                 edge.focus();page.keyboard.press('Enter')
                 self.assertIn('不推反向因果',page.locator('#view-detail').inner_text())
                 page.locator('#view-matrix-kind').select_option('a')
@@ -88,6 +92,13 @@ class AttentionViews(unittest.TestCase):
                     page.set_viewport_size({'width':width,'height':1000})
                     page.locator('#view-matrix-toggle').check();page.locator('#view-graph-toggle').check()
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),width)
+                    for selector in ['#view-matrix-hint','#view-graph-hint']:
+                        hint=page.locator(selector);hint.scroll_into_view_if_needed()
+                        self.assertIn('左右滑动或滚动',hint.inner_text())
+                        bounds=hint.bounding_box();self.assertGreaterEqual(bounds['x'],0)
+                        self.assertLessEqual(bounds['x']+bounds['width'],width)
+                        self.assertGreaterEqual(bounds['y'],0)
+                        self.assertLessEqual(bounds['y']+bounds['height'],1000)
                     evidence=os.environ.get('ATTENTION_T5_EVIDENCE_DIR')
                     if evidence:
                         Path(evidence).mkdir(parents=True,exist_ok=True)

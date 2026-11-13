@@ -67,6 +67,7 @@ let matrixKind='theme';
 function matrix(){const root=$('view-matrix');root.hidden=!$('view-matrix-toggle').checked;if(root.hidden)return;root.replaceChildren();node('p','已保存修订 '+base.revision+' · 分母 '+current.ids.length+' · 与上方相同筛选。每格按记录去重；同一记录可落在多个列，列总数不可相加。A按有效关系种类分列，待核不冒称明确。清单外/条目未定独立保留。',root);const l=node('label','矩阵列',root),s=node('select',null,l,{id:'view-matrix-kind'});for(const [v,t] of [['theme','B主题'],['a','A部分与条目']])node('option',t,s,{value:v});s.value=matrixKind;s.onchange=()=>{matrixKind=s.value;matrix();};
  let columns=matrixKind==='theme'?Object.entries(base.theme_definitions).map(([id,t])=>[t.label,c=>c.theme_ids.includes(id)]):['a_parts','a_items'].flatMap(field=>Object.entries(base[field]).flatMap(([id,kinds])=>Object.keys(kinds).map(k=>[(field==='a_parts'?'部分 ':'条目 ')+id+' / '+name(k),c=>c[field].some(a=>a.id===id&&a.kind===k)])));
  columns.push(['清单外',c=>c.outside.length>0],['A条目未定/待核',c=>c.a_unassigned.length>0]);
+ node('p','左右滑动或滚动，查看更多主题/A列；键盘聚焦表格后可用方向键滚动。',root,{id:'view-matrix-hint'});
  const wrap=node('div',null,root,{class:'view-scroll',tabindex:'0','aria-label':'矩阵横向滚动'}),table=node('table',null,wrap);node('caption','记录×'+(matrixKind==='theme'?'主题':'A部分/条目')+'；格中数字为本条记录0或1，链接到方面证据',table);const head=node('tr',null,node('thead',null,table));node('th','评语记录',head,{scope:'col'});for(const [title] of columns)node('th',title,head,{scope:'col'});const body=node('tbody',null,table);for(const id of current.ids){const tr=node('tr',null,body);node('th',base.details[id].record.anchor||id,tr,{scope:'row'});for(const [title,test] of columns){const td=node('td',null,tr),matches=current.cs.filter(c=>c.record_id===id&&c.kind==='content'&&test(c));if(matches.length){node('span','1 · ',td);matches.forEach(c=>{const a=link(td,facetLabel(c).slice(0,12),facetAnchor(c.facet_id));a.title=facetLabel(c)+' · '+c.facet_id;node('span',' ',td);});}else node('span','0',td);}}
 }
 let local='';
@@ -75,16 +76,18 @@ function graph(){const root=$('view-graph');root.hidden=!$('view-graph-toggle').
  const localCs=current.cs.filter(c=>c.record_id===local);if(!localCs.length){node('p','当前局部范围没有命中方面。原话仍可在普通明细回查。',root);return;}
  const rs=current.relations.filter(r=>r.endpoints.some(e=>localCs.some(c=>c.facet_id===e.facet_id)));
  const cs=current.cs.filter(c=>c.record_id===local||rs.some(r=>r.endpoints.some(e=>e.facet_id===c.facet_id)));
+ node('p','左右滑动或滚动，查看更多方面与关系组；键盘聚焦图形后可用方向键滚动。',root,{id:'view-graph-hint'});
  const wrap=node('div',null,root,{class:'view-scroll',tabindex:'0','aria-label':'局部图横向滚动'}),ns='http://www.w3.org/2000/svg';
  const svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 960 '+Math.max(160,cs.length*85,rs.length*110));svg.setAttribute('role','img');svg.setAttribute('aria-label','观点方面与关系组局部图');wrap.append(svg);
  function sn(tag,attrs,parent=svg,text){const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);if(text!=null)e.textContent=text;parent.append(e);return e;}
+ const geometry={opinionX:0,facetX:310,relationX:740,width:190};
  const positions=new Map(cs.map((c,i)=>[c.facet_id,45+i*85]));const ops=unique(cs.map(c=>c.opinion_id));
- for(const c of cs){sn('line',{x1:190,y1:45+ops.indexOf(c.opinion_id)*85,x2:310,y2:positions.get(c.facet_id),stroke:'#697d90'});}
- for(const [i,r] of rs.entries())for(const e of r.endpoints){const a=sn('a',{href:'#'+relationAnchor(r.relation_id),'aria-label':'关系端点：'+(e.role||'角色未说明')+' / '+(r.direction||'方向未说明')+' / '+r.scope+'；查看完整证据'});sn('line',{x1:560,y1:positions.get(e.facet_id),x2:740,y2:55+i*110,stroke:'#315879'},a);sn('title',{},a,(e.role||'角色未说明')+' / '+(r.direction||'方向未说明')+' / '+r.scope);}
- function box(x,y,text,href,fill){const a=sn('a',{href:'#'+href});sn('rect',{x,y:y-23,width:190,height:48,rx:4,fill,stroke:'#697d90'},a);sn('title',{},a,text);sn('text',{x:x+8,y:y+4},a,text.length>12?text.slice(0,11)+'…':text);}
- ops.forEach((id,i)=>box(0,45+i*85,'观点 '+(base.details[cs.find(c=>c.opinion_id===id).record_id].facets.find(e=>e.opinion_id===id)?.opinion_interpretation||id),anchor(cs.find(c=>c.opinion_id===id).record_id),'#eef1f5'));
- cs.forEach(c=>box(310,positions.get(c.facet_id),'方面 '+facetLabel(c),facetAnchor(c.facet_id),'#dce8f1'));
- rs.forEach((r,i)=>box(740,55+i*110,'关系组 '+name(r.type),relationAnchor(r.relation_id),'#ffffff'));
+ for(const c of cs){sn('line',{x1:geometry.opinionX+geometry.width,y1:45+ops.indexOf(c.opinion_id)*85,x2:geometry.facetX,y2:positions.get(c.facet_id),stroke:'#697d90'});}
+ for(const [i,r] of rs.entries())for(const e of r.endpoints){const a=sn('a',{href:'#'+relationAnchor(r.relation_id),'aria-label':'关系端点：'+(e.role||'角色未说明')+' / '+(r.direction||'方向未说明')+' / '+r.scope+'；查看完整证据'});sn('line',{x1:geometry.facetX+geometry.width,y1:positions.get(e.facet_id),x2:geometry.relationX,y2:55+i*110,stroke:'#315879'},a);sn('title',{},a,(e.role||'角色未说明')+' / '+(r.direction||'方向未说明')+' / '+r.scope);}
+ function box(x,y,text,href,fill){const a=sn('a',{href:'#'+href});sn('rect',{x,y:y-23,width:geometry.width,height:48,rx:4,fill,stroke:'#697d90'},a);sn('title',{},a,text);sn('text',{x:x+8,y:y+4},a,text.length>12?text.slice(0,11)+'…':text);}
+ ops.forEach((id,i)=>box(geometry.opinionX,45+i*85,'观点 '+(base.details[cs.find(c=>c.opinion_id===id).record_id].facets.find(e=>e.opinion_id===id)?.opinion_interpretation||id),anchor(cs.find(c=>c.opinion_id===id).record_id),'#eef1f5'));
+ cs.forEach(c=>box(geometry.facetX,positions.get(c.facet_id),'方面 '+facetLabel(c),facetAnchor(c.facet_id),'#dce8f1'));
+ rs.forEach((r,i)=>box(geometry.relationX,55+i*110,'关系组 '+name(r.type),relationAnchor(r.relation_id),'#ffffff'));
  node('p','图中方面 '+cs.length+' 个；观点 '+ops.length+' 个；关系组 '+rs.length+' 个（均为辅助对象数，非独立记录数）。点击节点或蓝线可回查原话与关系明细。',root);
 }
 $('view-matrix-toggle').onchange=matrix;$('view-graph-toggle').onchange=graph;
