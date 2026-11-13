@@ -48,6 +48,7 @@ class AttentionA(unittest.TestCase):
         self.assertEqual(saved['opinions'][0]['facets'][0]['facet_id'],identity)
         self.assertEqual([h['a_reference']['version'] for h in saved['a_reference_history']],['v1','v2'])
         self.assertEqual(saved['opinions'][0]['facets'][0]['a_links'][0]['version'],'v1')
+        self.assertEqual(saved['opinions'][0]['facets'][0]['outside'][0]['status'],'needs_review')
         self.assertEqual(len(saved['history']),3)
         draft=self.root/'b.json'; draft.write_text(json.dumps({'schema':'attention-input/1','records':[{'anchor':'S','text':'合成','visibility':'author_visible'}],'a_reference':{'version':'old','items':[]}}),encoding='utf-8')
         target=AttentionWorkspace(self.root/'bound'); self.addCleanup(target.close);target.build(input_path=draft)

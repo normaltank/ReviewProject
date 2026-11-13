@@ -104,8 +104,9 @@ class AttentionWorkspace:
             from .attention_model import project
             for op in state['opinions']:
                 for facet in op['facets']:
-                    for link in facet['a_links']:
-                        if link['status'] != 'withdrawn': link['status'] = 'needs_review'
+                    for field in ('a_links', 'outside'):
+                        for link in facet[field]:
+                            if link['status'] != 'withdrawn': link['status'] = 'needs_review'
                 project(op)
         state['history'] = [json.loads(r[0]) for r in self.db.execute('SELECT payload FROM history ORDER BY revision')]
         return state

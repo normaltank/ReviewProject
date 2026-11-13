@@ -75,6 +75,7 @@ def apply_reference(state, patch):
     state['a_reference'] = copy.deepcopy(ref)
     for op in state['opinions']:
         for f in op['facets']:
-            for link in f['a_links']:
-                if link['status'] != 'withdrawn': link['status']='needs_review'
+            for field in ('a_links', 'outside'):
+                for link in f[field]:
+                    if link['status'] != 'withdrawn': link['status']='needs_review'
         project(op)

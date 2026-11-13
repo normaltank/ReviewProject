@@ -116,7 +116,7 @@ python -m reviewproto attention-import-a A_INPUT_JSON --workspace EXISTING_ANALY
 
 `a_reference`为`{version,parts:[{id,label}],items:[{id,text,locator,part_id}]}`；旧无分组参照可省parts/part_id，显示未分组，不猜新分组。完整条目包括原文限定、条件、例子和原字样，不按子句扩写新要求。所有ID唯一、part_id指向已知部分。同version下任何条目、文字、定位或分组变化均拒收；显式换版本保存旧参照与旧A绑定到`a_reference_history`，其中`replaced_at_revision`指向接续修订。原B身份及全部旧历史保持不变。内容完全相同的同版本可显式重绑到新文件，保留审计及旧绑定。
 
-A来源失效时`a_material_status=needs_revalidation`，旧关联显示待核；B绑定另以`b_material_status`报告。总`material_status`仍表达任一失效并拒收普通编辑。旧A失效允许显式A事务接续；B绑定失效继续阻止A导入。新参照不自动转绑旧关联：它们保留原version并待核，撤回状态保持撤回。旧版本引用仅能作为待核/撤回的原关联保留；不能新造旧版或未知条目引用。换版没有自动确认任何B专业判断。
+A来源失效时`a_material_status=needs_revalidation`，旧A关联和清单外范围均显示待核；B绑定另以`b_material_status`报告。总`material_status`仍表达任一失效并拒收普通编辑。旧A失效允许显式A事务接续；B绑定失效继续阻止A导入。新参照使旧清单外范围待核，不自动转绑旧关联：它们保留原version并待核，撤回状态保持撤回。旧版本引用仅能作为待核/撤回的原关联保留；不能新造旧版或未知条目引用。换版没有自动确认任何B专业判断。
 
 方面`a_links`严格使用`{a_item_id,version,kind,scope,reason,evidence,status}`；kind为explicit/partial/related/undetermined。前三类必须指向当前参照的已知条目；暂未定可指具体条目或null。`outside`严格使用`{scope,reason,evidence,status}`。范围与理由必填，证据使用所属记录的五字段逐字区间，状态为working/needs_review/confirmed/withdrawn。同方面可同时保存多个不同关系及清单外、未定范围。新关联不能仅凭版本字符串接受已变化的含义。
 
