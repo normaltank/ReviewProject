@@ -45,7 +45,7 @@ GitHub Issues是待办、依赖和执行状态的唯一台账。项目内规格�
 
 旧版 CLI 可通过 GitHub API 添加关系：子项接口为 `issues/<parent>/sub_issues`，字段为 `sub_issue_id`；阻塞接口为 `issues/<child>/dependencies/blocked_by`，字段为 `issue_id`。这些字段使用工作项的数字数据库 ID，可由 `gh api repos/normaltank/ReviewProject/issues/<number> --jq '.id'` 取得，不是 `#number` 或 `node_id`。
 
-原生关系不可用时，在子项正文开头写 `Part of #<parent>` 和 `Blocked by: #<blocker>`，并在父项任务列表保留关联。所有阻塞项关闭后，任务才可开始。
+原生关系不可用时，在子项正文开头写 `Part of #<parent>` 和 `Blocked by: #<blocker>`，并在父项任务列表保留关联。工程依赖以成果已集成且相应验收通过为满足条件，Issue关闭单独记录；下游不等待最终PR合并才开始。原生阻塞状态尚未同步时，先核对集成与验收证据，再在已有授权内更新关系。
 
 ## 技能约定
 
