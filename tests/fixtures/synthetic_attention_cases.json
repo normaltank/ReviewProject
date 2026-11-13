@@ -1,0 +1,472 @@
+{
+  "schema": "synthetic-opinion-cases/1",
+  "note": "合成反例的手工预期组织，用于保存边界保真；不是自动抽取或语义正确率实验。",
+  "cases": [
+    {
+      "id": "EX01",
+      "text": "文章结构完整，但语言不规范。",
+      "facets": [
+        {
+          "interpretation": "结构完整",
+          "qualifiers": {
+            "object": "结构",
+            "direction": "肯定"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "语言不规范",
+          "qualifiers": {
+            "object": "语言",
+            "negation": "不",
+            "direction": "批评"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX02",
+      "text": "清洗、培训和信度检验流程均已执行，但方法使用仍不规范。",
+      "facets": [
+        {
+          "interpretation": "流程已执行",
+          "qualifiers": {
+            "actions": [
+              "清洗",
+              "培训",
+              "信度检验"
+            ],
+            "object": "执行，不等于达标"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "方法仍不规范",
+          "qualifiers": {
+            "negation": "仍不"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX03",
+      "text": "结果未报告均值、离散程度和效应量。",
+      "facets": [
+        {
+          "interpretation": "汇报缺项",
+          "qualifiers": {
+            "negation": "未报告",
+            "object": [
+              "均值",
+              "离散程度",
+              "效应量"
+            ]
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX04",
+      "text": "数据展示清楚，而且得出了明确发现。",
+      "facets": [
+        {
+          "interpretation": "展示清晰",
+          "qualifiers": {
+            "object": "数据展示"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "发现明确",
+          "qualifiers": {
+            "object": "研究发现"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX05",
+      "text": "结论缺证据，因为样本信息未交代；建议补充设计与检验；若不能补充，降低结论强度并说明局限。",
+      "facets": [
+        {
+          "interpretation": "结论诊断",
+          "qualifiers": {
+            "negation": "缺证据"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "报告缺项",
+          "qualifiers": {
+            "negation": "未交代",
+            "reasons": "支持结论诊断，不证明没做研究"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "补证建议",
+          "qualifiers": {
+            "actions": [
+              "补充设计",
+              "补充检验"
+            ]
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "降级",
+          "qualifiers": {
+            "conditions": "若不能补充",
+            "actions": "降低结论强度"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "局限",
+          "qualifiers": {
+            "conditions": "若不能补充",
+            "actions": "说明局限"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX06",
+      "text": "请补充证据；若不能补，降低表述；无论能否补，都须说明局限。",
+      "facets": [
+        {
+          "interpretation": "补证",
+          "qualifiers": {
+            "actions": "请补充证据"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "降级",
+          "qualifiers": {
+            "conditions": "若不能补",
+            "actions": "降低表述"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "局限",
+          "qualifiers": {
+            "conditions": "无论能否补",
+            "actions": "都须说明局限"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX07",
+      "text": "删除强措辞，改为审慎表述；同时撤回关于全国推广的建议。",
+      "facets": [
+        {
+          "interpretation": "同一措辞改写",
+          "qualifiers": {
+            "actions": [
+              "删除强措辞",
+              "改为审慎表述"
+            ]
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "推广建议撤回",
+          "qualifiers": {
+            "actions": "撤回全国推广建议"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX08",
+      "text": "本稿结论缺乏证据。第二节语句残缺，无法支持因果推论。",
+      "facets": [
+        {
+          "interpretation": "总体缺证",
+          "qualifiers": {
+            "object": "本稿总体结论"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "局部语句",
+          "qualifiers": {
+            "object": "第二节语句",
+            "negation": "残缺"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "局部推论",
+          "qualifiers": {
+            "object": "第二节因果推论",
+            "negation": "无法支持",
+            "reasons": "与总体关系待核，不推改句就能补证"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX09",
+      "text": "样本代表性尚可，但观察到的差异无法归因。",
+      "facets": [
+        {
+          "interpretation": "代表性",
+          "qualifiers": {
+            "degree": "尚可",
+            "direction": "有限肯定"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "归因",
+          "qualifiers": {
+            "negation": "无法归因",
+            "direction": "批评"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX10",
+      "text": "可改用投入程度分类，也可保留原分类；不论哪种方案，都请说明选例与分类的关系。",
+      "facets": [
+        {
+          "interpretation": "新分类",
+          "qualifiers": {
+            "degree": "可",
+            "actions": "改用投入程度分类"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "原分类",
+          "qualifiers": {
+            "degree": "可",
+            "actions": "保留原分类"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "共同说明",
+          "qualifiers": {
+            "conditions": "不论哪种方案",
+            "actions": "说明选例与分类关系"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX11",
+      "text": "建议讨论潜在影响因素，例如身份；本稿已证实身份具有影响。",
+      "facets": [
+        {
+          "interpretation": "讨论建议",
+          "qualifiers": {
+            "examples": "例如身份",
+            "actions": "讨论潜在影响因素"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "来源断言",
+          "qualifiers": {
+            "object": "本稿已证实身份影响",
+            "reasons": "B来源断言，不是本项目核实"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX12",
+      "text": "请深入解释结果，例如增加机制讨论；这种修改不要求新增实验。",
+      "facets": [
+        {
+          "interpretation": "深化解释",
+          "qualifiers": {
+            "actions": "深入解释结果",
+            "examples": "例如增加机制讨论",
+            "negation": "不要求新增实验"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX13",
+      "text": "总体方法基本规范，但表三的统计格式仍需核对。",
+      "facets": [
+        {
+          "interpretation": "总体方法",
+          "qualifiers": {
+            "degree": "基本",
+            "direction": "有限肯定"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "局部格式",
+          "qualifiers": {
+            "object": "表三统计格式",
+            "actions": "核对"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX14",
+      "text": "对相关地区研究的参考不足，外文参考文献格式也不统一。",
+      "facets": [
+        {
+          "interpretation": "地区研究覆盖",
+          "qualifiers": {
+            "negation": "参考不足"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "外文格式",
+          "qualifiers": {
+            "negation": "不统一"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX15",
+      "text": "选题契合本刊；按上述意见修改后建议刊用。",
+      "facets": [
+        {
+          "interpretation": "期刊适配",
+          "qualifiers": {
+            "object": "本刊内容适配"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "修改后刊用",
+          "qualifiers": {
+            "conditions": "按上述意见修改后",
+            "actions": "建议刊用"
+          },
+          "kind": "disposition"
+        }
+      ]
+    },
+    {
+      "id": "EX16",
+      "text": "建议调整分类并说明选例关系；如果有难度，至少限于个案讨论。",
+      "facets": [
+        {
+          "interpretation": "分类与说明",
+          "qualifiers": {
+            "actions": [
+              "调整分类",
+              "说明选例关系"
+            ]
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "最低限制",
+          "qualifiers": {
+            "conditions": "如果有难度；指代分类/说明/整体方案未决",
+            "degree": "至少",
+            "actions": "限于个案讨论"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX17",
+      "text": "完成完整检验，并解释稀有类别的结果，以避免选择偏差。",
+      "facets": [
+        {
+          "interpretation": "完整检验",
+          "qualifiers": {
+            "degree": "完整",
+            "actions": "完成检验",
+            "reasons": "避免选择偏差，作用范围未决"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "特殊结果",
+          "qualifiers": {
+            "actions": "解释稀有类别结果",
+            "reasons": "避免选择偏差，可能共同约束"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX18",
+      "text": "文中未交代样本信息，建议补写。",
+      "facets": [
+        {
+          "interpretation": "同一缺项与补救",
+          "qualifiers": {
+            "negation": "未交代样本信息",
+            "actions": "补写",
+            "object": "汇报，不推没有采样"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX19",
+      "text": "请核查只写显著性阈值的格式。",
+      "facets": [
+        {
+          "interpretation": "格式核查",
+          "qualifiers": {
+            "actions": "核查只写显著性阈值的格式",
+            "object": "具体改写法未知"
+          },
+          "kind": "content"
+        }
+      ]
+    },
+    {
+      "id": "EX20",
+      "text": "为补足研究证据，建议补充设计与统计检验。",
+      "facets": [
+        {
+          "interpretation": "补设计",
+          "qualifiers": {
+            "actions": "补充设计",
+            "reasons": "补足研究证据"
+          },
+          "kind": "content"
+        },
+        {
+          "interpretation": "补统计检验",
+          "qualifiers": {
+            "actions": "补充统计检验",
+            "reasons": "同一补证计划，不是两位教师"
+          },
+          "kind": "content"
+        }
+      ]
+    }
+  ]
+}

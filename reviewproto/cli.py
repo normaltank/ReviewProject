@@ -18,11 +18,14 @@ def main(argv=None):
         parser = SafeParser(prog="python -m reviewproto", description="Offline trusted-editor evidence review; no author export.")
         sub = parser.add_subparsers(dest="command", required=True)
         sub.add_parser("desktop")
-        for command in ('attention-build', 'attention-apply', 'attention-recover'):
+        for command in ('attention-build', 'attention-apply', 'attention-recover', 'attention-migrate'):
             item = sub.add_parser(command)
             item.add_argument('--workspace', required=True)
             if command != 'attention-recover':
                 item.add_argument('input')
+            if command == 'attention-migrate':
+                item.add_argument('--actor', required=True)
+                item.add_argument('--reason', required=True)
         item = sub.add_parser('replay-grounding')
         for option in ('workspace', 'from-run', 'run-id'):
             item.add_argument('--' + option, required=True)
@@ -78,6 +81,8 @@ def main(argv=None):
                 result = workspace.build(input_path=args.input)
             elif args.command == 'attention-apply':
                 result = workspace.apply(input_path=args.input)
+            elif args.command == 'attention-migrate':
+                result = workspace.migrate_working_draft(args.input, actor=args.actor, reason=args.reason)
             else:
                 result = workspace.recover()
             print('OK ' + args.command + ' revision=' + str(result['revision']) + ' material=' + result['material_status'])

@@ -27,7 +27,9 @@
 
 积压#6已由PR #10（运行，77a69f2）和PR #11（文档，48e8356）交付并关闭，T0不重做。当前施工集成分支为 `codex/b-attention-distribution`，T1从固定基线48e83566实施；远端状态由统筹在Issue/PR更新。
 
-T1任务分支实现了无framework的独立关注分析建包、普通表单创建/纠正一项解释、下载草稿、本机apply及recover/reopen。CLI与桌面入口及数据形状见[关注分析契约](ATTENTION_CONTRACT.md)。这是T1最小保存闭环，尚待统筹独立审查和集成，不表示T2—T6或真实14记录/A18迁入已经完成。旧源Workspace通过只读Adapter选择普通区，不复制私密原表。
+T1任务分支实现了无framework的独立关注分析建包、普通表单创建/纠正一项解释、下载草稿、本机apply及recover/reopen。CLI与桌面入口及数据形状见[关注分析契约](ATTENTION_CONTRACT.md)。T1最小保存闭环已由独立merger验收并集成至77264bb；不表示T2—T6或真实14记录/A18迁入已经完成。旧源Workspace通过只读Adapter选择普通区，不复制私密原表。
+
+T2任务分支扩展多方面、补录/拆合沿革、主题成员与有范围关系的普通控件，以及工作稿显式Adapter；14记录工作稿本地迁入与纠正证据留在受控work目录。契约以attention-objects/2明确身份/待核规则，旧T1补丁凭明确方面ID兼容。验证以实际交接版本为准，独立验收与集成由统筹处理，不声称main已交付；A18导入对应、分布及图形仍由T3—T6完成。
 
 T0修正版 `6bed3d29` 的本地完整入口为261项、269.713秒、0失败/错误/跳过；两组[远端PR检查](https://github.com/normaltank/ReviewProject/actions/runs/43445505747)与[push检查](https://github.com/normaltank/ReviewProject/actions/runs/43445494942)均成功。此前两项Windows路径别名失败保留，修复仅涉及测试路径身份比较。main接收树与该受审版本一致。本票文档检查不替代T1—T6新业务验收。
 

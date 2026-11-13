@@ -1,6 +1,6 @@
 # 关注分析 Interface · attention/1
 
-本页记录T1实际实现，适用本地可信编辑目录；权限沿用[数据契约](DATA_AND_ANNOTATION.md)。来源、分析包、HTML和草稿均继承原材料权限，不提供作者导出或认证。真实材料不进测试、仓库或模型请求。
+本页记录T1保存闭环与T2对象/迁入扩展，适用本地可信编辑目录；权限沿用[数据契约](DATA_AND_ANNOTATION.md)。来源、分析包、HTML和草稿均继承原材料权限，不提供作者导出或认证。真实材料不进测试、仓库或模型请求。
 
 ## 入口与恢复
 
@@ -38,6 +38,66 @@ python -m reviewproto desktop
 
 `attention-patch/1` 必须带 `analysis_id/base_revision/actor/reason/edits`。每项编辑含 `opinion_id/facet_id/record_id/evidence/interpretation/status`。新增观点和方面使用新ID；编辑必须沿用原record/facet身份。证据是非空列表，每项严格包含 `source_id/section_id/start/end/quote`；偏移是未经规范化的Unicode码点左闭右开区间，逐字校验quote，重复句必须选定实际位置。浏览器把UTF-16选区转为码点，不要求普通用户填写ID/JSON/偏移。
 
-`status` 为 `working/needs_review/confirmed/withdrawn`，确认只指分析核对。每项观点T1有一个最小方面身份，持久保留 `replaces`、`themes`、`a_links`、`outside`、`expression(function/boilerplate_candidate)` 及 `qualifiers(object/direction/degree/negation/reasons/conditions/actions)`。这些附加字段在T1由系统初始化，不接受补丁假装完成后续功能。全包预留 `themes/relations`，后续主题/关系/多方面编辑由T2扩展，拆合时必须新建身份、保留沿革并使关联待核，禁止按首项自动继承。
+`status` 为 `working/needs_review/confirmed/withdrawn`，确认只指分析核对。每项观点T1有一个最小方面身份，持久保留 `replaces`、`themes`、`a_links`、`outside`、`expression(function/boilerplate_candidate)` 及 `qualifiers(object/direction/degree/negation/reasons/conditions/actions)`。这些附加字段在T1由系统初始化；T2新增实际编辑方式见下文。全包预留 `themes/relations`，主题/关系/多方面编辑按下文T2扩展，拆合时必须新建身份、保留沿革并使关联待核，禁止按首项自动继承。
 
 历史逐修订保存完整补丁、指纹、时间、修改者和理由；`state()` 返回当前保存视图及历史。输入/补丁使用既有10MB有界JSON读取，保存视图同样有界。备份恢复、失效/错误和草稿状态均不声称完成T2—T6的真实批次/分布/图形验收。
+
+## T2 多方面、主题及关系（attention-objects/2）
+
+保存包继续使用schema=attention/1，state()明确给出model_version=attention-objects/2。旧T1包读取时升级为单方面表示，保留原opinion_id/facet_id；下一次应用保存升级结果。SQLite历史及旧补丁不改写。每个观点的facets是方面的权威列表；仅在恰好一个方面时提供T1顶层facet_id/themes/a_links/outside/expression/qualifiers兼容投影。多方面不提供首方面投影，顶层evidence是各方面证据的串接，不能当作单方面范围。
+
+- 观点：opinion_id/record_id/interpretation/status/facets/replaces/superseded_by。方面可补录并重排；已有方面不能换到另一观点。撤回用状态保留，不删身份。拆合新建观点和方面，replaces指明同记录旧观点；旧观点及其方面变为superseded，superseded_by记录后继。
+- 方面：facet_id/kind/interpretation/evidence/status/themes/a_links/outside/expression/qualifiers/legacy_aliases。kind为content（默认）或disposition（流程/总体处置，不混入内容主题排名）。status为working/needs_review/confirmed/withdrawn，另有系统生成的superseded。
+- 限定：qualifiers.object/direction/degree/negation/reasons/conditions/actions/examples/alternatives，值为文字或文字列表；不自动抽取、补全或裁判。expression.function是本次作用，boilerplate_candidate独立取true/false/null；候选不意味着删除。
+- 主题：theme_id/label/definition/parent_ids/status，可带legacy_aliases；系统提供version（初始缺省1）。改名不换ID；定义或父组变化增加版本并置待核。父组必须存在且无环。方面的themes是成员引用列表，每项严格为theme_id/reason/evidence/status，证据来自该方面所属记录。
+- 关系：relation_id/type/endpoints/direction/scope/evidence/reading/ambiguity/status，可带legacy_aliases。端点严格为{facet_id,role}；同一方面可承担不同角色。方向可明确说明无方向/未决，scope说明实际范围，不从成员顺序推理。证据逐项校验且来源属于端点记录。单端点可表示方面内部清单/时点范围。
+- A引用预留：方面a_links列表拟由T3使用{a_item_id,version,kind,scope,reason,evidence,status}，kind区分对应/部分/相关/暂未定；outside拟使用{scope,reason,evidence,status}。T2只保留已有值，不接受创建/修改A关系。T3落实校验及普通控件后才算可编辑。
+
+attention-patch/2使用同一analysis_id/base_revision/actor/reason，可带edits/themes/relations三个列表，至少一个非空。edits每项是观点完整当前opinion_id/record_id/interpretation/status/facets，可带replaces/legacy_aliases；themes/relations按稳定ID新增或更新。未提交对象保持原样；禁止未知编辑字段。错误端点/来源/证据/循环父组整批拒收。系统字段superseded_by与主题version不通过补丁填写。
+
+拆合不把旧主题、关系或A引用移给新方面；保留旧端点并待核，明确撤回的关联保持撤回。新方面以空关联开始，由用户逐项添加依据。修改已有方面的解释/证据/限定/类型也会使受影响关联待核。后续汇总默认排除superseded/withdrawn观点和方面；待核旧关联供历史回查，不能当作新方面的明确覆盖。
+
+旧attention-patch/1仍可创建单方面观点，或凭明确opinion_id+facet_id更新复合观点中的对应方面。不存在/歧义身份安全拒收，不默认改首项或丢弃其他方面。简单表单仍可下载T1格式；涉及多方面、限定、主题、关系或拆合时下载T2格式。事务、幂等、冲突、recover闭环不变。
+
+### 合成形状与下游交接
+
+以下使用说明用身份和EV占位（EV实际替换为有效五字段证据）；普通控件自动选择/生成身份，无需用户输入JSON、ID或偏移。
+
+    {
+      "schema": "attention-patch/2",
+      "analysis_id": "当前分析包身份", "base_revision": 1,
+      "actor": "合成编辑", "reason": "保留条件范围",
+      "edits": [{
+        "opinion_id": "O", "record_id": "R",
+        "interpretation": "条件备用动作", "status": "working",
+        "facets": [{
+          "facet_id": "F", "kind": "content",
+          "interpretation": "不能补证时可降低结论",
+          "evidence": ["EV"], "status": "working",
+          "qualifiers": {"conditions": "若不能补证", "actions": "可降低结论"},
+          "expression": {"function": "备用建议", "boilerplate_candidate": false},
+          "themes": [{"theme_id": "T", "reason": "涉及结论尺度", "evidence": ["EV"], "status": "working"}],
+          "a_links": [], "outside": []
+        }]
+      }],
+      "themes": [{"theme_id": "T", "label": "结论尺度", "definition": "表达与证据的承载范围", "parent_ids": [], "status": "working"}],
+      "relations": [{
+        "relation_id": "REL", "type": "conditional_fallback",
+        "endpoints": [{"facet_id": "F", "role": "条件下的备用动作"}],
+        "direction": "条件约束动作", "scope": "只约束降低结论",
+        "evidence": ["EV"], "reading": "不补反向保证",
+        "ambiguity": "不推排他选择", "status": "working"
+      }]
+    }
+
+T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_objects方面校验。新增A参照版本须明确独立事务，保存新文件绑定与旧参照历史，并保留B记录/方面身份；禁止修改旧输入文件或重建包来偷偷换源。现尚无A更换/导入命令。T4消费state.records/opinions[].facets/themes/relations与显式状态，不用T1顶层投影、旧coverage或方面数作记录分布。空A参照明确显示尚未导入，不声称A18已冻结。
+
+### 显式工作稿迁入
+
+    python -m reviewproto attention-migrate WORKING_DRAFT_JSON --workspace NEW_EMPTY_DIRECTORY --actor 编辑声明 --reason 迁入理由
+
+桌面“迁入B关注工作稿”可选择原稿、新包父目录及审计声明；Controller提供migrate_attention(source,destination,actor,reason)，Workspace提供migrate_working_draft(input_path,actor=...,reason=...)。仅接受working-attention-index-v1显式Adapter：校验各原话SHA及各方面/关系原始start/end/quote，不使用首个find定位，不采用旧coverage/denominator或confirmed身份。原稿作为只读文件绑定，改变/不可读触发待核。所有对象在建包事务提交前校验，坏稿不留下部分分析状态。
+
+旧记录ID作为转录anchor及旧别名保留；已给材料分组保存在record.locator.paper_id，T4可按这个显式字段筛选材料组，不从R编号/教师/文件名猜组。它表示给定论文材料组关系，不确认精确送审版、轮次或教师身份。普通评审可见性记visibility_unknown；记录expression_function只进入expression_note，不复制为各方面套话判断。每个旧方面先迁为一个工作观点/方面，再以有理由补丁调整。旧主题有持久随机ID；旧关系先保留范围/证据/工作读法，角色/方向明确待核，后续逐条纠正。新包legacy_aliases列出{kind,alias,id,disposition}，kind为record/facet/theme/relation；方面及主题另保留legacy_aliases。旧关系无ID时用旧record别名加:relation:原序号说明首次迁入位置；迁入后按持久relation_id编辑，不用序号重算身份。
+
+迁入不接纳旧A对应、旧计数、教师/稿件身份猜测或私密原表，A参照初始为空并明确未导入。真实迁入及解释核对只留本地受控work目录；公开回归全用合成材料。迁入成功、语义核对、独立审查、集成与用户本人体验分别报告。

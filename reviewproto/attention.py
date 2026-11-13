@@ -83,6 +83,8 @@ class AttentionWorkspace:
         require(row is not None, 'E_ATTENTION_EMPTY')
         state = json.loads(row[0])
         require(state['schema'] == SCHEMA, 'E_ATTENTION_SCHEMA')
+        from .attention_model import upgrade
+        upgrade(state)
         state['material_status'] = 'current'
         for binding in state['bindings']:
             try:
@@ -98,7 +100,7 @@ class AttentionWorkspace:
         state['history'] = [json.loads(r[0]) for r in self.db.execute('SELECT payload FROM history ORDER BY revision')]
         return state
 
-    def build(self, payload=None, *, base=None, input_path=None):
+    def build(self, payload=None, *, base=None, input_path=None, _working=None):
         require(self.db.execute('SELECT 1 FROM state').fetchone() is None, 'E_ATTENTION_EXISTS')
         if input_path:
             input_path = checked_local(input_path)
@@ -119,10 +121,33 @@ class AttentionWorkspace:
         if input_path:
             bindings.append({'kind': 'file', 'path': str(input_path), 'fingerprint': digest(input_bytes)})
         state = {'schema': SCHEMA, 'analysis_id': str(uuid.uuid4()), 'revision': 0, 'records': records, 'bindings': bindings, 'a_reference': copy.deepcopy(a), 'input_fingerprint': digest(encoded(payload)), 'rules_version': 'manual-evidence/1', 'opinions': [], 'themes': [], 'relations': []}
+        audit = None
+        if _working:
+            from .attention_draft import objects
+            from .attention_model import apply_objects
+            draft, themes, aliases, lookup, binding, actor, reason = _working
+            state['bindings'].append(binding)
+            patch = dict(objects(draft, state, themes, aliases, lookup), schema='attention-patch/2', analysis_id=state['analysis_id'], base_revision=0, actor=actor, reason=reason)
+            apply_objects(state, patch)
+            state['revision'] = 1
+            state['migration'] = {'adapter': 'working-attention-index-v1', 'fingerprint': binding['fingerprint'], 'status': 'working_not_gold'}
+            audit = {'revision': 1, 'actor': actor, 'reason': reason, 'at': now(), 'fingerprint': digest(encoded(patch)), 'patch': patch}
         bounded(state)
         with self.db:
             self.db.execute('INSERT INTO state VALUES(1,?)', (encoded(state).decode(),))
+            if audit:
+                self.db.execute('INSERT INTO history VALUES(?,?,?)', (1, audit['fingerprint'], encoded(audit).decode()))
         return self.recover()
+
+    def migrate_working_draft(self, input_path, *, actor, reason):
+        from .attention_draft import prepare
+        path = checked_local(input_path)
+        raw = read_input(path, 10_000_000, 'E_ATTENTION_LIMIT')
+        draft = load_json(raw)
+        payload, themes, aliases, lookup = prepare(draft)
+        _text(actor); _text(reason)
+        binding = {'kind': 'file', 'path': str(path), 'fingerprint': digest(raw)}
+        return self.build(payload, _working=(draft, themes, aliases, lookup, binding, actor, reason))
 
     def apply(self, patch=None, *, input_path=None):
         if input_path:
@@ -134,33 +159,14 @@ class AttentionWorkspace:
             if not existing:
                 state = self.state()
                 require(state['material_status'] == 'current', 'E_ATTENTION_REVALIDATION')
-                require(patch.get('schema') == 'attention-patch/1' and patch.get('analysis_id') == state['analysis_id'], 'E_ATTENTION_PATCH')
+                require(patch.get('schema') in {'attention-patch/1', 'attention-patch/2'} and patch.get('analysis_id') == state['analysis_id'], 'E_ATTENTION_PATCH')
                 require(type(patch.get('base_revision')) is int and patch['base_revision'] == state['revision'], 'E_ATTENTION_CONFLICT')
                 _text(patch.get('actor')); _text(patch.get('reason'))
-                require(isinstance(patch.get('edits'), list) and patch['edits'], 'E_ATTENTION_PATCH')
-                seen = set()
-                for edit in patch['edits']:
-                    require(set(edit) <= {'opinion_id', 'facet_id', 'record_id', 'evidence', 'interpretation', 'status'}, 'E_ATTENTION_PATCH')
-                    oid = _text(edit.get('opinion_id')); fid = _text(edit.get('facet_id'))
-                    require(oid not in seen, 'E_ATTENTION_DUPLICATE'); seen.add(oid)
-                    record = next((r for r in state['records'] if r['record_id'] == edit.get('record_id')), None)
-                    require(record is not None, 'E_ATTENTION_RECORD')
-                    require(isinstance(edit.get('evidence'), list) and edit['evidence'], 'E_ATTENTION_EVIDENCE')
-                    for ev in edit['evidence']:
-                        require(isinstance(ev, dict) and set(ev) == {'source_id', 'section_id', 'start', 'end', 'quote'}, 'E_ATTENTION_EVIDENCE')
-                        section = next((s for s in record['sections'] if s['section_id'] == ev['section_id']), None)
-                        require(section is not None, 'E_ATTENTION_SECTION')
-                        require(type(ev['start']) is int and type(ev['end']) is int and 0 <= ev['start'] < ev['end'] <= len(section['text']), 'E_ATTENTION_RANGE')
-                        require(ev['source_id'] == record['source_id'] and section['text'][ev['start']:ev['end']] == ev['quote'], 'E_ATTENTION_QUOTE')
-                    _text(edit.get('interpretation'))
-                    require(edit.get('status') in {'working', 'needs_review', 'confirmed', 'withdrawn'}, 'E_ATTENTION_STATUS')
-                    previous = next((o for o in state['opinions'] if o['opinion_id'] == oid), None)
-                    if previous:
-                        require(previous['record_id'] == edit['record_id'] and previous['facet_id'] == fid, 'E_ATTENTION_IDENTITY')
-                        previous.update(copy.deepcopy(edit))
-                    else:
-                        require(not any(o['facet_id'] == fid for o in state['opinions']), 'E_ATTENTION_IDENTITY')
-                        state['opinions'].append(dict(copy.deepcopy(edit), replaces=[], themes=[], a_links=[], outside=[], expression={'function': '', 'boilerplate_candidate': None}, qualifiers={'object': '', 'direction': '', 'degree': '', 'negation': '', 'reasons': [], 'conditions': [], 'actions': []}))
+                if patch['schema'] == 'attention-patch/2':
+                    from .attention_model import apply_objects
+                    apply_objects(state, patch)
+                else:
+                    self._apply_legacy(state, patch)
                 bounded(state)
                 state['revision'] += 1
                 audit = {'revision': state['revision'], 'actor': patch['actor'], 'reason': patch['reason'], 'at': now(), 'fingerprint': fingerprint, 'patch': patch}
@@ -168,6 +174,30 @@ class AttentionWorkspace:
                 state.pop('history', None); state.pop('material_status', None)
                 self.db.execute('UPDATE state SET payload=? WHERE id=1', (encoded(state).decode(),))
         return self.recover()
+
+    def _apply_legacy(self, state, patch):
+        from .attention_model import apply_objects, normalize_facet
+        require(isinstance(patch.get('edits'), list) and patch['edits'], 'E_ATTENTION_PATCH')
+        edits = []
+        for edit in patch['edits']:
+            require(isinstance(edit, dict) and set(edit) == {'opinion_id', 'facet_id', 'record_id', 'evidence', 'interpretation', 'status'}, 'E_ATTENTION_PATCH')
+            previous = next((o for o in state['opinions'] if o['opinion_id'] == edit['opinion_id']), None)
+            if previous:
+                require(previous['record_id'] == edit['record_id'] and previous['status'] != 'superseded', 'E_ATTENTION_IDENTITY')
+                facets = copy.deepcopy(previous['facets'])
+                matches = [f for f in facets if f['facet_id'] == edit['facet_id']]
+                require(len(matches) == 1, 'E_ATTENTION_IDENTITY')
+                matches[0].update({k: copy.deepcopy(edit[k]) for k in ('evidence', 'interpretation', 'status')})
+            else:
+                facets = [normalize_facet({k: copy.deepcopy(v) for k, v in edit.items() if k not in {'opinion_id', 'record_id'}})]
+            result = {'opinion_id': edit['opinion_id'], 'record_id': edit['record_id'], 'facets': facets,
+                      'interpretation': previous['interpretation'] if previous and len(facets) > 1 else edit['interpretation'],
+                      'status': previous['status'] if previous and len(facets) > 1 else edit['status'],
+                      'replaces': previous['replaces'] if previous else []}
+            if previous and 'legacy_aliases' in previous:
+                result['legacy_aliases'] = copy.deepcopy(previous['legacy_aliases'])
+            edits.append(result)
+        apply_objects(state, dict(patch, schema='attention-patch/2', edits=edits))
 
     def recover(self):
         from .attention_render import render
