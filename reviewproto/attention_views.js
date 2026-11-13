@@ -81,7 +81,7 @@ function graph(){const root=$('view-graph');root.hidden=!$('view-graph-toggle').
  const positions=new Map(cs.map((c,i)=>[c.facet_id,45+i*85]));const ops=unique(cs.map(c=>c.opinion_id));
  for(const c of cs){sn('line',{x1:190,y1:45+ops.indexOf(c.opinion_id)*85,x2:310,y2:positions.get(c.facet_id),stroke:'#697d90'});}
  for(const [i,r] of rs.entries())for(const e of r.endpoints){const a=sn('a',{href:'#'+relationAnchor(r.relation_id),'aria-label':'关系端点：'+(e.role||'角色未说明')+' / '+(r.direction||'方向未说明')+' / '+r.scope+'；查看完整证据'});sn('line',{x1:560,y1:positions.get(e.facet_id),x2:740,y2:55+i*110,stroke:'#315879'},a);sn('title',{},a,(e.role||'角色未说明')+' / '+(r.direction||'方向未说明')+' / '+r.scope);}
- function box(x,y,text,href,fill){const a=sn('a',{href:'#'+href});sn('rect',{x,y:y-23,width:190,height:48,rx:4,fill,stroke:'#697d90'},a);sn('title',{},a,text);sn('text',{x:x+8,y:y+4},a,text.length>15?text.slice(0,14)+'…':text);}
+ function box(x,y,text,href,fill){const a=sn('a',{href:'#'+href});sn('rect',{x,y:y-23,width:190,height:48,rx:4,fill,stroke:'#697d90'},a);sn('title',{},a,text);sn('text',{x:x+8,y:y+4},a,text.length>12?text.slice(0,11)+'…':text);}
  ops.forEach((id,i)=>box(0,45+i*85,'观点 '+(base.details[cs.find(c=>c.opinion_id===id).record_id].facets.find(e=>e.opinion_id===id)?.opinion_interpretation||id),anchor(cs.find(c=>c.opinion_id===id).record_id),'#eef1f5'));
  cs.forEach(c=>box(310,positions.get(c.facet_id),'方面 '+facetLabel(c),facetAnchor(c.facet_id),'#dce8f1'));
  rs.forEach((r,i)=>box(740,55+i*110,'关系组 '+name(r.type),relationAnchor(r.relation_id),'#ffffff'));
