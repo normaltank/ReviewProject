@@ -6,7 +6,7 @@
 
 原现场核对来自可信主工作区 `codex/opinion-review-flow`，HEAD为 `ffa9dac2ee3dbe731993d8ea359821938380f366`，结论包含该HEAD之外的既有未提交实现。原源码指纹覆盖53个应用、实验、脚本与测试文件，另有必要文档及样稿，仍保存在本地规划证据目录，不能把旧HEAD当完整底座。
 
-本轮[#6](https://github.com/normaltank/ReviewProject/issues/6)按来源整理47个历史提交及69项工作区积压；文档批次[#9](https://github.com/normaltank/ReviewProject/issues/9)从 `b5d405d0ee449d94e1b070f3d5f548a986ceaa1f` 创建，隔离集成分支为 `codex/attention-integration`。这是来源和起始点，不是最终集成/审查结论；各批交接必须同步最新集成头并重验，最终提交与main状态归对应Issue/PR。逐项处置清单由统筹在本地维护，不重复扫描或公开原报告。
+本轮[#6](https://github.com/normaltank/ReviewProject/issues/6)按来源整理47个历史提交及69项工作区积压；文档批次[#9](https://github.com/normaltank/ReviewProject/issues/9)从 `b5d405d0ee449d94e1b070f3d5f548a986ceaa1f` 创建，隔离集成分支为 `codex/attention-integration`。这是来源和起始点，不是最终集成/审查结论；各批交接必须同步最新集成头并重验，最终提交与main状态归对应Issue/PR。仓库维护去标识化的[逐项处置清单](../history/backlog-2026-11-13.md)，完整盘点与原报告证据仍留本地。
 
 ## 已有成果怎样使用
 
