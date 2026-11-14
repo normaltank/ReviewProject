@@ -4,6 +4,12 @@
 
 ## 入口与恢复
 
+本机候选路径的普通操作见[候选生成与核对](ATTENTION_CANDIDATES.md)。`attention_candidates.generate/preview/accept`分别生成、读取和接收版本化候选运行；原始B先独立分析，再对照完整当前A。模型输出经短别名中间协议绑定为规范对象，来源、身份、待核状态与精确坐标由适配器核验。原话可以通过明确的已知分区/证据片段选择或唯一逐字片段绑定；重复片段必须明确消歧，错误显式坐标不自动纠正。
+
+`candidate-runs/RUN_ID/run.json`保存输入/选择/绑定、原始请求响应、模式、协议/提示/适配器指纹、用量、错误/拒收/未完成范围及规范补丁。它与正式数据库分离，继承来源权限。局部处理状态只表示运行结果，不能自动确认语义。实际本机模式与显式工程回放分别标注；旧规范响应只作明确的兼容回放，不是实际模型协议回退。
+
+生成和预览不写正式对象，首次接收校验当前修订、来源与A，并经既有apply原子新增待核对象。`acceptance.json`先保存确切接收补丁，以数据库历史指纹判定实际接收，重复同一收据在后续人工修订后仍幂等；仅有文件不能证明已经导入。输出失败后先recover；未应用运行遇来源/A/修订变化须重新生成。候选预览使用冻结保存态及独立候选图层，二者统计分开；人工纠正继续沿原补丁流程。
+
 ```powershell
 python -m reviewproto attention-build tests/fixtures/synthetic_attention_input.json --workspace work/attention-demo
 python -m reviewproto attention-apply PATH_TO_DOWNLOADED_DRAFT --workspace work/attention-demo

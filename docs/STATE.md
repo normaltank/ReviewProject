@@ -29,6 +29,8 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
 
+本轮工程集成头`bfacebce93c7d3af190e14f25862adca1dbab364`，独立merger已接收C1/C2/C3，候选核心25项、普通UI8项、位置3项、视图4项相关检查通过。实际合成本机推理已运行，18项A容量路径可用；新7条独立语义核对为1通过、1部分、5不满足，发现A理由错配、处置分类和情态问题，C4保持开放，待双轴审查后统一返修。工程集成不等于本轮验收或main交付；当前稳定运行树仍为PR25。
+
 当前在main `d78cb256e5ccf5d3111b87771f583df3f3638692`（PR25）之后，按用户的问题重构及“继续施工”实施[内容与位置候选规格](specs/b-attention-candidates.md)和[施工计划](plans/b-attention-candidates-construction.md)。父任务[Issue #26](https://github.com/normaltank/ReviewProject/issues/26)：先B内容分析、再独立A对照，补可回查的直观位置与普通界面候选路径；沿[C1 #27](https://github.com/normaltank/ReviewProject/issues/27)/[C2 #28](https://github.com/normaltank/ReviewProject/issues/28)并行、[C3 #29](https://github.com/normaltank/ReviewProject/issues/29)贯通、[C4 #30](https://github.com/normaltank/ReviewProject/issues/30)新输入实际验证推进。当前稳定版本仍需人工填写语义对象，不把已有输入/编辑能力称为自动理解。新施工状态与实际验证跟随本轮Issue/PR，完成前不修改真实主包。
 
 前轮[Issue #12](https://github.com/normaltank/ReviewProject/issues/12)及T1—T6已由[PR #19](https://github.com/normaltank/ReviewProject/pull/19)合入main `5b31b393294144b90786128c1d1b7bcb0ea037c8`，相关任务已关闭。T6贯通、集中返修和两轴审查完成：Spec无未解决项；Standards的A原文列表待核误显明确问题已修复并独立复核通过。原Standards角色入口失效后，由fresh default代理按同一角色约定接续复核，实际覆盖及限制留在PR证据。main CI成功。不重复施工或把NOT-MAIN演练回灌主包。
