@@ -7,6 +7,7 @@ const labels={withdrawn:'撤回',superseded:'已被替换',working:'工作解释
 Object.assign(labels,{alternative_with_condition:'有条件的备选路径',coexisting_readings:'并存读法',shared_premise:'共同前提',alternative_with_minimum:'有最低动作的备选路径',suggestion_timing:'建议时机',declared_reason_scope:'明示理由范围',listed_ways_not_all_mandatory:'列举路径（非全部必做）',listed_ways_and_explicit_suggestion:'列举路径与明确建议',co_written_scope_unresolved:'共同表述（范围未决）'});
 const name=v=>labels[v]||v||'未说明';
 const recordLabel=id=>base.details[id]?.record.anchor||id;
+const paperId=record=>record.paper_id??record.locator?.paper_id??null;
 const facetLabel=c=>base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id)?.facet.interpretation||c.facet_id;
 const node=(tag,text,parent,attrs={})=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);if(parent)parent.append(e);return e;};
 const unique=xs=>[...new Set(xs)].sort();
@@ -14,7 +15,7 @@ const controls=$('view-controls');
 const picks={};
 function pick(key,title,values){const l=node('label',title,controls),s=node('select',null,l,{id:'view-'+key});node('option','全部',s,{value:'*'});for(const [value,text] of values)node('option',text,s,{value});s.onchange=refresh;picks[key]=s;}
 pick('record','记录筛选（改变分母）',Object.entries(base.details).map(([id,d])=>[id,d.record.anchor||id]));
-pick('paper','材料筛选（改变分母）',unique(Object.values(base.details).map(d=>JSON.stringify(d.record.locator?.paper_id??null))).map(v=>[v,JSON.parse(v)??'未知材料组']));
+pick('paper','材料筛选（改变分母）',unique(Object.values(base.details).map(d=>JSON.stringify(paperId(d.record)))).map(v=>[v,JSON.parse(v)??'未知材料组']));
 for(const [key,title,values] of [['function','表达作用',base.contributions.map(c=>c.expression.function||'未说明')],['direction','判断方向',base.contributions.flatMap(c=>c.directions)],['status','方面核对状态',base.contributions.map(c=>c.status)]])pick(key,title,unique(values).map(v=>[v,name(v)]));
 pick('boiler','套话候选',[['true','是候选'],['false','非候选'],['null','未判断']]);
 node('button','清除筛选',controls,{type:'button'}).onclick=()=>{Object.values(picks).forEach(s=>s.value='*');refresh();};
@@ -51,7 +52,7 @@ function overview(){
 }
 function refresh(){
  const v=Object.fromEntries(Object.entries(picks).map(([k,s])=>[k,s.value]));
- const ids=Object.keys(base.details).filter(id=>(v.record==='*'||id===v.record)&&(v.paper==='*'||JSON.stringify(base.details[id].record.locator?.paper_id??null)===v.paper));
+ const ids=Object.keys(base.details).filter(id=>(v.record==='*'||id===v.record)&&(v.paper==='*'||JSON.stringify(paperId(base.details[id].record))===v.paper));
  const cs=base.contributions.filter(c=>ids.includes(c.record_id)&&(v.function==='*'||(c.expression.function||'未说明')===v.function)&&(v.direction==='*'||c.directions.includes(v.direction))&&(v.status==='*'||c.status===v.status)&&(v.boiler==='*'||JSON.stringify(c.expression.boilerplate_candidate??null)===v.boiler));
  const facets=new Set(cs.map(c=>c.facet_id));
  const relations=base.relation_details.filter(r=>r.endpoints.length&&r.endpoints.every(e=>facets.has(e.facet_id)));
@@ -74,7 +75,7 @@ function refresh(){
  details();matrix();graph();
 }
 function details(){const root=$('view-detail');root.replaceChildren();node('h3','当前命中明细与原话原分',root);node('p','点击数字、矩阵或图只定位证据，不改变分母。未命中方面不混入当前结果；撤回/替换历史见页末。',root);
- for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)});node('summary',(r.anchor||id)+' · '+cs.length+'个命中方面',det);explain(det,'材料组',r.locator?.paper_id??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(det,'普通分区',s.section_id);node('blockquote',s.text,det);}explain(det,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');if(!cs.length)node('p','没有命中方面；该记录仍在分母中。',det);
+ for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)});node('summary',(r.anchor||id)+' · '+cs.length+'个命中方面',det);explain(det,'材料组',paperId(r)??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(det,'普通分区',s.section_id);node('blockquote',s.text,det);}explain(det,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');if(!cs.length)node('p','没有命中方面；该记录仍在分母中。',det);
  for(const c of cs){const entry=d.facets.find(e=>e.facet.facet_id===c.facet_id),f=entry.facet;const section=node('div',null,det,{id:facetAnchor(c.facet_id)});node('h4',f.interpretation,section);explain(section,'观点',entry.opinion_interpretation||c.opinion_id);explain(section,'类型 / 状态',name(c.kind)+' / '+name(c.status));evidence(section,f.evidence);for(const [key,title] of Object.entries({object:'对象',direction:'方向',degree:'程度',negation:'否定',reasons:'理由',conditions:'条件',actions:'动作',examples:'例示',alternatives:'备选'}))explain(section,title,f.qualifiers?.[key]);explain(section,'表达作用',c.expression.function||'未说明');explain(section,'套话候选',c.expression.boilerplate_candidate==null?'未判断':c.expression.boilerplate_candidate?'是候选':'非候选');explain(section,'主题与父组',c.theme_ids.map(id=>base.theme_definitions[id]?.label||id));
  for(const a of c.a_items)explain(section,'当前有效A列',a.id+' / '+name(a.kind));
  for(const a of f.a_links||[]){explain(section,'保存A关联',(a.a_item_id||'条目未定')+' / '+name(a.kind)+' / '+name(a.status)+' / '+a.version);explain(section,'范围',a.scope);explain(section,'依据',a.reason);evidence(section,a.evidence);}

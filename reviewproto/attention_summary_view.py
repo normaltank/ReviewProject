@@ -1,6 +1,7 @@
 """Embeddable, escaped, script-free saved summary. Main page integration is separate."""
 from hashlib import sha256
 from html import escape
+from .attention_summary import material_group
 
 _LABELS = {'explicit': '明确对应', 'partial': '部分对应', 'related': '相关',
            'undetermined': '暂未定', 'needs_review': '待核对', 'working': '工作解释',
@@ -121,7 +122,7 @@ def render_summary(summary):
     for rid, detail in summary['details'].items():
         record = detail['record']
         output.append('<details id="' + anchor(rid) + '"><summary>' + text(rid) + ' · ' + str(len(detail['facets'])) + ' 个命中方面</summary>')
-        output.append('<p>材料组：' + text(record.get('locator', {}).get('paper_id')) + '</p>')
+        output.append('<p>材料组：' + text(material_group(record)) + '</p>')
         sections = record.get('sections') or [dict(text=record.get('text', ''), section_id=record.get('anchor', ''))]
         for section in sections:
             output.append('<p>普通分区：' + text(section.get('section_id')) + '</p><blockquote class="as-source">' + text(section.get('text')) + '</blockquote>')

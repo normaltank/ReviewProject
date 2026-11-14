@@ -5,6 +5,11 @@ _INACTIVE = {'withdrawn', 'superseded'}
 _KINDS = ('explicit', 'partial', 'related', 'undetermined', 'needs_review')
 
 
+def material_group(record):
+    """Explicit user grouping takes precedence over the historical locator field."""
+    return record['paper_id'] if record.get('paper_id') is not None else (record.get('locator') or {}).get('paper_id')
+
+
 def summarize(state, filters=None):
     """Return JSON-safe, reproducible sets; see docs/ATTENTION_SUMMARY.md."""
     filters = filters or {}
@@ -16,7 +21,7 @@ def summarize(state, filters=None):
     if 'record_ids' in filters:
         universe &= set(filters['record_ids'])
     if 'paper_ids' in filters:
-        universe &= {rid for rid, r in records.items() if r.get('locator', {}).get('paper_id') in filters['paper_ids']}
+        universe &= {rid for rid, r in records.items() if material_group(r) in filters['paper_ids']}
 
     def matches(facet):
         expression = facet.get('expression') or {}
