@@ -34,8 +34,8 @@ function render(selection=lastSelection){
  uniq(matches.map(p=>p.facet_id)).slice(0,3).forEach((fid,j)=>{const p=matches.find(p=>p.facet_id===fid),isPending=p.review_status==='needs_review';
  const token=sn('a',{href:'#view-facet-'+encodeURIComponent(fid),'aria-label':p.label+'；'+(isPending?'待核建议':'保存解释')+'；查看原话'},svg);
  sn('title',{},token,p.label);
- sn('rect',{x:x+30,y:y+100+j*28,width:320,height:25,rx:4,fill:'#fff',stroke:'#315879',...(isPending?{'stroke-dasharray':'4 3'}:{})},token);
- sn('text',{x:x+38,y:y+118+j*28},token,(isPending?'待核 · ':'')+p.label.slice(0,isPending?16:20));});
+ sn('rect',{x:x+54,y:y+94+j*26,width:280,height:25,rx:4,fill:'#fff',stroke:'#315879',...(isPending?{'stroke-dasharray':'4 3'}:{})},token);
+ sn('text',{x:x+60,y:y+112+j*26},token,(isPending?'待核 · ':'')+p.label.slice(0,isPending?14:18));});
  if(uniq(matches.map(p=>p.facet_id)).length>3)sn('text',{x:x+30,y:y+204},a,'点击展开全部方面');
  a.onclick=e=>{e.preventDefault();selected=r.id;offset=0;drill(ps,ids.size);document.getElementById('position-drill').scrollIntoView({block:'center'});};
  });}
