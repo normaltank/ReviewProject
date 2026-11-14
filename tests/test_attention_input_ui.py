@@ -6,6 +6,73 @@ from unittest.mock import patch
 
 
 class AttentionInputTk(unittest.TestCase):
+    def test_a_target_stays_visible_after_saving_reviewing_and_current_package_changes(self):
+        import tkinter as tk
+        from reviewproto.attention_input_ui import AttentionInputWindow
+        from reviewproto.desktop import Controller
+
+        root = tk.Tk(); self.addCleanup(root.destroy)
+        root.withdraw()
+        controller = Controller()
+        entry = AttentionInputWindow(root, controller)
+        entry.anchor.set('合成B'); entry.locator.set('合成定位')
+        entry.quote.insert('1.0', '保留原始材料。'); entry.save_b_button.invoke()
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp) / ('synthetic-target-' * 5)
+            parent.mkdir()
+            with patch('tkinter.filedialog.askdirectory', return_value=str(parent)):
+                entry.build_button.invoke()
+            target = controller.attention_path
+            self.assertIsNotNone(target, entry.status.get())
+            entry.window.withdraw()
+            windows = []
+            for width, height in ((980, 780), (760, 640)):
+                window = AttentionInputWindow(root, controller, a_only=True)
+                windows.append(window)
+                window.window.geometry(f'{width}x{height}')
+                window.version.set('合成新A')
+                for number in range(16):
+                    window.item_locator.set('合成A第' + str(number) + '项')
+                    window.a_text.insert('1.0', '可以保留完整条件与范围。' + str(number))
+                    window.save_a_button.invoke()
+                window.tabs.select(window.review_tab)
+                root.update()
+                with self.subTest(size=(width, height), stage='saved-review'):
+                    self.assert_target_visible(window, target)
+                    self.assertTrue(window.import_a_button.winfo_ismapped())
+                    self.assertLessEqual(window.import_a_button.winfo_rooty() + window.import_a_button.winfo_height(),
+                                         window.window.winfo_rooty() + height)
+                    self.assertLess(window.preview.yview()[1], 1.0)
+                    window.preview.yview_moveto(1)
+                    root.update()
+                    self.assertEqual(window.preview.yview()[1], 1.0)
+                window.window.withdraw()
+            with patch('tkinter.filedialog.askdirectory', return_value=tmp):
+                entry.build_button.invoke()
+            self.assertNotEqual(controller.attention_path, target)
+            for window in windows:
+                window.window.deiconify(); root.update()
+                window.import_a_button.invoke(); root.update()
+                self.assertIn('E_ATTENTION_TARGET', window.status.get())
+                self.assertEqual(window.target_path, target)
+                self.assert_target_visible(window, target)
+                window.window.withdraw()
+
+    def assert_target_visible(self, window, target):
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+        labels = [widget for widget in descendants(window.window)
+                  if widget.winfo_class() == 'TLabel' and widget.winfo_ismapped()
+                  and str(target) in str(widget.cget('text'))]
+        self.assertTrue(labels, 'The frozen destination must remain visible after status messages change')
+        for label in labels:
+            self.assertGreaterEqual(label.winfo_height(), label.winfo_reqheight())
+            self.assertGreaterEqual(label.winfo_rooty(), window.window.winfo_rooty())
+            self.assertLessEqual(label.winfo_rooty() + label.winfo_height(),
+                                 window.window.winfo_rooty() + window.window.winfo_height())
+
     def test_workspace_picker_lists_only_ordinary_sections_and_builds_the_selection(self):
         import json
         import tkinter as tk

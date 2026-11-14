@@ -27,7 +27,10 @@ class AttentionInputWindow:
         self.window.minsize(760, 640)
         self.status = tk.StringVar(value='逐条填写后加入清单。核对清单再建包；原件和旧包保持。')
         if a_only:
-            self.status.set('显式导入的目标包：' + str(self.target_path) + '。核对完整A清单后导入；旧对应待核。')
+            target_label = ttk.Label(self.window, text='显式导入的目标包（此窗口固定）：\n' + str(self.target_path), wraplength=920)
+            target_label.pack(fill='x', padx=14, pady=(10, 0))
+            target_label.bind('<Configure>', lambda event: target_label.configure(wraplength=max(200, event.width)))
+            self.status.set('核对完整A清单后导入；旧对应待核。')
         status_label = ttk.Label(self.window, textvariable=self.status, wraplength=920)
         status_label.pack(fill='x', padx=14, pady=10)
         status_label.bind('<Configure>', lambda event: status_label.configure(wraplength=max(200, event.width)))
