@@ -142,15 +142,12 @@ def _focused_functions(path,run,record,response,provider,context_chars):
             try:
                 selected_evidence=[semantic.quote(record,ev,True) for ev in raw['evidence']]
                 binding=semantic.bind_focus(raw['focus'],selected_evidence)
-                raw['focus']=binding['source_focus']
                 for group in raw.get('ranges',[]):
                     bound=semantic.bind_focus(group['focus'],[semantic.quote(record,ev,True) for ev in group['evidence']])
-                    group['focus']=bound['source_focus'];binding.setdefault('ranges',[]).append(bound)
-                context=semantic.contextual_evidence(record,raw['evidence'])
+                    binding.setdefault('ranges',[]).append(bound)
                 selected=[ev['quote'] for ev in selected_evidence]
                 groups=semantic.semantic_ranges(record,raw)
                 raw.pop('ranges',None)
-                require(any(raw['focus'] in ev['quote'] for ev in context),'E_ATTENTION_FOCUS_SCOPE')
                 function=_call(path,run,'b_expression',semantic.FUNCTION_PROMPT,semantic.FUNCTION_SCHEMA,
                     {'focus':raw['focus'],'selected':selected,'context':[section['text'] for section in record['sections']]},provider,context_chars)
                 require(function is not None and set(function)=={'function'} and function['function'] in semantic.FUNCTIONS,'E_ATTENTION_EXPRESSION')
