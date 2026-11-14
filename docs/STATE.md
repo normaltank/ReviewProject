@@ -30,7 +30,7 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 
 前轮[Issue #12](https://github.com/normaltank/ReviewProject/issues/12)及T1—T6已由[PR #19](https://github.com/normaltank/ReviewProject/pull/19)合入main `5b31b393294144b90786128c1d1b7bcb0ea037c8`，相关任务已关闭。T6贯通、集中返修和两轴审查完成：Spec无未解决项；Standards的A原文列表待核误显明确问题已修复并独立复核通过。原Standards角色入口失效后，由fresh default代理按同一角色约定接续复核，实际覆盖及限制留在PR证据。main CI成功。不重复施工或把NOT-MAIN演练回灌主包。
 
-当前继续[可复用工具施工计划](plans/b-attention-reuse-construction.md)：普通输入建包/A录入、同保存修订的通用概览，以及两组变化A/B的完整往返验收。核心动态模型和汇总已有合成探针证据；普通录入链尚需施工。B变化先走独立新包并保留旧分析，原包内B替换/旧标注迁移未实现。样例导读[Issue #20](https://github.com/normaltank/ReviewProject/issues/20)只负责冻结实例的阅读与回查，不能代表可复用工具已完成。
+当前父任务为[Issue #21](https://github.com/normaltank/ReviewProject/issues/21)，沿[可复用工具施工计划](plans/b-attention-reuse-construction.md)推进：普通输入建包/A录入（#22）、同保存修订的通用概览（#23），以及两组变化A/B的完整往返验收（#24，原生依赖#22/#23）。核心动态模型和汇总已有合成探针证据；普通录入链尚需施工。B变化先走独立新包并保留旧分析，原包内B替换/旧标注迁移未实现。样例导读[Issue #20](https://github.com/normaltank/ReviewProject/issues/20)只负责冻结实例的阅读与回查，不能代表可复用工具已完成。
 
 本地运行须使用包含上述集成成果的代码工作树；原可信D盘工作区保留旧分支及未提交历史材料，其旧runtime不能当作新工具。私有打开脚本明确指向保留的集成工作树，见本地HANDOFF；仓库克隆只包含合成样例。
 

@@ -2,6 +2,8 @@
 
 日期：2026-11-14；规格：[复用规格v1](../specs/b-attention-reuse.md)及[业务规格](../specs/b-attention-distribution.md)。代码基线：main `5b31b393294144b90786128c1d1b7bcb0ea037c8`，与前轮审查目标4ed492e2树完全一致。既有#6及T1—T6成果已合入main，不再重做。当前真实批次及冻结导读保留为样例。
 
+任务图：[父#21](https://github.com/normaltank/ReviewProject/issues/21)；[R1/#22](https://github.com/normaltank/ReviewProject/issues/22)与[R2/#23](https://github.com/normaltank/ReviewProject/issues/23)可并行；[R3/#24](https://github.com/normaltank/ReviewProject/issues/24)原生阻塞于二者。固定规格发布版本为`fc1540c`。
+
 ## 现状与真实缺口
 
 - 已有：不同数量/ID的A、B、原分、主题和关系；独立新包；A显式换版；观点与关系编辑、草稿应用、历史与恢复；动态保存态汇总、回查及可选图。两次只读代码审计和不同合成形状探针已验证，不能把样例脚本的固定ID误判为核心硬锁。
