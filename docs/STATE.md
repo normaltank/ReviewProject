@@ -4,7 +4,7 @@
 <a id="已确认的业务边界"></a>
 ## 当前目标
 
-处理已有B评语、原分及按需论文语境，理解B关注、表达功能、联系差异、清单内外和本批分布；提供明细、可选图形、原文回查和纠正保存。行为及验收以[当前规格](specs/b-attention-distribution.md)为准。核对本项目处理是否忠实，分析确认不表示认可B专业结论；论文仅帮助理解对象与语境。
+建设可重复接受不同A、B输入的关注分析工具，理解每次材料中B关注、表达功能、联系差异、清单内外和本批分布；提供明细、可选图形、原文回查和纠正保存。行为及验收以[当前规格](specs/b-attention-distribution.md)及[复用规格](specs/b-attention-reuse.md)为准。当前数据和导读是一次验收实例。核对本项目处理是否忠实，分析确认不表示认可B专业结论；论文仅帮助理解对象与语境。
 
 A工作版本 `a-focus-20261112-01` 为5部分18项关注方向，保留原话限定，不是强制评分标准。中文相关研究覆盖按当前清单外处理，不再问A。本批为4篇论文语境、14条普通评语记录和56项原分；教师、轮次及精确送审关系仍未全部确认。材料身份与入口见[本地材料定位](LOCAL_MATERIALS.md#batch-inputs)。
 
@@ -28,7 +28,9 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
 
-当前父任务为[Issue #12](https://github.com/normaltank/ReviewProject/issues/12)，施工沿[正式计划](plans/b-attention-distribution-construction.md)的M1—M3/T0—T6/V01—V12；交付归[PR #19](https://github.com/normaltank/ReviewProject/pull/19)。T6贯通、集中返修和两轴审查已完成：Spec无未解决项；Standards的A原文列表待核误显明确问题已修复并独立复核通过。原Standards角色入口失效后，由fresh default代理按同一角色约定接续复核，实际覆盖及限制留在PR证据。新功能是否已合入main以PR实际状态为准，任务随实际交付关闭。后续从主包修订7继续使用，不重复施工或把NOT-MAIN演练回灌主包。
+前轮[Issue #12](https://github.com/normaltank/ReviewProject/issues/12)及T1—T6已由[PR #19](https://github.com/normaltank/ReviewProject/pull/19)合入main `5b31b393294144b90786128c1d1b7bcb0ea037c8`，相关任务已关闭。T6贯通、集中返修和两轴审查完成：Spec无未解决项；Standards的A原文列表待核误显明确问题已修复并独立复核通过。原Standards角色入口失效后，由fresh default代理按同一角色约定接续复核，实际覆盖及限制留在PR证据。main CI成功。不重复施工或把NOT-MAIN演练回灌主包。
+
+当前继续[可复用工具施工计划](plans/b-attention-reuse-construction.md)：普通输入建包/A录入、同保存修订的通用概览，以及两组变化A/B的完整往返验收。核心动态模型和汇总已有合成探针证据；普通录入链尚需施工。B变化先走独立新包并保留旧分析，原包内B替换/旧标注迁移未实现。样例导读[Issue #20](https://github.com/normaltank/ReviewProject/issues/20)只负责冻结实例的阅读与回查，不能代表可复用工具已完成。
 
 本地运行须使用包含上述集成成果的代码工作树；原可信D盘工作区保留旧分支及未提交历史材料，其旧runtime不能当作新工具。私有打开脚本明确指向保留的集成工作树，见本地HANDOFF；仓库克隆只包含合成样例。
 
