@@ -46,17 +46,19 @@ def _schema_map(value, update):
 
 def b_schema(record):
     schema=copy.deepcopy(B_SCHEMA)
+    literals=list(dict.fromkeys(['']+[p['text'] for section in record['sections'] for p in passages(section)]))
+    quotes=list(dict.fromkeys([section['text'] for section in record['sections']]+literals[1:]))
+    schema['$defs']={'source_literal':{'type':'string','enum':literals},'source_quote':{'type':'string','enum':quotes}}
     def update(node):
         props=node.get('properties',{})
         if 'section' in props:
             props['section']={'type':'string','enum':['s'+str(i+1) for i in range(len(record['sections']))]}
         if 'quote' in props and 'passage' in props:
-            props['quote']={'type':'string','enum':list(dict.fromkeys([s['text'] for s in record['sections']]+[p['text'] for s in record['sections'] for p in passages(s)]))}
+            props['quote']={'$ref':'#/$defs/source_quote'}
         if 'passage' in props:
             props['passage']={'type':'string','enum':list(dict.fromkeys(p['id'] for s in record['sections'] for p in passages(s)))}
         if set(props)==QUALIFIERS:
-            literals=list(dict.fromkeys(['']+[p['text'] for section in record['sections'] for p in passages(section)]))
-            for key in props: props[key]={'anyOf':[{'type':'string','enum':literals},{'type':'array','items':{'type':'string','enum':literals}}]}
+            for key in props: props[key]={'anyOf':[{'$ref':'#/$defs/source_literal'},{'type':'array','items':{'$ref':'#/$defs/source_literal'}}]}
     _schema_map(schema,update)
     return schema
 
