@@ -32,8 +32,10 @@ function render(selection=lastSelection){
  sn('text',{x:x+30,y:y+66},a,metric(matches,ids.size));
  sn('text',{x:x+30,y:y+89},a,'待核 '+uniq(pending.map(p=>p.record_id)).length+' 条记录');
  uniq(matches.map(p=>p.facet_id)).slice(0,3).forEach((fid,j)=>{const p=matches.find(p=>p.facet_id===fid),isPending=p.review_status==='needs_review';
- sn('rect',{x:x+30,y:y+100+j*28,width:320,height:25,rx:4,fill:'#fff',stroke:'#315879',...(isPending?{'stroke-dasharray':'4 3'}:{})},a);
- sn('text',{x:x+38,y:y+118+j*28},a,(isPending?'待核 · ':'')+p.label.slice(0,isPending?16:20));});
+ const token=sn('a',{href:'#view-facet-'+encodeURIComponent(fid),'aria-label':p.label+'；'+(isPending?'待核建议':'保存解释')+'；查看原话'},svg);
+ sn('title',{},token,p.label);
+ sn('rect',{x:x+30,y:y+100+j*28,width:320,height:25,rx:4,fill:'#fff',stroke:'#315879',...(isPending?{'stroke-dasharray':'4 3'}:{})},token);
+ sn('text',{x:x+38,y:y+118+j*28},token,(isPending?'待核 · ':'')+p.label.slice(0,isPending?16:20));});
  if(uniq(matches.map(p=>p.facet_id)).length>3)sn('text',{x:x+30,y:y+204},a,'点击展开全部方面');
  a.onclick=e=>{e.preventDefault();selected=r.id;offset=0;drill(ps,ids.size);document.getElementById('position-drill').scrollIntoView({block:'center'});};
  });}
