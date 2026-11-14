@@ -427,3 +427,22 @@ class CompactProtocolRegression(unittest.TestCase):
                 schema=run['calls'][1]['request']['response_format']['json_schema']['schema']
                 self.assertEqual(schema['properties']['comparisons']['required'],['a1','a2','a3'])
             finally:w.close()
+
+    def test_eighteen_reference_items_fit_explicit_capacity_without_subset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                items=[{'id':'original-'+str(i),'text':'关注第'+str(i)+'项资料记录的呈现范围，相关说明应当清楚并能对照原始材料核验。','locator':'synthetic-reference/section/row-'+str(i)} for i in range(18)]
+                w.build({'schema':'attention-input/1','records':[{'anchor':'s','text':'说明坐标单位。','visibility':'author_visible'}],'a_reference':{'version':'synthetic-eighteen','items':items}})
+                b={'opinions':[{'summary':'坐标单位说明','facets':[{'ref':'f','reading':'说明坐标单位','kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','passage':'p1'}],'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+                a={'comparisons':{'a'+str(i+1):{'kind':'unrelated','scope':'坐标单位','reason':'当前条目没有关注单位'} for i in range(18)}}
+                run=generate(w,'eighteen',ReplayProvider([b,a]))
+                self.assertEqual(run['status'],'complete',run['errors'])
+                self.assertEqual(run['request_count'],2)
+                import json
+                sent=json.loads(run['calls'][1]['request']['messages'][1]['content'])
+                self.assertEqual(len(sent['reference']),18)
+                required=run['calls'][1]['request']['response_format']['json_schema']['schema']['properties']['comparisons']['required']
+                self.assertEqual(len(required),18)
+                self.assertEqual(run['unprocessed'],[])
+            finally:w.close()
