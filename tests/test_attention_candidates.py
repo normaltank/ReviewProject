@@ -250,3 +250,30 @@ class CandidateSafetyTests(unittest.TestCase):
                 accept(w,'rewrite',actor='editor',reason='changed')
             self.assertEqual(w.state()['revision'],0)
         finally: w.close()
+
+    def test_unique_quotes_can_resolve_null_positions_but_repeats_cannot(self):
+        b=self.output(); ev=b['edits'][0]['facets'][0]['evidence'][0]
+        ev.update(start=None,end=None,quote='保留😀。保留😀。')
+        run=generate(self.w,'unique-null',ReplayProvider([b]))
+        self.assertEqual(run['status'],'complete')
+        grounded=run['patch']['edits'][0]['facets'][0]['evidence'][0]
+        self.assertEqual((grounded['start'],grounded['end']),(0,8))
+        b=self.output(); b['edits'][0]['facets'][0]['evidence'][0].update(start=None,end=None)
+        run=generate(self.w,'ambiguous-null',ReplayProvider([b]))
+        self.assertEqual(run['status'],'failed')
+        self.assertIn('E_ATTENTION_QUOTE_AMBIGUOUS',str(run['rejected']))
+
+
+    def test_overlap_and_half_position_are_not_repaired(self):
+        b=self.output(); b['edits'][0]['facets'][0]['evidence'][0].update(start=None,end=8)
+        run=generate(self.w,'half-offset',ReplayProvider([b]))
+        self.assertEqual(run['status'],'failed')
+        w=AttentionWorkspace(Path(self.temp.name)/'overlap')
+        try:
+            s=w.build({'schema':'attention-input/1','records':[{'anchor':'s','text':'aaaa','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}})
+            r=s['records'][0]; b=self.output(); b['edits'][0]['record_id']=r['record_id']
+            b['edits'][0]['facets'][0]['evidence'][0].update(source_id=r['source_id'],start=None,end=None,quote='aaa')
+            run=generate(w,'overlap',ReplayProvider([b]))
+            self.assertEqual(run['status'],'failed')
+            self.assertIn('E_ATTENTION_QUOTE_AMBIGUOUS',str(run['rejected']))
+        finally:w.close()
