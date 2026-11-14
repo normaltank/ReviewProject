@@ -11,8 +11,14 @@ class ReplayProvider:
     mode = 'replay'
 
     def __init__(self, responses):
-        self.responses = iter(copy.deepcopy(responses))
-        self.config = {'provider': 'injected-replay/1'}
+        responses=copy.deepcopy(list(responses))
+        first=responses[0] if responses else {}
+        try:
+            if 'raw_http_body' in first: first=json.loads(first['raw_http_body'])
+            if 'choices' in first: first=json.loads(first['choices'][0]['message']['content'])
+        except (ValueError,KeyError,TypeError,IndexError): first={}
+        self.responses = iter(responses)
+        self.config = {'provider':'injected-replay/1','protocol':'attention-semantic/2' if 'opinions' in first else 'attention-canonical-replay/1'}
 
     def complete(self, request):
         result = next(self.responses)
