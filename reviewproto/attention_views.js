@@ -73,7 +73,7 @@ function refresh(){
  for(const kind of ['content','disposition']){const subset=cs.filter(c=>c.kind===kind);group(name(kind)+'辅助数：'+unique(subset.map(c=>c.opinion_id)).length+'观点 / '+unique(subset.map(c=>c.facet_id)).length+'方面',[[name(kind)+'记录',subset]]);}
  group('关系（单列，不作主题排名）',Object.keys(base.relations).map(type=>[name(type),relations.filter(r=>r.type===type).flatMap(r=>r.endpoints.map(e=>cs.find(c=>c.facet_id===e.facet_id)))]));
  details();matrix();graph();
- window.AttentionPositions.render({recordIds:ids, facetIds:cs.map(c=>c.facet_id)});
+ window.AttentionPositions.render({recordIds:ids, facetIds:cs.map(c=>c.facet_id),expressionFilters:v});
 }
 function details(){const root=$('view-detail');root.replaceChildren();node('h3','当前命中明细与原话原分',root);node('p','点击数字、矩阵或图只定位证据，不改变分母。未命中方面不混入当前结果；撤回/替换历史见页末。',root);
  for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)});node('summary',(r.anchor||id)+' · '+cs.length+'个命中方面',det);explain(det,'材料组',paperId(r)??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(det,'普通分区',s.section_id);node('blockquote',s.text,det);}explain(det,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');if(!cs.length)node('p','没有命中方面；该记录仍在分母中。',det);

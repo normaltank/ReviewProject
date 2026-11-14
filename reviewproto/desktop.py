@@ -362,6 +362,7 @@ def main():
     root.title('ReviewProject · 可信编辑本机入口')
     root.geometry('800x920')
     controller, results = Controller(), queue.Queue()
+    candidate_windows = []
     busy = False
     widgets = []
     status = tk.StringVar(value='选择新材料或已有工作区。材料、报告和补丁仅供可信编辑。')
@@ -542,6 +543,16 @@ def main():
     button('从已有A输入文件导入（高级）', choose_attention_a_file)
     button('迁入B关注工作稿', migrate_attention)
     button('打开关注分析包', choose_attention)
+    def attention_candidates():
+        if busy:
+            return
+        if not getattr(controller, 'attention_path', None):
+            status.set('请先准备输入并建包，或打开已有关注分析包。')
+            return
+        from .attention_candidate_ui import AttentionCandidateWindow
+        candidate_windows[:] = [w for w in candidate_windows if w.window.winfo_exists()]
+        candidate_windows.append(AttentionCandidateWindow(root, controller, on_result=input_result))
+    button('生成并核对B内容与A位置候选', attention_candidates)
     button('打开关注页', lambda: submit(controller.open_attention_report))
     button('应用关注草稿补丁', choose_attention_patch)
     button('恢复关注页', lambda: submit(controller.recover_attention))
@@ -671,6 +682,8 @@ def main():
     def close():
         if busy:
             status.set('当前操作尚未结束；请等待完成后关闭，避免中断保存。')
+        elif any(w.window.winfo_exists() and (w.busy or w.service.owned) for w in candidate_windows):
+            status.set('候选窗口仍在处理，或拥有运行中的模型。请等待处理完成并在候选窗口停止其启动的模型，再关闭。')
         else:
             root.destroy()
     root.protocol('WM_DELETE_WINDOW', close)
