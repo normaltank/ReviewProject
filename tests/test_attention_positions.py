@@ -129,4 +129,3 @@ class Positions(unittest.TestCase):
             self.assertIn('显示 21–40 / 48', page.locator('#position-drill').inner_text())
             self.assertEqual(errors, [])
             browser.close()
-
