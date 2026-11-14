@@ -365,6 +365,8 @@ class AttentionInputWindow:
                 try:
                     from .batch import source_state
                     state = source_state(record['workspace'])
+                    require(self.draft.workspace_checks.get(record['workspace']) ==
+                            (state['revision'], state['source']['source_id']), 'E_ATTENTION_REVALIDATION')
                     section = next(s for s in state['sections'] if s['section_id'] == record['section_id'])
                     require(section['visibility'] in {'author_visible', 'visibility_unknown'}, 'E_ATTENTION_PRIVATE')
                     lines.extend(['可见性：' + section['visibility'], '定位：' + str(section['locator']), section['text']])
