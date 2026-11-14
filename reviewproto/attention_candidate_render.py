@@ -120,7 +120,7 @@ def render_candidate_preview(run):
         out.append('</details>')
     out.append('</section>')
     data = json.dumps(overlay, ensure_ascii=True).replace('<', '\\u003c')
-    script = '''<script>document.addEventListener('click',e=>{const a=e.target.closest('a');if(!a?.hash?.startsWith('#candidate-'))return;const t=document.getElementById(decodeURIComponent(a.hash.slice(1)));if(t){for(let p=t;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;t.tabIndex=-1;t.focus();}});AttentionPositions.setOverlay(''' + data + ');</script>'
+    script = '''<script>document.addEventListener('click',e=>{const href=e.target.closest('a')?.getAttribute('href');if(!href?.startsWith('#candidate-'))return;const t=document.getElementById(decodeURIComponent(href.slice(1)));if(t){for(let p=t;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;t.tabIndex=-1;t.focus();}});AttentionPositions.setOverlay(''' + data + ');</script>'
     page = render(saved)
     # Keep the existing saved-state editor and navigation intact. Candidate
     # objects only exist in the independent details and overlay above.

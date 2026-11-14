@@ -302,6 +302,8 @@ assert not errors, errors
                 self.assertEqual(overlay.locator('[data-candidate-region="item:two"]').count(), 1)
                 self.assertIn('1/1', overlay.inner_text())
                 self.assertIn('0/1', page.locator('#view-hits').inner_text())
+                overlay.locator('svg a[href^="#candidate-facet-"]').first.click()
+                self.assertTrue(page.locator('[id^="candidate-facet-"]').first.evaluate('(e)=>e.open'))
                 overlay.locator('[data-candidate-region="item:one"]').focus()
                 page.keyboard.press('Enter')
                 self.assertIn('两处相关', page.locator('#candidate-position-drill').inner_text())
