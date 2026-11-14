@@ -91,13 +91,26 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars):
         request.update(model=provider.config['model'],max_tokens=provider.config['max_tokens'])
         request.update({key:copy.deepcopy(provider.config[key]) for key in
             ('temperature','top_p','top_k','min_p','seed','cache_prompt','chat_template_kwargs') if key in provider.config})
+        request.update(copy.deepcopy(provider.config.get('stage_profiles',{}).get(stage,{})))
     call={'stage':stage,'request':request,'request_hash':digest(encoded(request)),'prompt_hash':digest(prompt.encode()),'schema_hash':digest(encoded(schema)),'at':now(),'status':'pending','usage':None}
     run['calls'].append(call)
     _save(path,run)
     try:
+        require(request.get('max_tokens',provider.config.get('max_tokens',4096))<=provider.config.get('max_tokens',4096),'E_ATTENTION_CAPACITY_PROFILE')
         size=len(json.dumps(request,ensure_ascii=False,separators=(',',':')).encode('utf-8'))
-        # UTF-8 bytes conservatively bound tokens, reserve full requested output.
-        require(len(json.dumps(request,ensure_ascii=False)) <= context_chars and size + provider.config.get('max_tokens',4096) + 256 <= provider.config.get('context_tokens',16384), 'E_ATTENTION_CAPACITY')
+        # Input limit excludes fixed prompts/grammar. The context budget still
+        # covers the full rendered model prompt plus its full output allowance.
+        require(len(json.dumps(payload,ensure_ascii=False)) <= context_chars,'E_ATTENTION_CAPACITY')
+        output=request.get('max_tokens',provider.config.get('max_tokens',4096))
+        limit=provider.config.get('context_tokens',16384)
+        budget={'method':'utf8-upper-bound/1','request_utf8_bytes':size,'reserved_output_tokens':output,'safety_tokens':256}
+        call['capacity']=budget
+        prompt_tokens=size
+        if size+output+256>limit:
+            require(provider.mode=='local_model' and callable(getattr(provider,'count_prompt',None)),'E_ATTENTION_CAPACITY')
+            prompt_tokens=provider.count_prompt(request,budget)
+        budget['total_tokens_bound']=prompt_tokens+output+256
+        require(budget['total_tokens_bound']<=limit,'E_ATTENTION_CAPACITY')
         call['attempted']=True
         response=provider.complete(copy.deepcopy(request))
         call['response']=response
@@ -230,6 +243,9 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     require(state['material_status']=='current','E_ATTENTION_REVALIDATION')
     require(type(context_chars) is int and 1 <= context_chars <= 1_000_000,'E_ATTENTION_CAPACITY')
     require(provider.mode in {'replay','local_model'},'E_ATTENTION_PROVIDER')
+    if focused and provider.mode=='local_model':
+        profile=provider.config.get('stage_profiles',{}).get('b_expression',{})
+        require(provider.config['max_tokens']>=profile.get('max_tokens',768),'E_ATTENTION_CAPACITY_PROFILE')
     ids=[r['record_id'] for r in state['records']] if record_ids is None else list(record_ids)
     require(ids and len(ids)==len(set(ids)) and set(ids)<={r['record_id'] for r in state['records']},'E_ATTENTION_RECORD')
     path=_path(workspace,run_id)
@@ -367,6 +383,7 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
         _validate(state,patch)
     run['status']=('partial' if patch['edits'] else 'failed') if run['errors'] or run['rejected'] or run['unprocessed'] else ('complete' if patch['edits'] else 'zero_candidates')
     run['request_count']=sum(bool(c.get('attempted')) for c in run['calls'])
+    run['capacity_request_count']=sum(len(c.get('capacity',{}).get('calls',[])) for c in run['calls'])
     run['patch_hash']=digest(encoded(patch))
     _save(path,run)
     return copy.deepcopy(run)

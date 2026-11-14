@@ -51,6 +51,13 @@ def render_candidate_preview(run):
                str(len(run.get('rejected', []))) + ' 项。完整运行记录保存在本包候选历史中。</p>')
     failures = {
         'E_ATTENTION_CAPACITY': '整条记录或A参照超出本次容量，未截断原文。请调整所选范围或人工补录。',
+        'E_ATTENTION_CAPACITY_CHECK': '本机容量预检未完成，尚未发出该次模型推理。请核对本机服务后重新生成；原文未截断。',
+        'E_ATTENTION_CAPACITY_PROFILE': '输出长度小于已验证配置所需的768，尚未发出该次推理。请提高最大输出长度后重新生成。',
+        'E_ATTENTION_RELATION_CONNECTION': '关系类型缺少原文明示的连接依据；未接收该关系，原提议保留在运行审计供人工核对。',
+        'E_ATTENTION_RELATION_ROLE': '关系端点角色不能对应原文的实际作用；未接收该关系，原提议保留供人工核对。',
+        'E_ATTENTION_RELATION_RANGE': '关系端点或作用范围未绑定到相应连接证据；未接收该关系，原提议保留供人工核对。',
+        'E_ATTENTION_RELATION_TEXT': '关系解释用了来源或方面ID占位；未接收该关系，原提议保留供人工核对。',
+        'E_ATTENTION_QUALIFIER_ROLE': '限定片段缺少所填作用的明确依据；未采用该字段，原话及原提议保留供核对。',
         'E_ATTENTION_QUOTE': '引文与原话不一致，该项已拒收。请重新生成或在普通关注页人工补录。',
         'E_ATTENTION_QUOTE_AMBIGUOUS': '重复引文没有足够位置消歧，该项已拒收。请回查重复片段后人工补录。',
         'E_ATTENTION_RANGE': '引文位置无效，该项已拒收。请回查完整原话后重新生成或人工补录。',
@@ -63,7 +70,9 @@ def render_candidate_preview(run):
     }
     out.append('<ul>')
     for item in run.get('errors', []) + run.get('rejected', []):
+        field_label={'examples':'例示','negation':'否定'}.get(item.get('field'))
         out.append('<li>' + ('拒收候选：' if item in run.get('rejected', []) else '处理未完成：') +
+                   (field_label+'字段：' if field_label else '') +
                    failures.get(item.get('code'), '响应缺少有效证据、范围或结构，未接收该项。请回查原话后重新生成或人工补录。') + '</li>')
     out.append('</ul>')
     qualifiers = dict(object='对象', direction='判断方向', degree='程度', negation='否定',

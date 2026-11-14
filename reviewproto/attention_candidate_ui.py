@@ -64,6 +64,8 @@ class CandidateSession:
 
 def candidate_message(error):
     code = str(error)
+    if code == 'E_ATTENTION_CAPACITY_PROFILE':
+        return '表达分类需要至少768的输出长度以保留有界思考和完整结果。请将最大输出长度设为至少768后重新生成；本次未提高你设置的上限。'
     if code == 'E_ATTENTION_TARGET':
         return '目标或保存修订已变化。请关闭候选窗口，从当前分析包重新打开；原候选仍保留在原包。'
     if code == 'E_ATTENTION_REVALIDATION':

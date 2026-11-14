@@ -29,6 +29,7 @@ FACET=obj({'ref':S,'reading':S,'kind':enum('content','disposition'),'expression'
 REL=obj({'type':S,'endpoints':arr(obj({'facet':S,'role':S})),'direction':S,'scope':S,'evidence':arr(QUOTE),'reading':S,'ambiguity':S})
 B_SCHEMA=obj({'opinions':arr(obj({'summary':S,'facets':arr(FACET)})),'relations':arr(REL),'unprocessed':arr(obj({'section':S,'reason':S}))})
 STATES=('评价','建议','提问','限制','未知','礼貌','稿件录用或退修决定','归属','总体判断','其他')
+STATE_FUNCTIONS={'限制':'范围限制','未知':'含义未定','归属':'声音归属'}
 SOURCE_FACET=obj({'ref':S,'focus':{'type':'string','minLength':1,'maxLength':48},
     'state':enum(*STATES),'boilerplate':{'type':['boolean','null']},'evidence':arr(QUOTE),
     'qualifiers':obj({k:{'anyOf':[S,arr(S)]} for k in sorted(QUALIFIERS-{'object'})},[]),
@@ -403,6 +404,63 @@ def semantic_ranges(record,facet):
         for ev in covered) for original in selected),'E_ATTENTION_SCOPE')
     return result
 
+def relation_basis(record,raw,evs,endpoints,facets):
+    """Conservative explicit-link gate, not a judgement of B's correctness.
+
+    Implicit or unsupported proposals stay in the raw run for human review;
+    proximity, shared topics and nonempty quotes do not certify a relation.
+    """
+    sections={s['section_id']:s['text'] for s in record['sections']}
+    chunks=[]
+    for ev in sorted(evs,key=lambda e:(e['section_id'],e['start'],e['end'])):
+        if chunks and chunks[-1]['section_id']==ev['section_id'] and ev['start']<=chunks[-1]['end']:
+            previous=chunks[-1];end=max(previous['end'],ev['end'])
+            chunks[-1]=dict(previous,end=end,quote=sections[ev['section_id']][previous['start']:end])
+        else:chunks.append(copy.deepcopy(ev))
+    visible='\n'.join(e['quote'] for e in chunks)
+    aliases={'s'+str(i+1) for i in range(len(record['sections']))}|set(facets)
+    aliases|={p['id'] for s in record['sections'] for p in passages(s,True)}
+    aliases|={value.removeprefix('facet-') for value in facets}
+    for field in ('type','direction','scope','reading','ambiguity'):
+        value=raw[field].strip()
+        require(value not in aliases or value in visible,'E_ATTENTION_RELATION_TEXT')
+    def overlap(e,left,right,section):
+        return e['section_id']==section and e['start']<right and left<e['end']
+    require(all(any(overlap(own,ev['start'],ev['end'],ev['section_id']) for own in facets[endpoint['facet_id']]['evidence'] for ev in evs)
+        for endpoint in endpoints),'E_ATTENTION_RELATION_RANGE')
+    kind=raw['type'].lower()
+    if re.search(r'条件|前提|conditional',kind):
+        patterns=[r'(?P<condition>(?:若|如果|假如|倘若|(?<!例)如(?!何|同|此)|只要|只有|除非|一旦|当(?=[^，,。\n]{1,40}时(?:，|,))).+?)(?:，|,|则|才|就)(?P<action>[^。！？\n]+)',
+                  r'(?P<condition>\b(?:if|unless|provided that)\b.+?)(?:,|\bthen\b)(?P<action>[^.!?\n]+)']
+        matches=[(chunk,match) for chunk in chunks for pattern in patterns for match in re.finditer(pattern,chunk['quote'],re.I)]
+        require(matches,'E_ATTENTION_RELATION_CONNECTION')
+        condition_role=r'条件|前提|触发|condition|premise|antecedent|trigger'
+        action_role=r'动作|后续|处理|路径|结果|action|consequen|fallback|effect|outcome|path'
+        roles=[endpoint['role'] for endpoint in endpoints]
+        require((len(endpoints)==1 and any(re.search(condition_role+'|'+action_role,role,re.I) for role in roles)) or
+                (any(re.search(condition_role,role,re.I) for role in roles) and any(re.search(action_role,role,re.I) for role in roles)),
+                'E_ATTENTION_RELATION_ROLE')
+        for endpoint in endpoints:
+            role=endpoint['role'];parts=[]
+            if re.search(condition_role,role,re.I):parts.append('condition')
+            if re.search(action_role,role,re.I):parts.append('action')
+            require(parts,'E_ATTENTION_RELATION_ROLE')
+            require(any(all(any(overlap(own,chunk['start']+match.start(part),chunk['start']+match.end(part),chunk['section_id'])
+                    for own in facets[endpoint['facet_id']]['evidence']) for part in parts) for chunk,match in matches),
+                    'E_ATTENTION_RELATION_RANGE')
+        return
+    connectors=[(r'理由|支持|因果|reason|causal',r'因为|由于|因此|所以|故而|以致|原因(?:是|在于)|because|therefore'),
+                (r'备选|替代|选择|alternative',r'.+(?:或者|或是|还是|(?<!可)或(?!许)|(?:也|亦)可|\bor\b).+|alternatively'),
+                (r'对照|对比|转折|contrast',r'但是|但|然而|却|相反|不同于|不是.+而是|however|\bbut\b'),
+                (r'先后|时序|sequence',r'先.+(?:再|然后)|之前|之后|随后|然后|\bbefore\b|\bafter\b'),
+                (r'动作组|并列|action.group',r'同时|并且|以及|既.+又|一方面.+另一方面'),
+                (r'归属|转述|引用|attribution|voice',r'原话|引用|转述|主张|声称|受访者|作者|\bsaid\b|\bquote\b|according to')]
+    for kind_pattern,source_pattern in connectors:
+        if re.search(kind_pattern,kind,re.I):
+            require(re.search(source_pattern,visible,re.I),'E_ATTENTION_RELATION_CONNECTION')
+            return
+    require(raw['type'] in visible,'E_ATTENTION_RELATION_CONNECTION')
+
 def convert_b(record,response,source_bound=False):
     _keys(response,{'opinions','relations','unprocessed'})
     require(all(isinstance(response[k],list) for k in response),'E_ATTENTION_SEMANTIC_SHAPE')
@@ -425,7 +483,7 @@ def convert_b(record,response,source_bound=False):
                         state='处置' if raw['state']=='稿件录用或退修决定' else raw['state']
                         raw=dict(raw,reading=raw['focus']+'（'+state+'）：'+wording,
                             kind='disposition' if state=='处置' else 'content',
-                            expression=state if state in FACET['properties']['expression']['enum'] else '其他')
+                            expression=STATE_FUNCTIONS.get(state,state))
                         raw['qualifiers']=dict(raw['qualifiers'],object=raw['focus'])
                         raw.pop('focus');raw.pop('state')
                         if state not in {'礼貌','总体判断'}: raw['boilerplate']=False
@@ -433,7 +491,8 @@ def convert_b(record,response,source_bound=False):
                     _keys(raw,{'ref','reading','kind','expression','boilerplate','evidence','qualifiers','themes'})
                     ref=text(raw['ref']); text(raw['reading'])
                     require(ref not in refs and ref not in pending,'E_ATTENTION_DUPLICATE')
-                    require(raw['kind'] in {'content','disposition'} and raw['expression'] in FACET['properties']['expression']['enum'] and (raw['boilerplate'] is None or type(raw['boilerplate']) is bool),'E_ATTENTION_EXPRESSION')
+                    allowed_functions=set(FACET['properties']['expression']['enum'])|(set(STATE_FUNCTIONS.values()) if source_bound else set())
+                    require(raw['kind'] in {'content','disposition'} and raw['expression'] in allowed_functions and (raw['boilerplate'] is None or type(raw['boilerplate']) is bool),'E_ATTENTION_EXPRESSION')
                     require(isinstance(raw['evidence'],list) and raw['evidence'],'E_ATTENTION_EVIDENCE')
                     ev=contextual_evidence(record,raw['evidence']) if source_bound else [quote(record,e) for e in raw['evidence']]
                     qualifiers=raw['qualifiers']
@@ -444,6 +503,14 @@ def convert_b(record,response,source_bound=False):
                         if any(v and not any(v in e['quote'] for e in ev) for v in values):
                             rejected.append({'stage':'b_semantic_qualifier','index':index,'facet':ref,'field':key,'code':'E_ATTENTION_QUALIFIER_SCOPE'})
                             del qualifiers[key]
+                            continue
+                        if source_bound and key in {'examples','negation'} and any(v for v in values):
+                            context='\n'.join(e['quote'] for e in ev)
+                            supported=(re.search(r'例如|比如|举例|为例|for example|e\.g\.|such as',context,re.I) is not None
+                                if key=='examples' else all(not v or re.search(r'不|未|无|没|否|别|勿|缺|不足|\bnot\b|\bno\b|\bnever\b|n[\x27’]t',v,re.I) for v in values))
+                            if not supported:
+                                rejected.append({'stage':'b_semantic_qualifier','index':index,'facet':ref,'field':key,'code':'E_ATTENTION_QUALIFIER_ROLE'})
+                                del qualifiers[key]
                     require(isinstance(raw['themes'],list),'E_ATTENTION_THEME')
                     members=[]
                     for theme in raw['themes']:
@@ -472,6 +539,7 @@ def convert_b(record,response,source_bound=False):
             for key in ('type','direction','scope','reading'): text(raw[key])
             require(isinstance(raw['ambiguity'],str),'E_ATTENTION_RELATION')
             ev=[quote(record,e,source_bound) for e in raw['evidence']]; evidence(record,ev)
+            relation_basis(record,raw,ev,endpoints,{f['facet_id']:f for op in result['edits'] for f in op['facets']})
             result['relations'].append(dict(raw,relation_id='relation-'+str(index+1),endpoints=endpoints,evidence=ev,status='needs_review'))
         except (ReviewError,TypeError,KeyError) as exc: rejected.append({'stage':'b_semantic_relation','index':index,'code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RELATION'})
     for raw in response['unprocessed']:

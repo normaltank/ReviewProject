@@ -4,7 +4,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from .core import require
+from .core import require, ReviewError, digest
 from .store import encoded
 
 class ReplayProvider:
@@ -45,11 +45,19 @@ class LocalProvider:
         require(isinstance(model,str) and model.strip(), 'E_ATTENTION_MODEL')
         self.config = {'endpoint':endpoint.rstrip('/'), 'model':model, 'max_tokens':max_tokens, 'timeout':timeout, 'context_tokens':16384,
             'temperature':0.7,'top_p':0.8,'top_k':20,'min_p':0,'seed':42,'cache_prompt':False,
-            'chat_template_kwargs':{'enable_thinking':False}}
+            'chat_template_kwargs':{'enable_thinking':False},
+            'stage_profiles':{'b_analysis':{'temperature':0.6,'top_p':0.95,'top_k':20,'min_p':0,'seed':42,
+                'chat_template_kwargs':{'enable_thinking':True},'reasoning_format':'deepseek','reasoning_budget_tokens':512},
+                'b_expression':{'temperature':0.6,'top_p':0.95,'top_k':20,'min_p':0,'seed':42,
+                'chat_template_kwargs':{'enable_thinking':True},'reasoning_format':'deepseek',
+                'reasoning_budget_tokens':256,'max_tokens':768}}}
 
     def complete(self, request):
-        body = request
-        req = urllib.request.Request(self.config['endpoint'] + '/chat/completions', data=encoded(body), headers={'Content-Type':'application/json'}, method='POST')
+        return self._post('/v1/chat/completions',request)
+
+    def _post(self, route, body):
+        require(route in {'/v1/chat/completions','/apply-template','/tokenize'},'E_ATTENTION_ENDPOINT')
+        req = urllib.request.Request(self.config['endpoint'].removesuffix('/v1') + route, data=encoded(body), headers={'Content-Type':'application/json'}, method='POST')
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         try:
             with opener.open(req, timeout=self.config['timeout']) as response:
@@ -62,3 +70,28 @@ class LocalProvider:
         require(len(raw) <= 10_000_000, 'E_ATTENTION_LIMIT')
         # Keep literal bytes as UTF-8 text, alongside parsed response in the run.
         return {'raw_http_body':raw.decode('utf-8',errors='replace'),'http_status':status}
+
+    def count_prompt(self, request, audit):
+        """Local, non-inference preflight; persist both literal endpoint replies."""
+        audit.update(method='llama.cpp-template-tokenize/1',calls=[])
+        def post(route,payload):
+            call={'route':route,'request':copy.deepcopy(payload),'request_hash':digest(encoded(payload)),'status':'pending'}
+            audit['calls'].append(call)
+            response=self._post(route,payload)
+            call.update(response=response,response_hash=digest(encoded(response)))
+            require(response['http_status']==200,'E_ATTENTION_CAPACITY_CHECK')
+            parsed=json.loads(response['raw_http_body'])
+            call['status']='complete'
+            return parsed
+        try:
+            template=post('/apply-template',request)
+            require(isinstance(template,dict) and isinstance(template.get('prompt'),str),'E_ATTENTION_CAPACITY_CHECK')
+            tokenized=post('/tokenize',{'content':template['prompt'],'add_special':False,'parse_special':True})
+            require(isinstance(tokenized,dict) and isinstance(tokenized.get('tokens'),list) and
+                all(type(token) is int for token in tokenized['tokens']),'E_ATTENTION_CAPACITY_CHECK')
+            audit['prompt_tokens']=len(tokenized['tokens'])
+            return audit['prompt_tokens']
+        except Exception as exc:
+            audit['error']='E_ATTENTION_CAPACITY_CHECK'
+            if audit['calls']:audit['calls'][-1]['status']='failed'
+            raise ReviewError('E_ATTENTION_CAPACITY_CHECK') from exc

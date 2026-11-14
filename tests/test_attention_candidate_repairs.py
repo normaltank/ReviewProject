@@ -9,6 +9,66 @@ from reviewproto.attention_candidates import generate, accept, ReplayProvider
 
 
 class CandidateRepairs(unittest.TestCase):
+    def test_explicit_example_and_negation_keep_their_source_roles(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible',
+                'text':'可增加说明，例如列出单位。不要求追加实验。'}],'a_reference':{'version':'none','items':[]}})
+            b={'opinions':[{'summary':'说明建议','facets':[{'ref':'f1','focus':'说明',
+                'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'},{'section':'s1','passage':'p3'}],
+                'qualifiers':{'examples':'例如列出单位。','negation':'不要求追加实验。'},'themes':[]}]}],
+                'relations':[],'unprocessed':[]}
+            run=generate(ws,'explicit-roles',ReplayProvider([b,{'function':'修改建议'}]))
+            self.assertEqual(run['status'],'complete',run['rejected'])
+            f=accept(ws,'explicit-roles',actor='editor',reason='check')['opinions'][0]['facets'][0]
+            self.assertEqual(f['qualifiers']['examples'],'例如列出单位。')
+            self.assertEqual(f['qualifiers']['negation'],'不要求追加实验。')
+
+    def test_obvious_qualifier_role_errors_are_rejected_with_raw_proposal_retained(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            original='若材料尚未齐备，可先缩小结论范围，不要求追加实验。'
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
+                      'a_reference':{'version':'none','items':[]}})
+            b={'opinions':[{'summary':'条件建议','facets':[{'ref':'f1','focus':'缩小结论范围',
+                'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'},{'section':'s1','passage':'p3'}],
+                'qualifiers':{'examples':'不要求追加实验。','negation':'可先缩小结论范围，'},'themes':[]}]}],
+                'relations':[],'unprocessed':[]}
+            run=generate(ws,'qualifier-role',ReplayProvider([b,{'function':'修改建议'}]))
+            self.assertEqual(run['status'],'partial')
+            f=run['patch']['edits'][0]['facets'][0]
+            self.assertNotIn('examples',f['qualifiers']);self.assertNotIn('negation',f['qualifiers'])
+            self.assertIn('不要求追加实验',f['interpretation'])
+            self.assertEqual({r['field'] for r in run['rejected']},{'examples','negation'})
+            self.assertTrue(all(r['code']=='E_ATTENTION_QUALIFIER_ROLE' for r in run['rejected']))
+            self.assertIn('examples',run['calls'][0]['response']['choices'][0]['message']['content'])
+
+    def test_unstated_condition_is_rejected_but_source_supported_relations_survive(self):
+        cases=[('感谢修改，建议录用。','条件约束',['条件','动作'],False),
+               ('若材料尚未齐备，可先缩小结论范围。','条件约束',['条件','动作'],True),
+               ('可保留原说明，或另附解释。','备选',['备选项一','备选项二'],True)]
+        for original,kind,roles,supported in cases:
+            with self.subTest(original=original), tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+                ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
+                          'a_reference':{'version':'none','items':[]}})
+                raw={'opinions':[{'summary':'来源关系','facets':[{'ref':'f1','focus':original.split('，')[0],
+                    'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'}],
+                    'qualifiers':{},'themes':[]}]}],'relations':[{'type':kind,
+                    'endpoints':[{'facet':'f1','role':role} for role in roles],
+                    'direction':'条件或选项作用于后续处理','scope':'当前说明或处理方式',
+                    'reading':'按原话保留条件或备选范围','ambiguity':'',
+                    'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'}]}],'unprocessed':[]}
+                run=generate(ws,'connection',ReplayProvider([raw,{'function':'修改建议'}]))
+                if supported:
+                    self.assertEqual(run['status'],'complete',run['rejected'])
+                    self.assertEqual(len(run['patch']['relations']),1)
+                else:
+                    self.assertEqual(run['status'],'partial')
+                    self.assertEqual(run['patch']['relations'],[])
+                    self.assertIn('E_ATTENTION_RELATION_CONNECTION',str(run['rejected']))
+                    self.assertIn('条件约束',run['calls'][0]['response']['choices'][0]['message']['content'])
+                saved=accept(ws,'connection',actor='editor',reason='check')
+                self.assertEqual(len(saved['relations']),int(supported))
+                self.assertEqual(len(saved['opinions']),1)
+
     def test_explicit_ranges_cannot_escape_or_drop_facet_source_group(self):
         for missing in (False,True):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
@@ -242,6 +302,7 @@ class CandidateRepairs(unittest.TestCase):
             saved=accept(ws,'meaning',actor='editor',reason='inspect')
             facets=saved['opinions'][0]['facets']
             self.assertEqual(facets[0]['kind'],'disposition')
+            self.assertEqual(facets[1]['expression']['function'],'含义未定')
             self.assertIn('未测还是测量失败，目前不清楚',facets[1]['interpretation'])
             self.assertIn('不要求重新测量',facets[1]['interpretation'])
             self.assertEqual(facets[1]['qualifiers']['alternatives'],['未测','测量失败'])
