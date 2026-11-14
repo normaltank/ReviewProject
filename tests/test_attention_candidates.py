@@ -277,3 +277,172 @@ class CandidateSafetyTests(unittest.TestCase):
             self.assertEqual(run['status'],'failed')
             self.assertIn('E_ATTENTION_QUOTE_AMBIGUOUS',str(run['rejected']))
         finally:w.close()
+
+class CompactProtocolRegression(unittest.TestCase):
+    def test_compact_focus_without_audit_identity_binds_to_canonical_pending_objects(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'note','text':'请注明温度单位，不必增做实验。','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}})
+                response={'opinions':[{'summary':'标明温度单位且不增做实验','facets':[{'ref':'f1','reading':'注明温度单位，保留无需增加实验的否定','kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','quote':'请注明温度单位，不必增做实验。'}],'qualifiers':{'negation':'不必增做实验'},'themes':[{'label':'单位说明','reason':'涉及温度的单位'}]}]}],'relations':[],'unprocessed':[]}
+                run=generate(w,'compact',ReplayProvider([response]))
+                self.assertEqual(run['status'],'complete',run['errors'])
+                request=json.loads(run['calls'][0]['request']['messages'][1]['content'])
+                self.assertEqual(request['sections'][0]['text'],'请注明温度单位，不必增做实验。')
+                self.assertEqual(request['sections'][0]['passages'][0]['id'],'p1')
+                self.assertNotIn('source_id',json.dumps(request))
+                self.assertEqual(run['patch']['edits'][0]['facets'][0]['qualifiers']['negation'],'不必增做实验')
+                saved=accept(w,'compact',actor='editor',reason='inspect')
+                self.assertEqual(saved['opinions'][0]['status'],'needs_review')
+                self.assertEqual(len(saved['themes']),1)
+            finally:w.close()
+
+    def test_compact_alias_a_mapping_and_occurrence_grounding(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'note','text':'保留。保留。','visibility':'author_visible'}],'a_reference':{'version':'version-r','items':[{'id':'arbitrary-id','text':'关注保留范围','locator':'local'}]}})
+                facet={'ref':'local-reference','reading':'第二处保留建议','kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','quote':'保留。','occurrence':2}],'qualifiers':{},'themes':[]}
+                b={'opinions':[{'summary':'第二处建议','facets':[facet]}],'relations':[],'unprocessed':[]}
+                a={'comparisons':{'a1':{'kind':'related','scope':'保留范围','reason':'内容均涉及保留'}}}
+                run=generate(w,'map',ReplayProvider([b,a]))
+                self.assertEqual(run['status'],'complete',run['errors'])
+                final=run['patch']['edits'][0]['facets'][0]
+                self.assertEqual(final['evidence'][0]['start'],3)
+                self.assertEqual(final['a_links'][0]['a_item_id'],'arbitrary-id')
+                self.assertEqual(final['a_links'][0]['version'],'version-r')
+                req=json.loads(run['calls'][1]['request']['messages'][1]['content'])
+                self.assertEqual(req['facets'][0]['id'],'f1')
+                self.assertEqual(req['reference'][0]['id'],'a1')
+                self.assertNotIn('arbitrary-id',json.dumps(req))
+            finally:w.close()
+
+    def test_compact_empty_outputs_have_no_spurious_graph_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'note','text':'说明范围。','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}})
+                empty={'opinions':[],'relations':[],'unprocessed':[]}
+                run=generate(w,'zero',ReplayProvider([empty]))
+                self.assertEqual(run['status'],'zero_candidates'); self.assertEqual(run['rejected'],[])
+                empty['unprocessed']=[{'section':'s1','reason':'无法解读此段'}]
+                run=generate(w,'incomplete',ReplayProvider([empty]))
+                self.assertEqual(run['status'],'failed'); self.assertEqual(run['rejected'],[])
+                self.assertEqual(run['unprocessed'][0]['section_id'],'note')
+            finally:w.close()
+
+    def test_compact_supplied_wrong_offsets_are_not_healed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'note','text':'补充单位。','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}})
+                f={'ref':'f1','reading':'补单位','kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','quote':'补充单位。','start':1,'end':5}],'qualifiers':{},'themes':[]}
+                b={'opinions':[{'summary':'补单位','facets':[f]}],'relations':[],'unprocessed':[]}
+                run=generate(w,'bad-position',ReplayProvider([b]))
+                self.assertEqual(run['status'],'failed')
+                self.assertIn('E_ATTENTION_QUOTE',str(run['rejected']))
+                self.assertNotIn('E_ATTENTION_PATCH',str(run['rejected']))
+            finally:w.close()
+
+    def test_preview_marks_changed_input_material_stale(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); source=root/'input.json'
+            source.write_text(json.dumps({'schema':'attention-input/1','records':[{'anchor':'note','text':'说明范围。','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}},ensure_ascii=False),encoding='utf-8')
+            w=AttentionWorkspace(root/'pack')
+            try:
+                w.build(input_path=source)
+                generate(w,'preview-stale',ReplayProvider([{'opinions':[],'relations':[],'unprocessed':[]}]))
+                self.assertEqual(preview(w,'preview-stale')['validity'],'current')
+                source.write_text('{}',encoding='utf-8')
+                self.assertEqual(w.state()['material_status'],'needs_revalidation')
+                self.assertEqual(preview(w,'preview-stale')['validity'],'needs_revalidation')
+            finally:w.close()
+
+
+    def test_legacy_empty_replay_remains_legitimate_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'s','text':'说明范围。','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}})
+                run=generate(w,'zero-legacy',ReplayProvider([{'edits':[],'themes':[],'relations':[]}]))
+                self.assertEqual(run['status'],'zero_candidates')
+                self.assertEqual(run['rejected'],[])
+                self.assertEqual(run['intermediate_protocol'],'attention-canonical-replay/1')
+            finally:w.close()
+
+    def test_explicit_passage_selection_and_own_qualifier_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'s','text':'不必新增。若已有记录，可附说明。','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}})
+                def facet(ref,passage,reading,qualifiers):
+                    return {'ref':ref,'reading':reading,'kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','passage':passage}],'qualifiers':qualifiers,'themes':[]}
+                b={'opinions':[{'summary':'否定及有条件说明','facets':[facet('first','p1','不要求新增',{'negation':'不必新增'}),facet('second','p2','已有记录时可附说明',{'conditions':'若已有记录','negation':'不必新增'})]}],'relations':[],'unprocessed':[]}
+                run=generate(w,'passage',ReplayProvider([b]))
+                self.assertEqual(run['status'],'partial')
+                saved=accept(w,'passage',actor='editor',reason='inspect')
+                facets=saved['opinions'][0]['facets']
+                self.assertEqual(facets[1]['evidence'][0]['start'],5)
+                self.assertEqual(facets[1]['evidence'][0]['quote'],'若已有记录，可附说明。')
+                self.assertEqual(facets[1]['qualifiers']['conditions'],'若已有记录')
+                self.assertEqual(facets[1]['qualifiers']['negation'],'')
+                self.assertEqual(run['calls'][0]['evidence_selectors'],{'passage':2,'literal':0})
+                self.assertIn('E_ATTENTION_QUALIFIER_SCOPE',str(run['rejected']))
+            finally:w.close()
+
+    def test_bad_compact_facet_does_not_discard_valid_compound_peer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'s','text':'说明来源。','visibility':'author_visible'}],'a_reference':{'version':'none','items':[]}})
+                f={'ref':'f1','reading':'说明来源','kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','passage':'p1'}],'qualifiers':{},'themes':[]}
+                bad=copy.deepcopy(f); bad.update(ref='f2'); bad['evidence']=[{'section':'s1','passage':'not-known'}]
+                run=generate(w,'valid-peer',ReplayProvider([{'opinions':[{'summary':'说明来源','facets':[f,bad]}],'relations':[],'unprocessed':[]}]))
+                self.assertEqual(run['status'],'partial')
+                self.assertEqual(len(run['patch']['edits'][0]['facets']),1)
+                self.assertEqual(run['calls'][0]['converted_b']['edits'][0]['facets'][0]['status'],'needs_review')
+            finally:w.close()
+
+    def test_compact_multi_a_comparisons_and_explicit_all_unrelated_outside(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                w.build({'schema':'attention-input/1','records':[{'anchor':'s','text':'补充图示单位。','visibility':'author_visible'}],'a_reference':{'version':'version-z','items':[{'id':'not-first','text':'关注图示','locator':'1'},{'id':'also-related','text':'关注单位说明','locator':'2'},{'id':'unrelated','text':'关注访谈招募','locator':'3'}]}})
+                b={'opinions':[{'summary':'单位说明','facets':[{'ref':'f','reading':'补图示单位','kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','passage':'p1'}],'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+                def position(kind): return {'kind':kind,'scope':'图示单位','reason':'比较实际对象'}
+                a={'comparisons':{'a1':position('related'),'a2':position('partial'),'a3':position('unrelated')}}
+                run=generate(w,'multi',ReplayProvider([b,a]))
+                self.assertEqual(run['status'],'complete')
+                f=run['patch']['edits'][0]['facets'][0]
+                self.assertEqual([x['a_item_id'] for x in f['a_links']],['not-first','also-related'])
+                self.assertEqual(f['outside'],[])
+                a={'comparisons':{key:position('unrelated') for key in ('a1','a2','a3')}}
+                run=generate(w,'outside',ReplayProvider([b,a]))
+                self.assertEqual(run['status'],'complete')
+                f=run['patch']['edits'][0]['facets'][0]
+                self.assertEqual(f['a_links'],[]);self.assertEqual(len(f['outside']),1)
+                schema=run['calls'][1]['request']['response_format']['json_schema']['schema']
+                self.assertEqual(schema['properties']['comparisons']['required'],['a1','a2','a3'])
+            finally:w.close()
+
+    def test_eighteen_reference_items_fit_explicit_capacity_without_subset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w=AttentionWorkspace(Path(tmp)/'pack')
+            try:
+                items=[{'id':'original-'+str(i),'text':'关注第'+str(i)+'项资料记录的呈现范围，相关说明应当清楚并能对照原始材料核验。','locator':'synthetic-reference/section/row-'+str(i)} for i in range(18)]
+                w.build({'schema':'attention-input/1','records':[{'anchor':'s','text':'说明坐标单位。','visibility':'author_visible'}],'a_reference':{'version':'synthetic-eighteen','items':items}})
+                b={'opinions':[{'summary':'坐标单位说明','facets':[{'ref':'f','reading':'说明坐标单位','kind':'content','expression':'建议','boilerplate':False,'evidence':[{'section':'s1','passage':'p1'}],'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+                a={'comparisons':{'a'+str(i+1):{'kind':'unrelated','scope':'坐标单位','reason':'当前条目没有关注单位'} for i in range(18)}}
+                run=generate(w,'eighteen',ReplayProvider([b,a]))
+                self.assertEqual(run['status'],'complete',run['errors'])
+                self.assertEqual(run['request_count'],2)
+                import json
+                sent=json.loads(run['calls'][1]['request']['messages'][1]['content'])
+                self.assertEqual(len(sent['reference']),18)
+                required=run['calls'][1]['request']['response_format']['json_schema']['schema']['properties']['comparisons']['required']
+                self.assertEqual(len(required),18)
+                self.assertEqual(run['unprocessed'],[])
+            finally:w.close()
