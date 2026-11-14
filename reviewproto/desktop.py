@@ -37,6 +37,14 @@ try {
 
 def safe_message(error):
     code = str(error) if isinstance(error, ReviewError) and re.fullmatch(r'E_[A-Z0-9_]+', str(error)) else 'E_INTERNAL'
+    if code == 'E_ATTENTION_CONFLICT':
+        return code + '：关注补丁修订已过期。请恢复关注页并重开，重新导出修改；不会自动改写修订号。'
+    if code == 'E_ATTENTION_REVALIDATION':
+        return code + '：来源或A参照待核，旧快照已保留。请恢复关注页核对输入绑定；不能继续应用或静默转绑。'
+    if code == 'E_ATTENTION_OUTPUT_RECOVER':
+        return code + '：关注修改可能已提交，但页面输出失败。请恢复关注页并重开核对保存修订；不要改写补丁修订号。'
+    if code.startswith('E_ATTENTION_'):
+        return code + '：关注分析操作未完成。请保留所选文件，使用“恢复关注页”核对当前修订。'
     if code in {'E_REVISION_CONFLICT', 'E_PATCH_REVISION'}:
         return code + '：补丁修订已过期。请重新打开报告，重新导出修改；不会自动改写修订号。'
     if code == 'E_OUTPUT_FAILED':
@@ -79,6 +87,70 @@ class Controller:
     def __init__(self):
         self.path = None
         self.batch_path = None
+
+    def build_attention(self, source, destination):
+        from .attention import AttentionWorkspace
+        self.attention_path = Path(destination).absolute()
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.build(input_path=source))
+        finally:
+            ws.close()
+
+    def _attention_result(self, state):
+        return {'kind': 'attention', 'path': self.attention_path, 'revision': state['revision'], 'material_status': state['material_status']}
+
+    def migrate_attention(self, source, destination, actor, reason):
+        from .attention import AttentionWorkspace
+        self.attention_path = Path(destination).absolute()
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.migrate_working_draft(source, actor=actor, reason=reason))
+        finally:
+            ws.close()
+
+    def open_attention(self, path):
+        from .attention import AttentionWorkspace
+        path = Path(path).absolute()
+        require((path / 'attention.sqlite3').is_file(), 'E_ATTENTION_EMPTY')
+        self.attention_path = path
+        return self.recover_attention()
+
+    def recover_attention(self):
+        from .attention import AttentionWorkspace
+        require(getattr(self, 'attention_path', None) is not None, 'E_ATTENTION_EMPTY')
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.recover())
+        finally:
+            ws.close()
+
+    def apply_attention(self, patch):
+        from .attention import AttentionWorkspace
+        require(getattr(self, 'attention_path', None) is not None, 'E_ATTENTION_EMPTY')
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.apply(input_path=patch))
+        finally:
+            ws.close()
+
+    def import_attention_a(self, source, actor, reason):
+        from .attention import AttentionWorkspace
+        require(getattr(self, 'attention_path', None) is not None, 'E_ATTENTION_EMPTY')
+        ws = AttentionWorkspace(self.attention_path)
+        try:
+            return self._attention_result(ws.import_a(source, actor=actor, reason=reason))
+        finally:
+            ws.close()
+
+    def open_attention_report(self):
+        self.recover_attention()
+        if os.name == 'nt':
+            os.startfile(self.attention_path / 'attention.html')
+        else:
+            import webbrowser
+            require(webbrowser.open((self.attention_path / 'attention.html').as_uri()), 'E_BROWSER_OPEN')
+        return self.recover_attention()
 
     def _batch_existing(self):
         from .batch import checked_local
@@ -339,7 +411,9 @@ def main():
                     location.set(str(controller.path) + ' · 保存状态待恢复核对')
             else:
                 status.set(success)
-                if isinstance(result, dict) and result.get('kind') == 'batch':
+                if isinstance(result, dict) and result.get('kind') == 'attention':
+                    attention_location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · ' + result['material_status'])
+                elif isinstance(result, dict) and result.get('kind') == 'batch':
                     batch_location.set(str(result['path']) + ' · 审核包 ' + result['batch_id'] + ' · 已保存修订 ' + str(result['revision']) + ' · 材料 ' + result['material_status'])
                     batch_source_box['values'] = [s['source_id'] for s in result['sources']]
                     if batch_source.get() not in batch_source_box['values']:
@@ -390,6 +464,62 @@ def main():
         b.pack(anchor='w', pady=3)
         widgets.append(b)
 
+    attention_location = tk.StringVar(value='尚未打开关注分析；下载草稿不等于已保存。')
+    ttk.Label(frame, text='B关注分析', font=('', 14)).pack(anchor='w')
+    ttk.Label(frame, textvariable=attention_location, wraplength=700).pack(anchor='w')
+
+    def new_attention():
+        source = filedialog.askopenfilename(title='选择关注来源清单（可见转录或已有普通工作区）', filetypes=[('JSON', '*.json')])
+        if not source:
+            return
+        parent = filedialog.askdirectory(title='选择分析包父目录')
+        if parent:
+            destination = Path(parent) / ('attention-' + uuid.uuid4().hex[:12])
+            submit(lambda: controller.build_attention(source, destination), '关注分析已建立；请打开关注页。')
+
+    def choose_attention():
+        path = filedialog.askdirectory(title='选择含 attention.sqlite3 的分析包')
+        if path:
+            submit(lambda: controller.open_attention(path), '关注分析已打开。')
+
+    def migrate_attention():
+        from tkinter import simpledialog
+        source = filedialog.askopenfilename(title='选择working-attention-index-v1工作稿（原稿保持不变）', filetypes=[('JSON', '*.json')])
+        if not source:
+            return
+        parent = filedialog.askdirectory(title='选择新关注分析包的父目录')
+        if not parent:
+            return
+        actor = simpledialog.askstring('工作稿迁入', '修改者声明')
+        if not actor:
+            return
+        reason = simpledialog.askstring('工作稿迁入', '迁入理由（工作解释不等于已核对）')
+        if reason:
+            destination = Path(parent) / ('attention-' + uuid.uuid4().hex[:12])
+            submit(lambda: controller.migrate_attention(source, destination, actor, reason), '工作稿已迁入新包；请打开关注页核对。')
+
+    def choose_attention_patch():
+        patch = filedialog.askopenfilename(title='选择关注草稿补丁', filetypes=[('JSON', '*.json')])
+        if patch:
+            submit(lambda: controller.apply_attention(patch), '关注补丁已保存，请重开关注页。')
+
+    def choose_attention_a():
+        source = filedialog.askopenfilename(title='选择A参照清单 attention-a-input/1', filetypes=[('JSON', '*.json')])
+        if not source:
+            return
+        actor = simpledialog.askstring('修改者声明', '谁在导入此A参照？')
+        reason = simpledialog.askstring('导入理由', '为何显式导入此版本？')
+        if actor and reason:
+            submit(lambda: controller.import_attention_a(source, actor, reason), 'A参照已保存；旧版本及绑定保留在历史，请重开核对。')
+
+    button('导入A参照版本', choose_attention_a)
+    button('建立关注分析', new_attention)
+    button('迁入B关注工作稿', migrate_attention)
+    button('打开关注分析包', choose_attention)
+    button('打开关注页', lambda: submit(controller.open_attention_report))
+    button('应用关注草稿补丁', choose_attention_patch)
+    button('恢复关注页', lambda: submit(controller.recover_attention))
+    ttk.Separator(frame).pack(fill='x', pady=8)
     button('新导入（创建专用子目录）', new_import)
     button('打开已有工作区', open_existing)
     button('打开报告', lambda: submit(controller.open_report, '报告已交给本机浏览器打开。'))

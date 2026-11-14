@@ -1,0 +1,31 @@
+{
+  "schema": "attention-input/1",
+  "records": [
+    {
+      "kind": "transcription",
+      "anchor": "R1",
+      "visibility": "author_visible",
+      "text": "清晰😀。清晰😀。",
+      "scores": [
+        {
+          "label": "原分",
+          "raw_value": " 4.0 "
+        }
+      ],
+      "locator": {
+        "transcription_anchor": "合成转录/R1",
+        "original_mapping": "合成输入，无原Word坐标"
+      }
+    }
+  ],
+  "a_reference": {
+    "version": "synthetic-a1",
+    "items": [
+      {
+        "id": "A1",
+        "text": "可以关注结构",
+        "locator": "合成第1项"
+      }
+    ]
+  }
+}
