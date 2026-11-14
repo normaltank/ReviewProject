@@ -549,9 +549,12 @@ def main():
         if not getattr(controller, 'attention_path', None):
             status.set('请先准备输入并建包，或打开已有关注分析包。')
             return
-        from .attention_candidate_ui import AttentionCandidateWindow
+        from .attention_candidate_ui import AttentionCandidateWindow, candidate_message
         candidate_windows[:] = [w for w in candidate_windows if w.window.winfo_exists()]
-        candidate_windows.append(AttentionCandidateWindow(root, controller, on_result=input_result))
+        try:
+            candidate_windows.append(AttentionCandidateWindow(root, controller, on_result=input_result))
+        except Exception as error:
+            status.set(candidate_message(error))
     button('生成并核对B内容与A位置候选', attention_candidates)
     button('打开关注页', lambda: submit(controller.open_attention_report))
     button('应用关注草稿补丁', choose_attention_patch)
