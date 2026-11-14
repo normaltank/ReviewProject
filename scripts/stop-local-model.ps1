@@ -1,7 +1,9 @@
 # Stop only the process created and identified by scripts/start-local-model.ps1.
 [CmdletBinding()]
 param(
-    [string]$ExpectedRunId
+    [string]$ExpectedRunId,
+    [string]$ResourceRoot,
+    [string]$RuntimeDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,9 +12,13 @@ if ($PSBoundParameters.ContainsKey('ExpectedRunId') -and $ExpectedRunId -cnotmat
     throw 'E_MODEL_RUN_ID'
 }
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$exe = Join-Path $repoRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
-$model = Join-Path $repoRoot '.tools/local-llm/Qwen3-4B-Q4_K_M.gguf'
-$statePath = Join-Path $repoRoot 'work/local-model/server-state.json'
+if (-not $ResourceRoot) { $ResourceRoot = $repoRoot }
+$ResourceRoot = (Resolve-Path -LiteralPath $ResourceRoot).Path
+if (-not $RuntimeDir) { $RuntimeDir = Join-Path $repoRoot 'work/local-model' }
+$runtimeDir = [IO.Path]::GetFullPath($RuntimeDir)
+$exe = Join-Path $ResourceRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
+$model = Join-Path $ResourceRoot '.tools/local-llm/Qwen3-4B-Q4_K_M.gguf'
+$statePath = Join-Path $runtimeDir 'server-state.json'
 $guard = [Threading.Mutex]::new($false, 'Local\ReviewProjectLocalModel8766')
 $lockHeld = $false
 try {

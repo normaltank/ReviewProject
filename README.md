@@ -4,7 +4,7 @@
 
 当前真实验收实例的A工作参照 `a-focus-20261112-01` 为5部分18项，后续A、B的数量、内容和原分均可变化；也可先不导入A。A关注保留原话限定，不是强制评分标准；中文相关研究覆盖的既有清单外决定限该A版本。原话、原分及分析确认的含义见[数据契约](docs/DATA_AND_ANNOTATION.md)与[术语表](GLOSSARY.md)。本地原件、工作稿及旧报告见[材料定位说明](docs/LOCAL_MATERIALS.md)，新克隆不包含这些受限材料。
 
-历史底座由 PR #10/#11、关注流程由 [PR #19](https://github.com/normaltank/ReviewProject/pull/19)交付main，#6及#12—#18已关闭。[父#21](https://github.com/normaltank/ReviewProject/issues/21)与[PR #25](https://github.com/normaltank/ReviewProject/pull/25)继续普通输入、保存态概览和跨批验收，顺序与完成条件见[复用施工计划](docs/plans/b-attention-reuse-construction.md)。[前轮计划](docs/plans/b-attention-distribution-construction.md)和[基线核对](docs/plans/b-attention-distribution-baseline.md)保留历史身份；实时交付状态以工作项为准。
+历史底座由 PR #10/#11、关注流程由 [PR #19](https://github.com/normaltank/ReviewProject/pull/19)交付main，#6及#12—#18已关闭。普通输入、保存态概览及跨批验收由[PR #25](https://github.com/normaltank/ReviewProject/pull/25)交付。当前[父#26](https://github.com/normaltank/ReviewProject/issues/26)与[PR #31](https://github.com/normaltank/ReviewProject/pull/31)建设原始B内容候选、独立A对照与直观回查，见[候选规格](docs/specs/b-attention-candidates.md)和[施工计划](docs/plans/b-attention-candidates-construction.md)。旧计划及[基线核对](docs/plans/b-attention-distribution-baseline.md)保留历史身份；实时交付状态以工作项为准。
 
 ## 打开本机工具
 
@@ -19,7 +19,7 @@ python -m reviewproto desktop
 窗口以本机可信编辑方式打开原件及静态HTML，没有可写HTTP服务。单来源导入和纠正可直接使用；旧batch仍要求framework规则包，属于[旧工程路径](docs/history/legacy-engineering.md)，不是新业务前置。
 
 1. 在“B关注分析”选择“准备A/B输入并建立独立分析”，逐条录入B或选择已导入工作区的普通分区，按需录入A，核对清单后建包。已有包直接打开。具体步骤见[输入与换批](docs/ATTENTION_INPUT.md)。
-2. 打开关注页查看当前保存修订的概览和原话原分；新包尚无观点，先用普通控件整理。按需要筛选记录、材料或表达，回查明细或开启矩阵/局部图。
+2. 选择“生成并核对B内容与A位置候选”，用已安装本机模型生成、预览，再显式接收为待核，见[候选操作](docs/ATTENTION_CANDIDATES.md)；也可直接用普通控件整理。打开关注页按记录、材料或表达筛选，查看位置、明细和原话原分。
 3. 用普通控件纠正观点/方面、主题、关系范围或A对应，填写修改者声明及理由，加入草稿并下载；回本机窗口应用，再恢复/重开核对。下载不等于保存，页面未导出的草稿刷新后会丢失。
 4. 关闭本机写入后备份整份分析目录及所绑定来源；恢复到新空目录再打开核对，不能仅复制HTML。报告、草稿、日志与备份沿用来源权限。
 
