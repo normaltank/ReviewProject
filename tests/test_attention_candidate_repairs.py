@@ -71,6 +71,10 @@ class CandidateRepairs(unittest.TestCase):
             self.assertEqual(run['status'],'complete',run['errors']+run['rejected'])
             self.assertEqual(observed[1]['context'],[original])
             self.assertEqual(observed[2]['context']['sections'][0]['text'],original)
+            # The final model-visible task is the frozen selected scope, after
+            # its read-only context and the one A item. Actual controls exposed
+            # scope borrowing when the A item followed the active B scope.
+            self.assertEqual(list(observed[2]),['context','a_item','facet','scopes'])
             self.assertEqual(len(observed[2]['scopes']),1)
             self.assertEqual(observed[2]['scopes'][0]['text'],'不要据此再写一份扩建方案。')
             self.assertNotIn('未选择记录',json.dumps(observed,ensure_ascii=False))

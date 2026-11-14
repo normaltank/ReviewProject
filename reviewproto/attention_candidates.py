@@ -176,9 +176,11 @@ def _scoped_a_mapping(path,run,selected,reference,provider,context_chars):
     decisions={};links=[];outside=[]
     for item in reference['items']:
         response=_call(path,run,'a_mapping',semantic.SCOPED_A_PROMPT,semantic.scoped_a_schema(item,scopes),
-            {'facet':frozen,'context':context,'scopes':[{'id':alias,'text':scope,'focus':groups[alias]['focus'],
-              'quotes':[ev['quote'] for ev in groups[alias]['evidence']]} for alias,scope in scopes.items()],
-             'a_item':{'text':item['text']}},provider,context_chars)
+            # Keep the active frozen B scopes last in the model-visible task.
+            # Full context disambiguates references without becoming scope.
+            {'context':context,'a_item':{'text':item['text']},'facet':frozen,
+             'scopes':[{'id':alias,'text':scope,'focus':groups[alias]['focus'],
+              'quotes':[ev['quote'] for ev in groups[alias]['evidence']]} for alias,scope in scopes.items()]},provider,context_chars)
         if response is None: continue
         try:
             rows=semantic.scoped_decisions(response,item,scopes)
