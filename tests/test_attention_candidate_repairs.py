@@ -9,9 +9,9 @@ from reviewproto.attention_candidates import generate, accept, ReplayProvider
 
 
 class CandidateRepairs(unittest.TestCase):
-    def test_focus_binding_never_repairs_words_or_literal_evidence(self):
-        cases=[('不要求追加实验。','不希望追加实验',[{'section':'s1','passage':'p1'}],'E_ATTENTION_FOCUS_SCOPE'),
-               ('“入口清楚”说的是桌面版。','入口清楚',[{'section':'s1','quote':'入口清楚说的是桌面版。','start':0,'end':13}],'E_ATTENTION_QUOTE')]
+    def test_analysis_label_never_repairs_literal_evidence(self):
+        cases=[('“入口清楚”说的是桌面版。','桌面入口',
+                [{'section':'s1','quote':'入口清楚说的是桌面版。','start':0,'end':13}],'E_ATTENTION_QUOTE')]
         for original,focus,ev,code in cases:
             with self.subTest(code=code), tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
                 ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
@@ -22,18 +22,22 @@ class CandidateRepairs(unittest.TestCase):
                 self.assertEqual(run['status'],'failed');self.assertEqual(run['patch']['edits'],[])
                 self.assertIn(code,str(run['rejected']))
 
-    def test_quote_normalized_label_requires_unique_source_correspondence(self):
+    def test_repeated_label_does_not_invent_label_coordinates(self):
         with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
             ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible',
                 'text':'“入口清楚”说的是桌面版。“入口清楚”说的是桌面版。'}],'a_reference':{'version':'none','items':[]}})
             b={'opinions':[{'summary':'重复来源','facets':[{'ref':'f1','focus':'入口清楚说的是桌面版',
                 'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'}],'qualifiers':{},'themes':[]}]}],
                 'relations':[],'unprocessed':[]}
-            run=generate(ws,'ambiguous-label',ReplayProvider([b]))
-            self.assertEqual(run['status'],'failed')
-            self.assertIn('E_ATTENTION_FOCUS_AMBIGUOUS',str(run['rejected']))
+            run=generate(ws,'ambiguous-label',ReplayProvider([b,{'function':'实质评价'}]))
+            self.assertEqual(run['status'],'complete',run['rejected'])
+            f=run['patch']['edits'][0]['facets'][0]
+            binding=run['focus_bindings'][f['facet_id']]
+            self.assertNotIn('matches',binding)
+            self.assertNotIn('source_focus',binding)
+            self.assertEqual([(ev['start'],ev['end']) for ev in binding['selected_evidence']],[(0,13),(13,26)])
 
-    def test_quote_delimiter_focus_binding_keeps_exact_source_evidence(self):
+    def test_analysis_label_keeps_exact_source_evidence(self):
         with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
             original='“入口清楚”说的是桌面版。'
             ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
@@ -43,12 +47,37 @@ class CandidateRepairs(unittest.TestCase):
             run=generate(ws,'label-quotes',ReplayProvider([b,{'function':'实质评价'}]))
             self.assertEqual(run['status'],'complete',run['rejected'])
             f=run['patch']['edits'][0]['facets'][0]
-            self.assertIn('“入口清楚”说的是桌面版',f['interpretation'])
+            self.assertIn(original,f['interpretation'])
             self.assertEqual(f['evidence'][0]['quote'],original)
             binding=run['focus_bindings'][f['facet_id']]
             self.assertEqual(binding['raw_focus'],'入口清楚说的是桌面版')
-            self.assertEqual(binding['source_focus'],'“入口清楚”说的是桌面版')
-            self.assertEqual(binding['method'],'quote-delimiter-source-binding/1')
+            self.assertEqual(binding['selected_evidence'][0]['quote'],original)
+            self.assertNotIn('source_focus',binding)
+
+    def test_summary_labels_and_cross_fragment_groups_retain_selected_scope(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            original='这份记录没有给出资料共享方式。若六月材料不足，就限制到五月；齐备时才讨论全年。'
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
+                      'a_reference':{'version':'none','items':[]}})
+            long_label='材料充分性决定适用月份的边界，以及材料不足时限制结论的条件与后续处理，保留五月和全年两个不同范围及各自前提'
+            b={'opinions':[{'summary':'共享与边界','facets':[
+                {'ref':'f1','focus':'资料未说明共享办法','evidence':[{'section':'s1','passage':'p1'}],'qualifiers':{},'themes':[]},
+                {'ref':'f2','focus':long_label,'evidence':[{'section':'s1','passage':p} for p in ('p2','p3','p4')],
+                 'ranges':[{'focus':'材料不足与齐备时的不同边界','evidence':[{'section':'s1','passage':p} for p in ('p2','p3','p4')]}],
+                 'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+            run=generate(ws,'summary-labels',ReplayProvider([b,{'function':'实质评价'},{'function':'范围限制'}]))
+            self.assertEqual(run['status'],'complete',run['rejected'])
+            facets=run['patch']['edits'][0]['facets']
+            self.assertEqual(len(facets),2)
+            self.assertIn('这份记录没有给出资料共享方式。',facets[0]['interpretation'])
+            self.assertEqual(facets[1]['qualifiers']['object'],long_label)
+            group=run['source_scopes'][facets[1]['facet_id']][0]
+            self.assertEqual(group['text'],'若六月材料不足，就限制到五月；齐备时才讨论全年。')
+            self.assertEqual(group['focus'],'材料不足与齐备时的不同边界')
+            wire=run['calls'][0]['request']['response_format']['json_schema']['schema']
+            facet_schema=wire['properties']['opinions']['items']['properties']['facets']['items']
+            self.assertNotIn('maxLength',facet_schema['properties']['focus'])
+            self.assertNotIn('maxLength',facet_schema['properties']['ranges']['items']['properties']['focus'])
 
     def test_full_record_context_is_read_only_and_does_not_add_scope_or_other_records(self):
         with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
