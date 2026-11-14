@@ -14,7 +14,7 @@ fragment = render_summary(result)
 
 ## 分母与筛选
 
-- `record_ids`、`paper_ids`：列表；二者同时给出时取交集，改变分母。材料组只读 `record.locator.paper_id`；未知组可用列表中的 `None` 显式选择。空列表得到N=0。
+- `record_ids`、`paper_ids`：列表；二者同时给出时取交集，改变分母。材料组优先读用户声明的 `record.paper_id`，旧包回退 `record.locator.paper_id`；未知组可用列表中的 `None` 显式选择。空列表得到N=0。
 - `directions`、`statuses`、`functions`：列表；同字段内为“或”，不同字段间为“且”。筛选方面的 `qualifiers.direction`、`status`、`expression.function`；方向列表逐项匹配。未说明的方向显示为“未说明”。
 - `boilerplate_candidate`：`True/False/None` 分别选择是、否、未判断。候选只是一项表达属性，不自动删除实质内容。
 
@@ -47,3 +47,5 @@ T5在离线页面使用无表达筛选的结果作为完整贡献索引：先按
 `python -m unittest discover -s tests -p test_attention_summary.py -v` 使用独立四记录手算集合，覆盖并集、副本、多方面、失效引用、表达筛选、空N、处置/关系分列、贡献索引、转义及1440/420宽度键盘回查。`ATTENTION_SUMMARY_EVIDENCE_DIR` 可指定合成浏览器截图的本地输出目录。全套使用 `scripts/check.ps1 -Python python`，并设置真实Chrome的 `REVIEW_BROWSER_BINARY`。
 
 T5已将本Interface接入主关注页。`attention_views.js`从无筛选`summarize()`结果读取完整贡献索引，统一筛选后供无图数字/明细、矩阵与局部关系图使用；不重判A有效性。无脚本时保留`render_summary()`无图结果。交互及保存语义见[视图操作](ATTENTION_CONTRACT.md#t5-保存结果视图)。浏览器回归：`python -m unittest discover -s tests -p test_attention_views.py -v`。
+
+复用工具在保存结果区加入“当前关注概览”，显示实际修订、动态A结构、规模和可回查记录集合；无A/未整理/来源失效各有明确空态或提示。概览与下方各主题、A条目/部分、关系及可选图共用当前集合及分母，不生成无依据的解释性发现；下载草稿不改变保存概览。复用浏览器回归见`test_attention_overview.py`，普通输入跨批验收见[复用施工计划](plans/b-attention-reuse-construction.md)。
