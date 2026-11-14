@@ -29,7 +29,7 @@ class Positions(unittest.TestCase):
         state['a_reference']['items'] = []
         absent = project_positions(summarize(state))
         self.assertEqual({p['region_id'] for p in absent['placements']}, {'absent', 'disposition'})
-        for invalidation in ('version', 'missing', 'a_source', 'b_source'):
+        for invalidation in ('version', 'missing', 'a_source', 'b_source', 'legacy_source'):
             with self.subTest(invalidation=invalidation):
                 state = oracle_state()
                 link = state['opinions'][0]['facets'][0]['a_links'][0]
@@ -37,6 +37,8 @@ class Positions(unittest.TestCase):
                     link['version'] = 'old'
                 elif invalidation == 'missing':
                     link['a_item_id'] = 'removed'
+                elif invalidation == 'legacy_source':
+                    state['material_status'] = 'needs_revalidation'
                 else:
                     state['a_material_status' if invalidation == 'a_source' else 'b_material_status'] = 'needs_revalidation'
                 projected = project_positions(summarize(state))

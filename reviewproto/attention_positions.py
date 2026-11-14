@@ -22,7 +22,7 @@ def project_positions(summary):
         ('absent', '未导入A'), ('stale', '旧A或来源失效：须重新核对'),
         ('disposition', '流程或总体处置（单列）')])
     placements = []
-    stale_source = (summary.get('a_material_status', summary.get('material_status')) == 'needs_revalidation'
+    stale_source = ((summary.get('a_material_status') or summary.get('material_status')) == 'needs_revalidation'
                     or summary.get('b_material_status') == 'needs_revalidation')
     for c in summary['contributions']:
         f = next(e['facet'] for e in summary['details'][c['record_id']]['facets']
