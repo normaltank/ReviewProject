@@ -121,7 +121,7 @@ class Positions(unittest.TestCase):
                 large['opinions'].append(opinion)
             path.write_text(render(large), encoding='utf-8')
             page.goto(path.as_uri())
-            page.locator('[data-position-region="item:A1"]').click()
+            page.locator('[data-position-region="item:A1"] text').first.click()
             self.assertIn('48/49', page.locator('#position-drill').inner_text())
             self.assertEqual(page.locator('#position-drill li').count(), 20)
             self.assertLessEqual(page.locator('#view-positions svg rect').count(), 12)
