@@ -1,14 +1,20 @@
 # Start the already installed, verified local model. No download or cloud fallback.
 [CmdletBinding()]
-param()
+param(
+    [string]$ResourceRoot,
+    [string]$RuntimeDir
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$exe = Join-Path $repoRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
-$model = Join-Path $repoRoot '.tools/local-llm/Qwen3-4B-Q4_K_M.gguf'
+if (-not $ResourceRoot) { $ResourceRoot = $repoRoot }
+$ResourceRoot = (Resolve-Path -LiteralPath $ResourceRoot).Path
+if (-not $RuntimeDir) { $RuntimeDir = Join-Path $repoRoot 'work/local-model' }
+$runtimeDir = [IO.Path]::GetFullPath($RuntimeDir)
+$exe = Join-Path $ResourceRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
+$model = Join-Path $ResourceRoot '.tools/local-llm/Qwen3-4B-Q4_K_M.gguf'
 $modelHash = '7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5'
-$runtimeDir = Join-Path $repoRoot 'work/local-model'
 $statePath = Join-Path $runtimeDir 'server-state.json'
 $owner = 'ReviewProject/scripts/local-model/v1'
 

@@ -26,6 +26,22 @@ def main(argv=None):
             if command in {'attention-migrate', 'attention-import-a'}:
                 item.add_argument('--actor', required=True)
                 item.add_argument('--reason', required=True)
+        for command in ('attention-generate','attention-preview','attention-accept'):
+            item = sub.add_parser(command)
+            item.add_argument('--workspace', required=True)
+            item.add_argument('--run-id', required=True)
+            if command == 'attention-generate':
+                source = item.add_mutually_exclusive_group(required=True)
+                source.add_argument('--replay')
+                source.add_argument('--local', action='store_true')
+                item.add_argument('--record', action='append')
+                item.add_argument('--endpoint', default='http://127.0.0.1:8766/v1')
+                item.add_argument('--model', default='reviewproject-qwen3-4b-q4km')
+                item.add_argument('--max-output-tokens', type=int, default=4096)
+                item.add_argument('--context-chars', type=int, default=24000)
+            if command == 'attention-accept':
+                item.add_argument('--actor', required=True)
+                item.add_argument('--reason', required=True)
         item = sub.add_parser('replay-grounding')
         for option in ('workspace', 'from-run', 'run-id'):
             item.add_argument('--' + option, required=True)
@@ -77,7 +93,27 @@ def main(argv=None):
         if args.command.startswith('attention-'):
             from .attention import AttentionWorkspace
             workspace = AttentionWorkspace(args.workspace)
-            if args.command == 'attention-build':
+            if args.command in {'attention-generate','attention-preview','attention-accept'}:
+                from .attention_candidates import generate, preview, accept, ReplayProvider, LocalProvider
+                if args.command == 'attention-generate':
+                    if args.replay:
+                        from .batch import read_json
+                        replay = read_json(args.replay)
+                        responses = [c['response'] for c in replay['calls'] if 'response' in c] if isinstance(replay,dict) and 'calls' in replay else replay
+                        require(isinstance(responses,list),'E_ATTENTION_RESPONSE')
+                        provider = ReplayProvider(responses)
+                    else:
+                        provider = LocalProvider(args.endpoint,args.model,args.max_output_tokens)
+                    run = generate(workspace,args.run_id,provider,args.record,args.context_chars)
+                elif args.command == 'attention-preview':
+                    run = preview(workspace,args.run_id)
+                else:
+                    result = accept(workspace,args.run_id,actor=args.actor,reason=args.reason)
+                    print('OK attention-accept revision=' + str(result['revision']) + ' material=' + result['material_status'])
+                    return 0
+                print('CANDIDATES status=' + run['status'] + ' mode=' + run['mode'] + ' opinions=' + str(len(run['patch']['edits'])) + ' requests=' + str(run.get('request_count',0)))
+                return 2 if run['status'] in {'partial','failed','running'} else 0
+            elif args.command == 'attention-build':
                 result = workspace.build(input_path=args.input)
             elif args.command == 'attention-apply':
                 result = workspace.apply(input_path=args.input)
