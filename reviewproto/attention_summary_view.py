@@ -1,6 +1,7 @@
 """Embeddable, escaped, script-free saved summary. Main page integration is separate."""
 from hashlib import sha256
 from html import escape
+from .attention_summary import material_group
 
 _LABELS = {'explicit': '明确对应', 'partial': '部分对应', 'related': '相关',
            'undetermined': '暂未定', 'needs_review': '待核对', 'working': '工作解释',
@@ -49,6 +50,42 @@ def render_summary(summary):
 .attention-summary .as-source{white-space:pre-wrap}.attention-summary :target{outline:2px solid #315879;outline-offset:3px}
 @media(max-width:600px){.attention-summary{padding:.6rem}.attention-summary ul{padding-left:1.1rem}}
 </style><h2>本批关注分布</h2>''']
+    def union(values):
+        ids = sorted({rid for value in values for rid in value['record_ids']})
+        return dict(count=len(ids), denominator=summary['denominator']['count'], record_ids=ids)
+
+    cs = summary['contributions']
+    content = [c for c in cs if c['kind'] == 'content']
+    def contribution_metric(values):
+        return union([dict(record_ids=[c['record_id']]) for c in values])
+
+    overview = ['<div id="view-overview" role="region" aria-label="当前关注概览"><h3>当前关注概览</h3>']
+    overview.append('<p>分析 ' + text(summary['analysis_id']) + ' · 已保存修订 ' + text(summary['revision']) +
+                    ' · A版本 ' + text(summary['a_version'] if summary['a_reference'].get('items') else 'A未导入') + '</p>')
+    overview.append('<p>' + str(summary['denominator']['count']) + ' 条记录 · ' +
+                    str(sum(len(d['record'].get('scores', [])) for d in summary['details'].values())) + ' 项原分 · ' +
+                    str(len({c['opinion_id'] for c in cs})) + ' 个观点 / ' + str(len({c['facet_id'] for c in cs})) +
+                    ' 个方面 · ' + str(len(summary['theme_definitions'])) + ' 个主题定义 · ' +
+                    str(len(summary['relation_details'])) + ' 个当前关系组</p>')
+    if not cs:
+        overview.append('<p>当前集合尚未形成有效观点方面；材料导入不等于完成分析。若已设置筛选，可清除筛选查看。请在下方原话区补录并保存。</p>')
+    if not summary['a_reference'].get('items'):
+        overview.append('<p>A未导入：可先整理B，之后在本机窗口显式导入A参照版本；不把无A当作清单外。</p>')
+    overview.append('<p>A结构：' + str(len(summary['a_reference'].get('parts', []))) + ' 个部分 / ' + str(len(summary['a_reference'].get('items', []))) + ' 个条目</p>')
+    overview.append('<p>B输入状态：' + text({'current':'绑定有效', 'needs_revalidation':'来源待核'}.get(summary.get('b_material_status') or summary.get('material_status'), '未说明')) +
+                    ' · A输入状态：' + text('未导入' if not summary['a_reference'].get('items') else {'current':'绑定有效', 'needs_revalidation':'来源待核'}.get(summary.get('a_material_status') or summary.get('material_status'), '未说明')) + '</p>')
+    if summary.get('material_status') == 'needs_revalidation':
+        overview.append('<p>来源失效：以下保留旧快照。B有效时，A可显式导入版本接续；B须恢复原绑定文件，或为变化材料另建分析，不迁移旧标注。</p>')
+    overview.append('<p>页面为保存快照，不实时轮询来源；本机打开、恢复或应用时重查，成功后重开本页。下载草稿不更新概览。</p><ul>')
+    overview.append('<li>观点方面记录覆盖 ' + metric(summary['hits']) + '</li>')
+    overview.append('<li>内容主题记录并集 ' + metric(union(summary['themes'].values())) + '</li>')
+    for kind in ('explicit', 'partial', 'related', 'undetermined', 'needs_review'):
+        overview.append('<li>A' + label(kind) + '记录并集 ' + metric(union([v[kind] for v in summary['a_items'].values()] + [summary['a_unassigned'][kind]])) + '</li>')
+    for status in ('working', 'needs_review', 'confirmed'):
+        overview.append('<li>内容方面' + label(status) + '记录 ' + metric(contribution_metric([c for c in content if c['status'] == status])) + '</li>')
+    overview.append('<li>关系端点记录并集 ' + metric(union(summary['relations'].values())) + '</li></ul>')
+    overview.append('<p>覆盖按记录去重，各类可重叠；观点、方面与关系组数是辅助规模。主题定义不等于命中，工作解释不等于已核对；各主题、A部分/条目和关系类型的明细见下方。</p></div>')
+    output.append(''.join(overview))
     output.append(f'<p>已保存修订 {text(summary["revision"])} · 分母 {summary["denominator"]["count"]} 条评语记录</p>')
     output.append('<p>表达、套话候选、方向与状态筛选只改变命中；记录与材料筛选改变分母。零命中仍列为 0/N；分母为零时不计算比例。</p>')
     output.append('<p>各项可重叠，父主题及A部分按记录取并集。工作解释可见；部分、相关、暂未定及待核均不合称明确覆盖。处置和条件关系单列。</p>')
@@ -60,7 +97,7 @@ def render_summary(summary):
         output.append('<p>当前筛选：' + '；'.join(text(filter_names[k]) + '：' + text(v) for k,v in summary['filters'].items()) + '</p>')
     output.append(rows('主题与父组', summary['themes'], {k:v['label'] for k,v in summary['theme_definitions'].items()}))
     for key, title, definitions, id_key, name_key in [
-            ('a_parts', 'A五部分（并集）', summary['a_reference'].get('parts', []), 'id', 'label'),
+            ('a_parts', 'A部分（记录并集）', summary['a_reference'].get('parts', []), 'id', 'label'),
             ('a_items', 'A条目', summary['a_reference'].get('items', []), 'id', 'text')]:
         output.append('<h3>' + title + '</h3>')
         if not definitions:
@@ -85,7 +122,7 @@ def render_summary(summary):
     for rid, detail in summary['details'].items():
         record = detail['record']
         output.append('<details id="' + anchor(rid) + '"><summary>' + text(rid) + ' · ' + str(len(detail['facets'])) + ' 个命中方面</summary>')
-        output.append('<p>材料组：' + text(record.get('locator', {}).get('paper_id')) + '</p>')
+        output.append('<p>材料组：' + text(material_group(record)) + '</p>')
         sections = record.get('sections') or [dict(text=record.get('text', ''), section_id=record.get('anchor', ''))]
         for section in sections:
             output.append('<p>普通分区：' + text(section.get('section_id')) + '</p><blockquote class="as-source">' + text(section.get('text')) + '</blockquote>')

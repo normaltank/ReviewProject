@@ -40,9 +40,12 @@ def _records(payload, base):
         for score in record['scores']:
             require(isinstance(score, dict) and isinstance(score.get('label'), str) and isinstance(score.get('raw_value'), str), 'E_ATTENTION_SCORES')
         record['record_id'] = 'r-' + digest(encoded([record['kind'], record['source_id']]))[:32]
+        if 'paper_id' in item:
+            record['paper_id'] = _text(item['paper_id'])
         record['sections'] = [{'section_id': record['anchor'], 'text': record['text'], 'locator': record['locator']}]
         if record['kind'] == 'workspace' and any(r['record_id'] == record['record_id'] for r in records):
             previous = next(r for r in records if r['record_id'] == record['record_id'])
+            require(previous.get('paper_id') == record.get('paper_id'), 'E_ATTENTION_GROUP')
             require(record['anchor'] not in {s['section_id'] for s in previous['sections']}, 'E_ATTENTION_DUPLICATE')
             previous['sections'].extend(record['sections'])
             bindings.append(binding)

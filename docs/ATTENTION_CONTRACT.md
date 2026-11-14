@@ -13,6 +13,8 @@ python -m reviewproto desktop
 
 打开 `work/attention-demo/attention.html`，选择原话片段（或在原话中选文字后采用），填写解释、修改者和理由，加入草稿并下载。在本机窗口的“B关注分析”区应用关注草稿补丁、恢复并重开关注页。窗口有独立的建立/打开/应用/恢复入口；旧工作区及batch上下文不被复用。
 
+普通录入无需JSON：桌面“准备A/B输入并建立独立分析”支持B逐字转录/任意原分或既有普通工作区选择、可选A版本/部分/完整条目及清单核对；“录入A参照并显式换版”支持已有包A接续。逐步操作见[输入与换批](ATTENTION_INPUT.md)。输入准备使用原引擎整份清单预检，新建独立包；B-only快照与各次A输入分离保存在包内，保护既有目录。无A初建修订0，初始含A通过显式导入到修订1。B更正或换批从同一入口另建包，旧观点不自动迁移。
+
 `AttentionWorkspace(path)` 提供 `build(payload, base=...)` 或 `build(input_path=...)`、`state()`、`apply(patch)` 或 `apply(input_path=...)`、`recover()`、`close()`。新包目录必须为空；已有包从独立 `attention.sqlite3` 打开，旧 `review.sqlite3` 不迁移。SQLite是修订与历史的权威，JSON/HTML是可重建投影。CLI只输出安全状态码、修订及绑定状态，不输出原话/原分。
 
 下载只表示未应用草稿。`apply` 在一个SQLite事务中校验全部编辑，任一错误整批回滚；同一规范JSON指纹重放不增加修订。修改者是自报审计声明。`base_revision` 必须等于当前修订，同分析包身份绑定，旧修订返回 `E_ATTENTION_CONFLICT`。提交后输出失败返回 `E_ATTENTION_OUTPUT_RECOVER`；提交可能已经成功，运行recover并重开核对，不另造补丁重复修改。完全相同补丁可安全重放。
@@ -29,6 +31,8 @@ python -m reviewproto desktop
 - `kind=workspace`：`workspace` 为相对清单或绝对本地目录，`section_id` 选择普通分区。通过既有只读来源校验Interface读取，不调用会写源application_id的构造器。只复制所选普通分区、定位和记录层原分；不复制原表、私密区或旧候选。`internal_only`、不存在分区及不支持来源拒收。同一来源选多个普通分区合并为一个record，其 `sections` 保存各区坐标。
 
 `record_id` 与 `source_id`、输入绑定指纹分别保存；不含分析run、列表序号或整体分析JSON指纹。同一冻结来源及所选内容重排不改ID，同源多分区共享record；转录锚点是来源身份的一部分，不可随意重命名。Workspace的source_id绑定原件字节；新建独立包若原件字节改变会采用新来源版本身份。转录source_id绑定单条规范内容（含锚点、原话、原分、定位、visibility）；仅改变清单JSON格式/A参照/记录顺序不改变record_id。已有包始终保留旧record_id并待核；改变转录锚点或源版本时不得把重算ID当作保留旧身份的迁移。这里没有跨不同原件自动去重或显式换源映射；这类操作需后续保留身份的Adapter，不能以语义相似推断同记录。R别名不是观点/方面ID。
+
+可选`record.paper_id`保留用户声明的材料组，作为分析元信息置于来源身份计算之外。只更改组声明不重算source_id/record_id；同源合并的各普通分区须有一致声明，否则整批拒收。历史包的`locator.paper_id`仍保留兼容，统计优先使用显式记录声明。材料组不是已核实教师/轮次，未知不推断。
 
 文件字节变化（包括A和选择）、源Workspace修订/原件变化或来源不可读使 `material_status=needs_revalidation`；旧原话、原分、A及分析保留，新的编辑拒收。静态已打开页不实时轮询；recover/open/apply重新检查绑定。输入选择变化不自动转绑旧观点。
 
@@ -112,7 +116,7 @@ T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_ob
 python -m reviewproto attention-import-a A_INPUT_JSON --workspace EXISTING_ANALYSIS --actor 编辑声明 --reason 接续理由
 ```
 
-桌面先打开分析包，再点“导入A参照版本”。Controller提供`import_attention_a(source,actor,reason)`，Workspace提供`import_a(input_path,actor=...,reason=...)`，与普通补丁共用`apply`事务、修订、历史及recover。`attention-a-input/1`包含`a_reference`和可选`source:{path,fingerprint}`；source路径相对清单或为绝对本地路径，fingerprint为原文件字节SHA-256。清单本身始终绑定字节指纹；可选source同时绑定原文，两者变化或不可读都保留旧快照并待核。
+桌面先打开分析包，再点“从已有A输入文件导入（高级）”。Controller提供`import_attention_a(source,actor,reason)`，Workspace提供`import_a(input_path,actor=...,reason=...)`，与普通补丁共用`apply`事务、修订、历史及recover。`attention-a-input/1`包含`a_reference`和可选`source:{path,fingerprint}`；source路径相对清单或为绝对本地路径，fingerprint为原文件字节SHA-256。清单本身始终绑定字节指纹；可选source同时绑定原文，两者变化或不可读都保留旧快照并待核。
 
 `a_reference`为`{version,parts:[{id,label}],items:[{id,text,locator,part_id}]}`；旧无分组参照可省parts/part_id，显示未分组，不猜新分组。完整条目包括原文限定、条件、例子和原字样，不按子句扩写新要求。所有ID唯一、part_id指向已知部分。同version下任何条目、文字、定位或分组变化均拒收；显式换版本保存旧参照与旧A绑定到`a_reference_history`，其中`replaced_at_revision`指向接续修订。原B身份及全部旧历史保持不变。内容完全相同的同版本可显式重绑到新文件，保留审计及旧绑定。
 

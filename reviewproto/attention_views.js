@@ -7,6 +7,7 @@ const labels={withdrawn:'撤回',superseded:'已被替换',working:'工作解释
 Object.assign(labels,{alternative_with_condition:'有条件的备选路径',coexisting_readings:'并存读法',shared_premise:'共同前提',alternative_with_minimum:'有最低动作的备选路径',suggestion_timing:'建议时机',declared_reason_scope:'明示理由范围',listed_ways_not_all_mandatory:'列举路径（非全部必做）',listed_ways_and_explicit_suggestion:'列举路径与明确建议',co_written_scope_unresolved:'共同表述（范围未决）'});
 const name=v=>labels[v]||v||'未说明';
 const recordLabel=id=>base.details[id]?.record.anchor||id;
+const paperId=record=>record.paper_id??record.locator?.paper_id??null;
 const facetLabel=c=>base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id)?.facet.interpretation||c.facet_id;
 const node=(tag,text,parent,attrs={})=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);if(parent)parent.append(e);return e;};
 const unique=xs=>[...new Set(xs)].sort();
@@ -14,7 +15,7 @@ const controls=$('view-controls');
 const picks={};
 function pick(key,title,values){const l=node('label',title,controls),s=node('select',null,l,{id:'view-'+key});node('option','全部',s,{value:'*'});for(const [value,text] of values)node('option',text,s,{value});s.onchange=refresh;picks[key]=s;}
 pick('record','记录筛选（改变分母）',Object.entries(base.details).map(([id,d])=>[id,d.record.anchor||id]));
-pick('paper','材料筛选（改变分母）',unique(Object.values(base.details).map(d=>JSON.stringify(d.record.locator?.paper_id??null))).map(v=>[v,JSON.parse(v)??'未知材料组']));
+pick('paper','材料筛选（改变分母）',unique(Object.values(base.details).map(d=>JSON.stringify(paperId(d.record)))).map(v=>[v,JSON.parse(v)??'未知材料组']));
 for(const [key,title,values] of [['function','表达作用',base.contributions.map(c=>c.expression.function||'未说明')],['direction','判断方向',base.contributions.flatMap(c=>c.directions)],['status','方面核对状态',base.contributions.map(c=>c.status)]])pick(key,title,unique(values).map(v=>[v,name(v)]));
 pick('boiler','套话候选',[['true','是候选'],['false','非候选'],['null','未判断']]);
 node('button','清除筛选',controls,{type:'button'}).onclick=()=>{Object.values(picks).forEach(s=>s.value='*');refresh();};
@@ -29,16 +30,36 @@ function row(parent,title,cs){const li=node('li',null,parent);node('strong',titl
 function group(title,rows){let root=$('view-summary');if(title.startsWith('A部分')||title==='A条目'){root=node('details',null,root);node('summary',title+'（展开各关系种类与记录集合）',root);}else node('h3',title,root);const ul=node('ul',null,root);for(const [title,cs] of rows)row(ul,title,cs);}
 function evidence(parent,entries){for(const e of entries||[]){const b=node('blockquote',e.quote,parent);node('small','出处：'+(e.section_id||'未说明')+' · 字符 '+e.start+'–'+e.end,b);}}
 function explain(parent,title,value){if(value!=null&&value!=='')node('p',title+'：'+(Array.isArray(value)?value.join('；'):value),parent);}
+function overview(){
+ const root=node('div',null,$('view-summary'),{id:'view-overview',role:'region','aria-label':'当前关注概览'});
+ node('h3','当前关注概览',root);
+ node('p','分析 '+base.analysis_id+' · 已保存修订 '+base.revision+' · A版本 '+((base.a_reference.items||[]).length?base.a_version:'A未导入'),root);
+ node('p',current.ids.length+' 条记录 · '+current.ids.reduce((n,id)=>n+(base.details[id].record.scores||[]).length,0)+' 项原分 · '+unique(current.cs.map(c=>c.opinion_id)).length+' 个观点 / '+unique(current.cs.map(c=>c.facet_id)).length+' 个方面 · '+Object.keys(base.theme_definitions).length+' 个主题定义 · '+current.relations.length+' 个当前关系组',root);
+ if(!current.cs.length)node('p','当前集合尚未形成有效观点方面；材料导入不等于完成分析。若已设置筛选，可清除筛选查看。请在下方原话区补录并保存。',root);
+ if(!(base.a_reference.items||[]).length)node('p','A未导入：可先整理B，之后在本机窗口显式导入A参照版本；不把无A当作清单外。',root);
+ node('p','A结构：'+(base.a_reference.parts||[]).length+' 个部分 / '+(base.a_reference.items||[]).length+' 个条目',root);
+ node('p','B输入状态：'+({current:'绑定有效',needs_revalidation:'来源待核'}[base.b_material_status||base.material_status]||'未说明')+' · A输入状态：'+((base.a_reference.items||[]).length?({current:'绑定有效',needs_revalidation:'来源待核'}[base.a_material_status||base.material_status]||'未说明'):'未导入'),root);
+ if(base.material_status==='needs_revalidation')node('p','来源失效：以下保留旧快照。B有效时，A可显式导入版本接续；B须恢复原绑定文件，或为变化材料另建分析，不迁移旧标注。',root);
+ node('p','页面为保存快照，不实时轮询来源；本机打开、恢复或应用时重查，成功后重开本页。下载草稿不更新概览。',root);
+ const ul=node('ul',null,root),content=current.cs.filter(c=>c.kind==='content');
+ row(ul,'观点方面记录覆盖',current.cs);
+ row(ul,'内容主题记录并集',content.filter(c=>c.theme_ids.length));
+ for(const kind of ['explicit','partial','related','undetermined','needs_review'])row(ul,'A'+name(kind)+'记录并集',content.filter(c=>c.a_items.some(a=>a.kind===kind)||c.a_unassigned.includes(kind)));
+ for(const status of ['working','needs_review','confirmed'])row(ul,'内容方面'+name(status)+'记录',content.filter(c=>c.status===status));
+ const endpoints=new Set(current.relations.flatMap(r=>r.endpoints.map(e=>e.facet_id)));
+ row(ul,'关系端点记录并集',current.cs.filter(c=>endpoints.has(c.facet_id)));
+ node('p','覆盖按记录去重，各类可重叠；观点、方面与关系组数是辅助规模。主题定义不等于命中，工作解释不等于已核对；各主题、A部分/条目和关系类型的明细见下方。',root);
+}
 function refresh(){
  const v=Object.fromEntries(Object.entries(picks).map(([k,s])=>[k,s.value]));
- const ids=Object.keys(base.details).filter(id=>(v.record==='*'||id===v.record)&&(v.paper==='*'||JSON.stringify(base.details[id].record.locator?.paper_id??null)===v.paper));
+ const ids=Object.keys(base.details).filter(id=>(v.record==='*'||id===v.record)&&(v.paper==='*'||JSON.stringify(paperId(base.details[id].record))===v.paper));
  const cs=base.contributions.filter(c=>ids.includes(c.record_id)&&(v.function==='*'||(c.expression.function||'未说明')===v.function)&&(v.direction==='*'||c.directions.includes(v.direction))&&(v.status==='*'||c.status===v.status)&&(v.boiler==='*'||JSON.stringify(c.expression.boilerplate_candidate??null)===v.boiler));
  const facets=new Set(cs.map(c=>c.facet_id));
  const relations=base.relation_details.filter(r=>r.endpoints.length&&r.endpoints.every(e=>facets.has(e.facet_id)));
  current={ids,cs,relations};
  $('view-version').textContent='已保存修订 '+base.revision+' · A版本 '+(base.a_version||'未导入')+' · 分析约定版本 '+base.rules_version+' · 材料状态 '+(base.material_status||'未说明');
  const hits=unique(cs.map(c=>c.record_id));$('view-hits').textContent='命中 '+hits.length+'/'+ids.length+' · '+(hits.map(recordLabel).join('、')||'无命中记录');
- $('view-summary').replaceChildren();
+ $('view-summary').replaceChildren();overview();
  node('p','各项允许重叠，父主题/A部分按记录取并集。工作解释、部分、相关、未定及待核分别保留；待核不合称明确覆盖。数字描述本批表达，不代表群体重要性、论文质量或A权重。未提及不表示不关注。',$('view-summary'));
  const content=cs.filter(c=>c.kind==='content');
  group('主题与父组',Object.entries(base.theme_definitions).map(([id,t])=>[t.label+' · '+t.definition,content.filter(c=>c.theme_ids.includes(id))]));
@@ -54,7 +75,7 @@ function refresh(){
  details();matrix();graph();
 }
 function details(){const root=$('view-detail');root.replaceChildren();node('h3','当前命中明细与原话原分',root);node('p','点击数字、矩阵或图只定位证据，不改变分母。未命中方面不混入当前结果；撤回/替换历史见页末。',root);
- for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)});node('summary',(r.anchor||id)+' · '+cs.length+'个命中方面',det);explain(det,'材料组',r.locator?.paper_id??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(det,'普通分区',s.section_id);node('blockquote',s.text,det);}explain(det,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');if(!cs.length)node('p','没有命中方面；该记录仍在分母中。',det);
+ for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)});node('summary',(r.anchor||id)+' · '+cs.length+'个命中方面',det);explain(det,'材料组',paperId(r)??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(det,'普通分区',s.section_id);node('blockquote',s.text,det);}explain(det,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');if(!cs.length)node('p','没有命中方面；该记录仍在分母中。',det);
  for(const c of cs){const entry=d.facets.find(e=>e.facet.facet_id===c.facet_id),f=entry.facet;const section=node('div',null,det,{id:facetAnchor(c.facet_id)});node('h4',f.interpretation,section);explain(section,'观点',entry.opinion_interpretation||c.opinion_id);explain(section,'类型 / 状态',name(c.kind)+' / '+name(c.status));evidence(section,f.evidence);for(const [key,title] of Object.entries({object:'对象',direction:'方向',degree:'程度',negation:'否定',reasons:'理由',conditions:'条件',actions:'动作',examples:'例示',alternatives:'备选'}))explain(section,title,f.qualifiers?.[key]);explain(section,'表达作用',c.expression.function||'未说明');explain(section,'套话候选',c.expression.boilerplate_candidate==null?'未判断':c.expression.boilerplate_candidate?'是候选':'非候选');explain(section,'主题与父组',c.theme_ids.map(id=>base.theme_definitions[id]?.label||id));
  for(const a of c.a_items)explain(section,'当前有效A列',a.id+' / '+name(a.kind));
  for(const a of f.a_links||[]){explain(section,'保存A关联',(a.a_item_id||'条目未定')+' / '+name(a.kind)+' / '+name(a.status)+' / '+a.version);explain(section,'范围',a.scope);explain(section,'依据',a.reason);evidence(section,a.evidence);}
