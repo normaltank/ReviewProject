@@ -82,6 +82,9 @@ class AttentionOverview(unittest.TestCase):
             errors = []
             for count in (2, 3):
                 records = [dict(record_id=f'novel-{i}', anchor=f'新锚点{i}', text=f'新原话{i}', sections=[dict(section_id=f'new-section-{i}', text=f'新原话{i}')], scores=[dict(label='自由原分', raw_value=' 7 / 9 ')] if i == 0 else [], locator={}) for i in range(count)]
+                if count == 3:
+                    records[0]['scores'].append(dict(label='另一原分栏', raw_value=' 不适用 '))
+                    records[2]['scores'] = [dict(label='新量表', raw_value=' 0.75 ')]
                 reference = dict(version='different-v9', parts=[dict(id=x, label=x) for x in ('start', 'empty', 'end')], items=[dict(id=x, text=x, part_id=part, locator='新定位') for x, part in [('hit', 'start'), ('zero', 'end'), ('nil', 'end')]]) if count == 3 else dict(version=None, parts=[], items=[])
                 opinions = []
                 for i in range(2):
@@ -97,6 +100,12 @@ class AttentionOverview(unittest.TestCase):
                     page.goto(path.as_uri())
                     overview = page.get_by_role('region', name='当前关注概览')
                     self.assertIn('2 个观点 / 2 个方面', overview.inner_text())
+                    self.assertIn(('3 项原分' if count == 3 else '1 项原分'), overview.inner_text())
+                    detail = page.locator('#view-detail' if scripts else '#view-summary')
+                    self.assertIn(' 7 / 9 ', detail.text_content())
+                    if count == 3:
+                        self.assertIn(' 不适用 ', detail.text_content())
+                        self.assertIn(' 0.75 ', detail.text_content())
                     self.assertIn('1 个主题定义 · 1 个当前关系组', overview.inner_text())
                     self.assertIn(f'2/{count}', overview.inner_text())
                     self.assertNotIn('A五部分', page.content())
