@@ -118,12 +118,108 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars):
     finally:
         _save(path,run)
 
+def _focused_functions(path,run,record,response,provider,context_chars):
+    scopes={}
+    for op in response.get('opinions',[]):
+        valid=[]
+        for raw in op.get('facets',[]):
+            try:
+                context=semantic.contextual_evidence(record,raw['evidence'])
+                selected=[semantic.quote(record,ev,True)['quote'] for ev in raw['evidence']]
+                require(any(raw['focus'] in ev['quote'] for ev in context),'E_ATTENTION_FOCUS_SCOPE')
+                function=_call(path,run,'b_expression',semantic.FUNCTION_PROMPT,semantic.FUNCTION_SCHEMA,
+                    {'focus':raw['focus'],'selected':selected,'context':[ev['quote'] for ev in context]},provider,context_chars)
+                require(function is not None and set(function)=={'function'} and function['function'] in semantic.FUNCTIONS,'E_ATTENTION_EXPRESSION')
+                raw['state']=semantic.FUNCTIONS[function['function']]
+                raw['boilerplate']=function['function']=='礼貌致谢'
+                scopes['facet-'+raw['ref']]=list(dict.fromkeys(selected))
+                valid.append(raw)
+            except (ReviewError,KeyError,TypeError) as exc:
+                run['rejected'].append({'stage':'b_expression','code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RESPONSE'})
+                run['unprocessed'].append({'record_id':record['record_id'],'reason':'B expression or focus could not be bound; facet not accepted'})
+        op['facets']=valid
+    return scopes
+
+
+def _scoped_a_mapping(path,run,selected,reference,provider,context_chars):
+    facet=selected[0]['facets'][0]
+    scopes={'b'+str(i+1):scope for i,scope in enumerate(run['source_scopes'][facet['facet_id']])}
+    frozen={'focus':facet['qualifiers']['object'],'context':[e['quote'] for e in facet['evidence']]}
+    decisions={};links=[];outside=[]
+    for item in reference['items']:
+        response=_call(path,run,'a_mapping',semantic.SCOPED_A_PROMPT,semantic.scoped_a_schema(item,scopes),
+            {'facet':frozen,'scopes':[{'id':alias,'text':scope} for alias,scope in scopes.items()],
+             'a_item':{'text':item['text']}},provider,context_chars)
+        if response is None: continue
+        try:
+            rows=semantic.scoped_decisions(response,item,scopes)
+            decisions[item['id']]=rows
+            for alias,pos in rows.items():
+                if pos['kind']=='unrelated': continue
+                links.append({'a_item_id':item['id'],'version':reference['version'],'kind':pos['kind'],
+                    'scope':scopes[alias],'reason':pos['reason'],'evidence':copy.deepcopy(facet['evidence']),'status':'needs_review'})
+        except (ReviewError,KeyError,TypeError) as exc:
+            run['rejected'].append({'stage':'a_mapping','code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RESPONSE'})
+    if len(decisions)==len(reference['items']):
+        for alias,scope in scopes.items():
+            if all(rows[alias]['kind']=='unrelated' for rows in decisions.values()):
+                outside.append({'scope':scope,'reason':'仅相对完整本版A，逐项对象比较均无交集：'+
+                    '；'.join(rows[alias]['reason'] for rows in decisions.values()),
+                    'evidence':copy.deepcopy(facet['evidence']),'status':'needs_review'})
+    else:
+        run['unprocessed'].append({'facet_id':facet['facet_id'],'reason':'Some A scope comparisons failed; no outside conclusion inferred'})
+    return {'mappings':[{'facet_id':facet['facet_id'],'a_links':links,'outside':outside}]}
+
+
+def _source_a_mapping(path,run,selected,reference,provider,context_chars):
+    """Bind one literal A per call; only compare residuals after all succeeded."""
+    facet=selected[0]['facets'][0]
+    frozen={'focus':facet.get('qualifiers',{}).get('object'),'reading':facet['interpretation'],'kind':facet.get('kind','content'),
+            'qualifiers':facet.get('qualifiers',{}),'quotes':[e['quote'] for e in facet['evidence']]}
+    links=[];comparisons=[];failed=False
+    for item in reference['items']:
+        response=_call(path,run,'a_mapping',semantic.SOURCE_A_PROMPT,semantic.pair_schema(item,facet),
+            {'facet':frozen,'a_item':{'text':item['text']}},provider,context_chars)
+        if response is None:
+            failed=True;continue
+        try:
+            links.extend(semantic.pair_links(response,facet,item,reference['version']))
+            comparisons.append({'a_text':item['text'],'positions':response['positions']})
+        except (ReviewError,KeyError,TypeError) as exc:
+            failed=True
+            run['rejected'].append({'stage':'a_mapping','code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RESPONSE'})
+    outside=[]
+    if not failed:
+        response=_call(path,run,'a_residual',semantic.RESIDUAL_PROMPT,semantic.residual_schema(facet),
+            {'facet':frozen,'reference':[{'text':item['text']} for item in reference['items']],
+             'comparisons':comparisons},provider,context_chars)
+        if response is not None:
+            try:
+                outside,unknown=semantic.residual_links(response,facet,reference['version'])
+                links.extend(unknown)
+            except (ReviewError,KeyError,TypeError) as exc:
+                failed=True
+                run['rejected'].append({'stage':'a_residual','code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RESPONSE'})
+        else: failed=True
+    if failed:
+        run['unprocessed'].append({'facet_id':facet['facet_id'],'reason':'Some A comparisons or residual scopes were not completed; no outside conclusion inferred'})
+    return {'mappings':[{'facet_id':facet['facet_id'],'a_links':links,'outside':outside}]}
+
+
 def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     """Snapshot all sections of selected records; never mutate formal analysis."""
     state=workspace.state()
     compact=provider.mode != 'replay' or provider.config.get('protocol') != 'attention-canonical-replay/1'
+    source_bound=provider.mode != 'replay' or provider.config.get('protocol') in {'attention-semantic/3','attention-semantic/4'}
+    focused=provider.mode != 'replay' or provider.config.get('protocol') == 'attention-semantic/4'
     b_prompt,a_prompt=(semantic.B_PROMPT,semantic.A_PROMPT) if compact else (B_PROMPT,A_PROMPT)
     b_schema,a_schema=(semantic.B_SCHEMA,semantic.A_SCHEMA) if compact else (B_SCHEMA,A_SCHEMA)
+    if source_bound:
+        b_prompt,b_schema=semantic.SOURCE_B_PROMPT,semantic.SOURCE_B_SCHEMA
+        a_prompt,a_schema=semantic.SOURCE_A_PROMPT,semantic.SOURCE_A_SCHEMA
+    if focused:
+        b_prompt,b_schema=semantic.EXTRACTION_PROMPT,semantic.EXTRACTION_SCHEMA
+        a_prompt,a_schema=semantic.SCOPED_A_PROMPT,semantic.SCOPED_A_SCHEMA
     require(state['material_status']=='current','E_ATTENTION_REVALIDATION')
     require(type(context_chars) is int and 1 <= context_chars <= 1_000_000,'E_ATTENTION_CAPACITY')
     require(provider.mode in {'replay','local_model'},'E_ATTENTION_PROVIDER')
@@ -139,19 +235,27 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     # Avoid identity metadata, paths, scores and all of A in B requests.
     aggregate=patch
     run['coverage']=[]
+    if focused:
+        run['source_scopes']={}
+        run['prompt_hashes']['b_expression']=digest(semantic.FUNCTION_PROMPT.encode())
+        run['schema_hashes']['b_expression']=digest(encoded(semantic.FUNCTION_SCHEMA))
+    elif compact:
+        run['intermediate_protocol']=provider.config.get('protocol','attention-semantic/2')
     for record in records:
         patch=dict(aggregate,edits=[],themes=[],relations=[])
         run['patch']=aggregate
         before_errors=len(run['errors'])+len(run['rejected'])
         payload={'records':[{'record_id':r['record_id'],'source_id':r['source_id'],'sections':[{'section_id':s['section_id'],'text':s['text']} for s in r['sections']]} for r in [record]]}
-        if compact: payload=semantic.b_payload(record)
-        response=_call(path,run,'b_analysis',b_prompt,semantic.b_schema(record) if compact else b_schema,payload,provider,context_chars)
+        if compact: payload=semantic.b_payload(record,source_bound)
+        response=_call(path,run,'b_analysis',b_prompt,semantic.extraction_schema(record) if focused else semantic.b_schema(record,source_bound) if compact else b_schema,payload,provider,context_chars)
+        b_call=run['calls'][-1]
         if response is not None:
             try:
                 if compact:
-                    run['calls'][-1]['evidence_selectors']=semantic.selection_counts(response)
-                    response,conversion_rejected=semantic.convert_b(record,response)
-                    run['calls'][-1]['converted_b']=copy.deepcopy(response)
+                    b_call['evidence_selectors']=semantic.selection_counts(response)
+                    scopes=_focused_functions(path,run,record,response,provider,context_chars) if focused else {}
+                    response,conversion_rejected=semantic.convert_b(record,response,source_bound)
+                    b_call['converted_b']=copy.deepcopy(response)
                     run['rejected'].extend(conversion_rejected)
                 require(set(response)<={'edits','themes','relations','unprocessed'} and all(isinstance(response.get(k),list) for k in ('edits','themes','relations')),'E_ATTENTION_RESPONSE')
                 unprocessed=response.get('unprocessed',[])
@@ -177,6 +281,8 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
                         require(isinstance(ident,str) and ident.strip() and ident not in identities,'E_ATTENTION_DUPLICATE')
                         identities[ident]=prefix+digest(encoded([field,ident]))[:20]
                 response=_rewrite(response,identities)
+                if focused:
+                    run['source_scopes'].update({identities[fid]:quotes for fid,quotes in scopes.items() if fid in identities})
                 # Validate independent opinions first; cross-object graph validated next.
                 for edit in response['edits']:
                     try:
@@ -218,11 +324,13 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
                 frozen=[{'record_id':op['record_id'],'facet':normalize_facet(f)} for op in selected for f in op['facets']]
                 payload={'b_facets':frozen,'a_reference':state['a_reference']}
                 if compact: payload,facet_aliases,item_aliases=semantic.a_payload(selected,state['a_reference'])
-                mappings=_call(path,run,'a_mapping',a_prompt,semantic.a_schema(facet_aliases,item_aliases) if compact else a_schema,payload,provider,context_chars)
+                mappings=(_scoped_a_mapping(path,run,selected,state['a_reference'],provider,context_chars) if focused else
+                    _source_a_mapping(path,run,selected,state['a_reference'],provider,context_chars) if source_bound else
+                    _call(path,run,'a_mapping',a_prompt,semantic.a_schema(facet_aliases,item_aliases) if compact else a_schema,payload,provider,context_chars))
                 seen=set()
                 if mappings is not None:
                     try:
-                        if compact:
+                        if compact and not source_bound:
                             mappings,conversion_rejected=semantic.convert_a(mappings,facet_aliases,item_aliases,state['a_reference']['version'])
                             run['rejected'].extend(conversion_rejected)
                         require(set(mappings)=={'mappings'} and isinstance(mappings['mappings'],list),'E_ATTENTION_RESPONSE')

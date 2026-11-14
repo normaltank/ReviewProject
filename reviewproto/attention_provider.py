@@ -18,7 +18,9 @@ class ReplayProvider:
             if 'choices' in first: first=json.loads(first['choices'][0]['message']['content'])
         except (ValueError,KeyError,TypeError,IndexError): first={}
         self.responses = iter(responses)
-        self.config = {'provider':'injected-replay/1','protocol':'attention-semantic/2' if 'opinions' in first else 'attention-canonical-replay/1'}
+        source_bound=any('focus' in f for op in first.get('opinions',[]) for f in op.get('facets',[]))
+        focused=source_bound and any('state' not in f for op in first.get('opinions',[]) for f in op.get('facets',[]))
+        self.config = {'provider':'injected-replay/1','protocol':('attention-semantic/4' if focused else 'attention-semantic/3' if source_bound else 'attention-semantic/2') if 'opinions' in first else 'attention-canonical-replay/1'}
 
     def complete(self, request):
         result = next(self.responses)
