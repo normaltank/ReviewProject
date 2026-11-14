@@ -166,7 +166,7 @@ class OrdinaryAttentionInput(unittest.TestCase):
             with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_DUPLICATE'):
                 controller.build_prepared_attention(draft, root / 'invalid')
             self.assertFalse((root / 'invalid').exists())
-            self.assertEqual(controller.attention_path, root / 'old')
+            self.assertTrue(controller.attention_path.samefile(root / 'old'))
 
     def test_two_records_without_a_preserve_unicode_and_free_scores_in_new_package(self):
         from reviewproto.attention_input import AttentionInput
