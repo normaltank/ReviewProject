@@ -98,6 +98,7 @@ $state = [ordered]@{
     status = 'starting'
 }
 $state | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
+Write-Output ('Owned PID ' + $proc.Id + ' RUN ' + $runId)
 
 $deadline = [DateTime]::UtcNow.AddSeconds(60)
 while ([DateTime]::UtcNow -lt $deadline) {

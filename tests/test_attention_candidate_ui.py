@@ -128,12 +128,69 @@ assert not errors, errors
                     repo_root=str(ROOT), owner='ReviewProject/scripts/local-model/v1')), encoding='utf-8')
                 command.return_value = SimpleNamespace(returncode=0, stdout=b'Started PID 123')
                 service.start(resource, runtime)
-                self.assertIn(str(resource), [str(v) for v in command.call_args.args[0]])
+                self.assertIn(str(resource.resolve()), [str(v) for v in command.call_args.args[0]])
                 self.assertIn(str(runtime), [str(v) for v in command.call_args.args[0]])
                 service.stop()
                 args = [str(v) for v in command.call_args.args[0]]
-                self.assertEqual(args[-6:], ['-ResourceRoot', str(resource), '-RuntimeDir', str(runtime), '-ExpectedRunId', run_id])
+                self.assertEqual(args[-6:], ['-ResourceRoot', str(resource.resolve()), '-RuntimeDir', str(runtime.absolute()), '-ExpectedRunId', run_id])
                 self.assertIsNone(service.owned)
+
+    def test_failed_start_keeps_only_new_verified_receipt_for_stop(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from reviewproto.attention_candidate_ui import CandidateModelService
+        from reviewproto.desktop import ROOT
+        from reviewproto.core import ReviewError
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime=Path(tmp); run_id='b'*32
+            (runtime/'server-state.json').write_text(json.dumps(dict(pid=321,run_id=run_id,
+                repo_root=str(ROOT),owner='ReviewProject/scripts/local-model/v1')),encoding='utf-8')
+            for receipt,owns in [('',False),('Owned PID 321 RUN '+'c'*32,False),
+                                  ('Owned PID 321 RUN '+run_id,True)]:
+                with self.subTest(receipt=receipt), patch('reviewproto.desktop.run_powershell') as command:
+                    command.return_value=SimpleNamespace(returncode=1,stdout=receipt)
+                    service=CandidateModelService()
+                    with self.assertRaisesRegex(ReviewError,'E_LOCAL_MODEL_START'):
+                        service.start(runtime,runtime)
+                    self.assertEqual(service.owned is not None,owns)
+                    if owns:
+                        command.return_value=SimpleNamespace(returncode=0,stdout='')
+                        service.stop()
+                        self.assertEqual(command.call_args.args[0][-1],run_id)
+                        self.assertIsNone(service.owned)
+
+    def test_tk_failed_start_enables_stop_and_recovers_without_a_real_process(self):
+        import tkinter as tk
+        import time
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
+        from reviewproto.desktop import ROOT, Controller
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'pack';prepare(path)
+            controller=Controller();controller.open_attention(path)
+            root=tk.Tk();self.addCleanup(root.destroy)
+            window=AttentionCandidateWindow(root,controller)
+            self.addCleanup(window.window.destroy)
+            runtime=Path(tmp)/'runtime';runtime.mkdir();run_id='d'*32
+            window.resource.set(tmp);window.runtime.set(str(runtime))
+            (runtime/'server-state.json').write_text(json.dumps(dict(pid=456,run_id=run_id,
+                repo_root=str(ROOT),owner='ReviewProject/scripts/local-model/v1')),encoding='utf-8')
+            def wait():
+                deadline=time.monotonic()+5
+                while window.busy and time.monotonic()<deadline:
+                    root.update();time.sleep(.02)
+                self.assertFalse(window.busy)
+            with patch('reviewproto.desktop.run_powershell') as command:
+                command.return_value=SimpleNamespace(returncode=1,stdout='Owned PID 456 RUN '+run_id)
+                window.start_button.invoke();wait()
+                self.assertIn('已保留此次进程身份',window.status.get())
+                self.assertFalse(window.stop_button.instate(['disabled']))
+                command.return_value=SimpleNamespace(returncode=0,stdout='')
+                window.stop_button.invoke();wait()
+                self.assertIn('已停止',window.status.get())
+                self.assertTrue(window.stop_button.instate(['disabled']))
+                self.assertEqual(command.call_args.args[0][-1],run_id)
 
     def test_frozen_target_generate_preview_accept_reopen(self):
         from reviewproto.attention_candidate_ui import CandidateSession
