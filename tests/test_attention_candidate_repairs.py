@@ -9,6 +9,75 @@ from reviewproto.attention_candidates import generate, accept, ReplayProvider
 
 
 class CandidateRepairs(unittest.TestCase):
+    def test_focus_binding_never_repairs_words_or_literal_evidence(self):
+        cases=[('不要求追加实验。','不希望追加实验',[{'section':'s1','passage':'p1'}],'E_ATTENTION_FOCUS_SCOPE'),
+               ('“入口清楚”说的是桌面版。','入口清楚',[{'section':'s1','quote':'入口清楚说的是桌面版。','start':0,'end':13}],'E_ATTENTION_QUOTE')]
+        for original,focus,ev,code in cases:
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+                ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
+                          'a_reference':{'version':'none','items':[]}})
+                b={'opinions':[{'summary':'来源','facets':[{'ref':'f1','focus':focus,'evidence':ev,'qualifiers':{},'themes':[]}]}],
+                    'relations':[],'unprocessed':[]}
+                run=generate(ws,'strict',ReplayProvider([b]))
+                self.assertEqual(run['status'],'failed');self.assertEqual(run['patch']['edits'],[])
+                self.assertIn(code,str(run['rejected']))
+
+    def test_quote_normalized_label_requires_unique_source_correspondence(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible',
+                'text':'“入口清楚”说的是桌面版。“入口清楚”说的是桌面版。'}],'a_reference':{'version':'none','items':[]}})
+            b={'opinions':[{'summary':'重复来源','facets':[{'ref':'f1','focus':'入口清楚说的是桌面版',
+                'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'}],'qualifiers':{},'themes':[]}]}],
+                'relations':[],'unprocessed':[]}
+            run=generate(ws,'ambiguous-label',ReplayProvider([b]))
+            self.assertEqual(run['status'],'failed')
+            self.assertIn('E_ATTENTION_FOCUS_AMBIGUOUS',str(run['rejected']))
+
+    def test_quote_delimiter_focus_binding_keeps_exact_source_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            original='“入口清楚”说的是桌面版。'
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
+                      'a_reference':{'version':'none','items':[]}})
+            b={'opinions':[{'summary':'桌面版判断','facets':[{'ref':'f1','focus':'入口清楚说的是桌面版',
+                'evidence':[{'section':'s1','passage':'p1'}],'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+            run=generate(ws,'label-quotes',ReplayProvider([b,{'function':'实质评价'}]))
+            self.assertEqual(run['status'],'complete',run['rejected'])
+            f=run['patch']['edits'][0]['facets'][0]
+            self.assertIn('“入口清楚”说的是桌面版',f['interpretation'])
+            self.assertEqual(f['evidence'][0]['quote'],original)
+            binding=run['focus_bindings'][f['facet_id']]
+            self.assertEqual(binding['raw_focus'],'入口清楚说的是桌面版')
+            self.assertEqual(binding['source_focus'],'“入口清楚”说的是桌面版')
+            self.assertEqual(binding['method'],'quote-delimiter-source-binding/1')
+
+    def test_full_record_context_is_read_only_and_does_not_add_scope_or_other_records(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            original='这一句“必须扩建”是受访者原话；作者只是转述，没有把它当成自己的政策建议。不要据此再写一份扩建方案。'
+            state=ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original},
+                {'anchor':'not-selected','visibility':'author_visible','text':'未选择记录不得传入模型。'}],
+                'a_reference':{'version':'v','items':[{'id':'voice','text':'区分受访者声音与作者主张','locator':'x'}]}})
+            b={'opinions':[{'summary':'方案限制','facets':[{'ref':'f1','focus':'不要据此再写一份扩建方案',
+                'evidence':[{'section':'s1','passage':'p4'}],'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+            observed=[]
+            class Provider(ReplayProvider):
+                def complete(self,request):
+                    payload=json.loads(request['messages'][1]['content']);observed.append(payload)
+                    if 'sections' in payload:return super().complete(request)
+                    if 'selected' in payload:return ReplayProvider([{'function':'修改建议'}]).complete(request)
+                    response={'a_text':'区分受访者声音与作者主张','comparisons':{'b1':{'b_text':payload['scopes'][0]['text'],
+                        'kind':'related','reason':'不得把转述当作作者政策主张并据此要求方案'}}}
+                    return ReplayProvider([response]).complete(request)
+            run=generate(ws,'context',Provider([b]),record_ids=[state['records'][0]['record_id']])
+            self.assertEqual(run['status'],'complete',run['errors']+run['rejected'])
+            self.assertEqual(observed[1]['context'],[original])
+            self.assertEqual(observed[2]['context']['sections'][0]['text'],original)
+            self.assertEqual(len(observed[2]['scopes']),1)
+            self.assertEqual(observed[2]['scopes'][0]['text'],'不要据此再写一份扩建方案。')
+            self.assertNotIn('未选择记录',json.dumps(observed,ensure_ascii=False))
+            facet=run['patch']['edits'][0]['facets'][0]
+            self.assertIn('受访者原话',facet['interpretation'])
+            self.assertEqual(facet['a_links'][0]['a_item_id'],'voice')
+
     def test_explicit_example_and_negation_keep_their_source_roles(self):
         with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
             ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible',

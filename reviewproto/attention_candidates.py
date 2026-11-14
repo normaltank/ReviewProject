@@ -135,28 +135,35 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars):
         _save(path,run)
 
 def _focused_functions(path,run,record,response,provider,context_chars):
-    scopes={}
+    scopes={};bindings={}
     for op in response.get('opinions',[]):
         valid=[]
         for raw in op.get('facets',[]):
             try:
+                selected_evidence=[semantic.quote(record,ev,True) for ev in raw['evidence']]
+                binding=semantic.bind_focus(raw['focus'],selected_evidence)
+                raw['focus']=binding['source_focus']
+                for group in raw.get('ranges',[]):
+                    bound=semantic.bind_focus(group['focus'],[semantic.quote(record,ev,True) for ev in group['evidence']])
+                    group['focus']=bound['source_focus'];binding.setdefault('ranges',[]).append(bound)
                 context=semantic.contextual_evidence(record,raw['evidence'])
-                selected=[semantic.quote(record,ev,True)['quote'] for ev in raw['evidence']]
+                selected=[ev['quote'] for ev in selected_evidence]
                 groups=semantic.semantic_ranges(record,raw)
                 raw.pop('ranges',None)
                 require(any(raw['focus'] in ev['quote'] for ev in context),'E_ATTENTION_FOCUS_SCOPE')
                 function=_call(path,run,'b_expression',semantic.FUNCTION_PROMPT,semantic.FUNCTION_SCHEMA,
-                    {'focus':raw['focus'],'selected':selected,'context':[ev['quote'] for ev in context]},provider,context_chars)
+                    {'focus':raw['focus'],'selected':selected,'context':[section['text'] for section in record['sections']]},provider,context_chars)
                 require(function is not None and set(function)=={'function'} and function['function'] in semantic.FUNCTIONS,'E_ATTENTION_EXPRESSION')
                 raw['state']=semantic.FUNCTIONS[function['function']]
                 raw['boilerplate']=function['function']=='礼貌致谢'
                 scopes['facet-'+raw['ref']]=groups
+                bindings['facet-'+raw['ref']]=binding
                 valid.append(raw)
             except (ReviewError,KeyError,TypeError) as exc:
                 run['rejected'].append({'stage':'b_expression','code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RESPONSE'})
                 run['unprocessed'].append({'record_id':record['record_id'],'reason':'B expression or focus could not be bound; facet not accepted'})
         op['facets']=valid
-    return scopes
+    return scopes,bindings
 
 
 def _scoped_a_mapping(path,run,selected,reference,provider,context_chars):
@@ -164,10 +171,12 @@ def _scoped_a_mapping(path,run,selected,reference,provider,context_chars):
     groups={'b'+str(i+1):group for i,group in enumerate(run['source_scopes'][facet['facet_id']])}
     scopes={alias:group['text'] for alias,group in groups.items()}
     frozen={'focus':facet['qualifiers']['object'],'context':[e['quote'] for e in facet['evidence']]}
+    record=next(record for record in run['snapshot']['records'] if record['record_id']==selected[0]['record_id'])
+    context={'sections':[{'id':'s'+str(i+1),'text':section['text']} for i,section in enumerate(record['sections'])]}
     decisions={};links=[];outside=[]
     for item in reference['items']:
         response=_call(path,run,'a_mapping',semantic.SCOPED_A_PROMPT,semantic.scoped_a_schema(item,scopes),
-            {'facet':frozen,'scopes':[{'id':alias,'text':scope,'focus':groups[alias]['focus'],
+            {'facet':frozen,'context':context,'scopes':[{'id':alias,'text':scope,'focus':groups[alias]['focus'],
               'quotes':[ev['quote'] for ev in groups[alias]['evidence']]} for alias,scope in scopes.items()],
              'a_item':{'text':item['text']}},provider,context_chars)
         if response is None: continue
@@ -260,6 +269,7 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     run['coverage']=[]
     if focused:
         run['source_scopes']={}
+        run['focus_bindings']={}
         run['prompt_hashes']['b_expression']=digest(semantic.FUNCTION_PROMPT.encode())
         run['schema_hashes']['b_expression']=digest(encoded(semantic.FUNCTION_SCHEMA))
     elif compact:
@@ -276,7 +286,7 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
             try:
                 if compact:
                     b_call['evidence_selectors']=semantic.selection_counts(response)
-                    scopes=_focused_functions(path,run,record,response,provider,context_chars) if focused else {}
+                    scopes,bindings=_focused_functions(path,run,record,response,provider,context_chars) if focused else ({},{})
                     response,conversion_rejected=semantic.convert_b(record,response,source_bound)
                     b_call['converted_b']=copy.deepcopy(response)
                     run['rejected'].extend(conversion_rejected)
@@ -306,6 +316,7 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
                 response=_rewrite(response,identities)
                 if focused:
                     run['source_scopes'].update({identities[fid]:quotes for fid,quotes in scopes.items() if fid in identities})
+                    run['focus_bindings'].update({identities[fid]:binding for fid,binding in bindings.items() if fid in identities})
                 # Validate independent opinions first; cross-object graph validated next.
                 for edit in response['edits']:
                     try:
