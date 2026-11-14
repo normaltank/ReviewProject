@@ -4,6 +4,32 @@ from pathlib import Path
 from reviewproto.attention import AttentionWorkspace
 
 class AttentionRoundtrip(unittest.TestCase):
+    def test_only_empty_unidentified_database_is_initialized(self):
+        import sqlite3
+        from contextlib import closing
+        from reviewproto.core import ReviewError
+        for application_id,foreign_table in ((0,False),(0,True),(123456,False)):
+            with self.subTest(application_id=application_id,foreign_table=foreign_table), tempfile.TemporaryDirectory() as tmp:
+                path=Path(tmp)/'analysis';path.mkdir();database=path/'attention.sqlite3'
+                with closing(sqlite3.connect(database)) as db:
+                    if application_id: db.execute('PRAGMA application_id='+str(application_id))
+                    if foreign_table: db.execute('CREATE TABLE foreign_data(value TEXT)')
+                    db.commit()
+                original=database.read_bytes()
+                if foreign_table or application_id:
+                    with self.assertRaisesRegex(ReviewError,'E_ATTENTION_DATABASE'):
+                        AttentionWorkspace(path)
+                    self.assertEqual(database.read_bytes(),original)
+                    # Rejected constructors leave no returned workspace to
+                    # close. Release SQLite's cyclic connection before Windows
+                    # removes this temporary foreign-database fixture.
+                    import gc
+                    gc.collect()
+                else:
+                    with closing(AttentionWorkspace(path)) as ws:
+                        self.assertEqual(ws.db.execute('PRAGMA application_id').fetchone()[0],AttentionWorkspace.APPLICATION_ID)
+                        self.assertEqual({row[0] for row in ws.db.execute("SELECT name FROM sqlite_master WHERE type='table'")},{'state','history'})
+
     def test_evidence_interpretation_survives_apply_and_reopen(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'analysis'

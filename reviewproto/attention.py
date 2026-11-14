@@ -72,7 +72,10 @@ class AttentionWorkspace:
         self.db = sqlite3.connect(self.path / 'attention.sqlite3')
         app = self.db.execute('PRAGMA application_id').fetchone()[0]
         require(app == self.APPLICATION_ID or app == 0 and not self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table'").fetchone(), 'E_ATTENTION_DATABASE')
-        self.db.execute('PRAGMA application_id=' + str(self.APPLICATION_ID))
+        # Even assigning the same application_id updates SQLite header bytes.
+        # Existing recognized databases must remain byte-stable on read paths.
+        if app == 0:
+            self.db.execute('PRAGMA application_id=' + str(self.APPLICATION_ID))
         self.db.execute('CREATE TABLE IF NOT EXISTS state(id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
         self.db.execute('CREATE TABLE IF NOT EXISTS history(revision INTEGER PRIMARY KEY, fingerprint TEXT UNIQUE, payload TEXT NOT NULL)')
         self.db.commit()
