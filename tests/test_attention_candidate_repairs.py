@@ -9,6 +9,23 @@ from reviewproto.attention_candidates import generate, accept, ReplayProvider
 
 
 class CandidateRepairs(unittest.TestCase):
+    def test_focused_wire_keeps_unprocessed_reason_separate_from_evidence_selector(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':'来源待解释。'}],
+                'a_reference':{'version':'none','items':[]}})
+            observed=[]
+            class Provider(ReplayProvider):
+                def complete(self,request):
+                    observed.append(request['response_format']['json_schema']['schema']['properties']['unprocessed']['items'])
+                    return super().complete(request)
+            provider=Provider([{'opinions':[],'relations':[],'unprocessed':[{'section':'s1','reason':'该范围未完成理解'}]}])
+            provider.config['protocol']='attention-semantic/4'
+            run=generate(ws,'unprocessed-reason',provider)
+            self.assertEqual(set(observed[0]['properties']),{'section','reason'})
+            self.assertEqual(set(observed[0]['required']),{'section','reason'})
+            self.assertEqual(run['errors'],[])
+            self.assertEqual(run['unprocessed'][0]['reason'],'该范围未完成理解')
+
     def test_unknown_or_failed_scoped_a_row_never_becomes_outside(self):
         for uncertain in (True,False):
             with self.subTest(uncertain=uncertain), tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:

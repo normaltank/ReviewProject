@@ -167,6 +167,8 @@ def b_schema(record, source_bound=False):
         def bind(node):
             props=node.get('properties',{})
             if 'section' in props:
+                props['section']=enum(*['s'+str(i+1) for i in range(len(record['sections']))])
+            if 'section' in props and 'passage' in props:
                 node['properties']={'section':enum(*['s'+str(i+1) for i in range(len(record['sections']))]),
                     'passage':enum(*list(dict.fromkeys(p['id'] for s in record['sections'] for p in passages(s,True))))}
                 node['required']=['section','passage']
