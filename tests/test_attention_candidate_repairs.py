@@ -9,6 +9,80 @@ from reviewproto.attention_candidates import generate, accept, ReplayProvider
 
 
 class CandidateRepairs(unittest.TestCase):
+    def test_explicit_ranges_cannot_escape_or_drop_facet_source_group(self):
+        for missing in (False,True):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+                ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':'图例已清楚，保留检索提示。'}],
+                    'a_reference':{'version':'v','items':[{'id':'a','text':'图例说明','locator':'x'}]}})
+                facet={'ref':'f1','focus':'图例','evidence':[{'section':'s1','passage':'p1'}],
+                    'ranges':[{'focus':'检索提示','evidence':[{'section':'s1','passage':'p2'}]}],
+                    'qualifiers':{},'themes':[]}
+                if missing:
+                    facet['evidence'].append({'section':'s1','passage':'p2'})
+                    facet['ranges']=[{'focus':'图例','evidence':[{'section':'s1','passage':'p1'}]}]
+                b={'opinions':[{'summary':'图例','facets':[facet]}],'relations':[],'unprocessed':[]}
+                run=generate(ws,'bad-range',ReplayProvider([b]))
+                self.assertEqual(run['status'],'failed')
+                self.assertEqual(run['patch']['edits'],[])
+                self.assertIn('E_ATTENTION_SCOPE',str(run['rejected']))
+                self.assertEqual([c['stage'] for c in run['calls']],['b_analysis'])
+                self.assertTrue(run['unprocessed'])
+
+    def test_multiple_source_fragments_default_to_one_semantic_range(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            original='若无法保留旧图，至少标明版本。'
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
+                'a_reference':{'version':'v','items':[{'id':'version','text':'图示版本说明','locator':'x'}]}})
+            b={'opinions':[{'summary':'条件建议','facets':[{'ref':'f1','focus':'标明版本',
+                'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'}],
+                'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+            scopes=[]
+            class Provider(ReplayProvider):
+                def complete(self,request):
+                    payload=json.loads(request['messages'][1]['content'])
+                    if 'sections' in payload:return super().complete(request)
+                    if 'selected' in payload:return ReplayProvider([{'function':'修改建议'}]).complete(request)
+                    scopes.extend(payload['scopes'])
+                    response={'a_text':'图示版本说明','comparisons':{row['id']:{'b_text':row['text'],
+                        'kind':'related','reason':'条件下补充版本说明'} for row in payload['scopes']}}
+                    return ReplayProvider([response]).complete(request)
+            run=generate(ws,'source-group',Provider([b]))
+            self.assertEqual(run['status'],'complete',run['errors']+run['rejected'])
+            self.assertEqual(len(scopes),1)
+            self.assertEqual(scopes[0]['text'],original)
+            facet=accept(ws,'source-group',actor='editor',reason='check')['opinions'][0]['facets'][0]
+            self.assertEqual(len(facet['a_links']),1)
+            self.assertIn('若无法保留旧图',facet['a_links'][0]['scope'])
+
+    def test_decision_labels_have_definitions_in_model_visible_request_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
+            ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':'数据标签已经清楚。'}],
+                'a_reference':{'version':'v','items':[{'id':'new','text':'数据标签是否明确','locator':'x'}]}})
+            b={'opinions':[{'summary':'标签','facets':[{'ref':'f1','focus':'数据标签',
+                'evidence':[{'section':'s1','passage':'p1'}],'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
+            a={'a_text':'数据标签是否明确','comparisons':{'b1':{'b_text':'数据标签已经清楚。','kind':'explicit','reason':'都关注标签的明确性'}}}
+            run=generate(ws,'label-contract',ReplayProvider([b,{'function':'实质评价'},a]))
+            self.assertEqual(run['status'],'complete',run['errors'])
+            function=next(c['request'] for c in run['calls'] if c['stage']=='b_expression')
+            schema=function['response_format']['json_schema']['schema']
+            prompt=function['messages'][0]['content']
+            for label in schema['properties']['function']['enum']:
+                self.assertIn(label+'：',prompt)
+            self.assertIn('两个或多个可能',prompt)
+            mapping=next(c['request'] for c in run['calls'] if c['stage']=='a_mapping')
+            a_prompt=mapping['messages'][0]['content']
+            choices=mapping['response_format']['json_schema']['schema']['properties']['comparisons']['properties']['b1']['properties']['kind']['enum']
+            for label in choices:
+                self.assertIn(label+'：',a_prompt)
+            extraction=next(c['request'] for c in run['calls'] if c['stage']=='b_analysis')
+            self.assertIn('section',extraction['messages'][0]['content'])
+            self.assertIn('passage',extraction['messages'][0]['content'])
+            self.assertIn('ref',extraction['messages'][0]['content'])
+            for field in ('relations[].direction','relations[].scope','relations[].reading','relations[].ambiguity',
+                          'unprocessed[].reason','facets[].ranges','ranges[].evidence'):
+                self.assertIn(field+'：',extraction['messages'][0]['content'])
+            self.assertIn('多个片段不自动成为多个范围',extraction['messages'][0]['content'])
+
     def test_focused_wire_keeps_unprocessed_reason_separate_from_evidence_selector(self):
         with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
             ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':'来源待解释。'}],
@@ -53,6 +127,8 @@ class CandidateRepairs(unittest.TestCase):
                     {'id':'labels-new','text':'图例是否可读','locator':'y'}]}})
             b={'opinions':[{'summary':'图例与检索','facets':[{'ref':'f','focus':'图例',
                 'evidence':[{'section':'s1','passage':'p1'},{'section':'s1','passage':'p2'}],
+                'ranges':[{'focus':'图例','evidence':[{'section':'s1','passage':'p1'}]},
+                          {'focus':'检索提示','evidence':[{'section':'s1','passage':'p2'}]}],
                 'qualifiers':{},'themes':[]}]}],'relations':[],'unprocessed':[]}
             class Provider(ReplayProvider):
                 def complete(self,request):
@@ -70,8 +146,8 @@ class CandidateRepairs(unittest.TestCase):
             self.assertEqual(run['status'],'complete',run['errors']+run['rejected'])
             f=accept(ws,'fixed-rows',actor='editor',reason='inspect')['opinions'][0]['facets'][0]
             self.assertEqual(f['kind'],'content');self.assertEqual(f['expression']['function'],'评价')
-            self.assertEqual([(a['a_item_id'],a['scope']) for a in f['a_links']],[('labels-new','图例已清楚，')])
-            self.assertEqual([o['scope'] for o in f['outside']],['请增加检索提示。'])
+            self.assertEqual([(a['a_item_id'],a['scope']) for a in f['a_links']],[('labels-new','图例：图例已清楚，')])
+            self.assertEqual([o['scope'] for o in f['outside']],['检索提示：请增加检索提示。'])
             self.assertEqual(run['request_count'],4)
 
     def test_eighteen_pairwise_a_items_fit_and_preserve_complete_reference(self):

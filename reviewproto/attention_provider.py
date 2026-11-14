@@ -20,7 +20,7 @@ class ReplayProvider:
         self.responses = iter(responses)
         source_bound=any('focus' in f for op in first.get('opinions',[]) for f in op.get('facets',[]))
         focused=source_bound and any('state' not in f for op in first.get('opinions',[]) for f in op.get('facets',[]))
-        self.config = {'provider':'injected-replay/1','protocol':('attention-semantic/4' if focused else 'attention-semantic/3' if source_bound else 'attention-semantic/2') if 'opinions' in first else 'attention-canonical-replay/1'}
+        self.config = {'provider':'injected-replay/1','protocol':('attention-semantic/5' if focused else 'attention-semantic/3' if source_bound else 'attention-semantic/2') if 'opinions' in first else 'attention-canonical-replay/1'}
 
     def complete(self, request):
         result = next(self.responses)
@@ -43,7 +43,9 @@ class LocalProvider:
         require(parsed.netloc == '127.0.0.1' or parsed.netloc == '127.0.0.1:' + str(parsed.port), 'E_ATTENTION_ENDPOINT')
         require(type(max_tokens) is int and 1 <= max_tokens <= 8192 and isinstance(timeout,(int,float)) and 0 < timeout <= 600, 'E_ATTENTION_CAPACITY')
         require(isinstance(model,str) and model.strip(), 'E_ATTENTION_MODEL')
-        self.config = {'endpoint':endpoint.rstrip('/'), 'model':model, 'max_tokens':max_tokens, 'timeout':timeout, 'context_tokens':16384}
+        self.config = {'endpoint':endpoint.rstrip('/'), 'model':model, 'max_tokens':max_tokens, 'timeout':timeout, 'context_tokens':16384,
+            'temperature':0.7,'top_p':0.8,'top_k':20,'min_p':0,'seed':42,'cache_prompt':False,
+            'chat_template_kwargs':{'enable_thinking':False}}
 
     def complete(self, request):
         body = request

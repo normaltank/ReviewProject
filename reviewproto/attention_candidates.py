@@ -85,10 +85,13 @@ def _rewrite(value, identities):
     return value
 
 def _call(path, run, stage, prompt, schema, payload, provider, context_chars):
+    prompt=semantic.model_prompt(stage,prompt,schema)
     request={'messages':[{'role':'system','content':prompt},{'role':'user','content':json.dumps(payload,ensure_ascii=False)}], 'response_format':{'type':'json_schema','json_schema':{'name':stage,'strict':True,'schema':schema}}}
     if provider.mode == 'local_model':
-        request.update(model=provider.config['model'],max_tokens=provider.config['max_tokens'],temperature=0)
-    call={'stage':stage,'request':request,'request_hash':digest(encoded(request)),'schema_hash':digest(encoded(schema)),'at':now(),'status':'pending','usage':None}
+        request.update(model=provider.config['model'],max_tokens=provider.config['max_tokens'])
+        request.update({key:copy.deepcopy(provider.config[key]) for key in
+            ('temperature','top_p','top_k','min_p','seed','cache_prompt','chat_template_kwargs') if key in provider.config})
+    call={'stage':stage,'request':request,'request_hash':digest(encoded(request)),'prompt_hash':digest(prompt.encode()),'schema_hash':digest(encoded(schema)),'at':now(),'status':'pending','usage':None}
     run['calls'].append(call)
     _save(path,run)
     try:
@@ -126,13 +129,15 @@ def _focused_functions(path,run,record,response,provider,context_chars):
             try:
                 context=semantic.contextual_evidence(record,raw['evidence'])
                 selected=[semantic.quote(record,ev,True)['quote'] for ev in raw['evidence']]
+                groups=semantic.semantic_ranges(record,raw)
+                raw.pop('ranges',None)
                 require(any(raw['focus'] in ev['quote'] for ev in context),'E_ATTENTION_FOCUS_SCOPE')
                 function=_call(path,run,'b_expression',semantic.FUNCTION_PROMPT,semantic.FUNCTION_SCHEMA,
                     {'focus':raw['focus'],'selected':selected,'context':[ev['quote'] for ev in context]},provider,context_chars)
                 require(function is not None and set(function)=={'function'} and function['function'] in semantic.FUNCTIONS,'E_ATTENTION_EXPRESSION')
                 raw['state']=semantic.FUNCTIONS[function['function']]
                 raw['boilerplate']=function['function']=='礼貌致谢'
-                scopes['facet-'+raw['ref']]=list(dict.fromkeys(selected))
+                scopes['facet-'+raw['ref']]=groups
                 valid.append(raw)
             except (ReviewError,KeyError,TypeError) as exc:
                 run['rejected'].append({'stage':'b_expression','code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RESPONSE'})
@@ -143,12 +148,14 @@ def _focused_functions(path,run,record,response,provider,context_chars):
 
 def _scoped_a_mapping(path,run,selected,reference,provider,context_chars):
     facet=selected[0]['facets'][0]
-    scopes={'b'+str(i+1):scope for i,scope in enumerate(run['source_scopes'][facet['facet_id']])}
+    groups={'b'+str(i+1):group for i,group in enumerate(run['source_scopes'][facet['facet_id']])}
+    scopes={alias:group['text'] for alias,group in groups.items()}
     frozen={'focus':facet['qualifiers']['object'],'context':[e['quote'] for e in facet['evidence']]}
     decisions={};links=[];outside=[]
     for item in reference['items']:
         response=_call(path,run,'a_mapping',semantic.SCOPED_A_PROMPT,semantic.scoped_a_schema(item,scopes),
-            {'facet':frozen,'scopes':[{'id':alias,'text':scope} for alias,scope in scopes.items()],
+            {'facet':frozen,'scopes':[{'id':alias,'text':scope,'focus':groups[alias]['focus'],
+              'quotes':[ev['quote'] for ev in groups[alias]['evidence']]} for alias,scope in scopes.items()],
              'a_item':{'text':item['text']}},provider,context_chars)
         if response is None: continue
         try:
@@ -157,13 +164,13 @@ def _scoped_a_mapping(path,run,selected,reference,provider,context_chars):
             for alias,pos in rows.items():
                 if pos['kind']=='unrelated': continue
                 links.append({'a_item_id':item['id'],'version':reference['version'],'kind':pos['kind'],
-                    'scope':scopes[alias],'reason':pos['reason'],'evidence':copy.deepcopy(facet['evidence']),'status':'needs_review'})
+                    'scope':groups[alias]['focus']+'：'+scopes[alias],'reason':pos['reason'],'evidence':copy.deepcopy(facet['evidence']),'status':'needs_review'})
         except (ReviewError,KeyError,TypeError) as exc:
             run['rejected'].append({'stage':'a_mapping','code':str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_RESPONSE'})
     if len(decisions)==len(reference['items']):
         for alias,scope in scopes.items():
             if all(rows[alias]['kind']=='unrelated' for rows in decisions.values()):
-                outside.append({'scope':scope,'reason':'仅相对完整本版A，逐项对象比较均无交集：'+
+                outside.append({'scope':groups[alias]['focus']+'：'+scope,'reason':'仅相对完整本版A，逐项对象比较均无交集：'+
                     '；'.join(rows[alias]['reason'] for rows in decisions.values()),
                     'evidence':copy.deepcopy(facet['evidence']),'status':'needs_review'})
     else:
@@ -210,8 +217,8 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     """Snapshot all sections of selected records; never mutate formal analysis."""
     state=workspace.state()
     compact=provider.mode != 'replay' or provider.config.get('protocol') != 'attention-canonical-replay/1'
-    source_bound=provider.mode != 'replay' or provider.config.get('protocol') in {'attention-semantic/3','attention-semantic/4'}
-    focused=provider.mode != 'replay' or provider.config.get('protocol') == 'attention-semantic/4'
+    source_bound=provider.mode != 'replay' or provider.config.get('protocol') in {'attention-semantic/3','attention-semantic/4','attention-semantic/5'}
+    focused=provider.mode != 'replay' or provider.config.get('protocol') in {'attention-semantic/4','attention-semantic/5'}
     b_prompt,a_prompt=(semantic.B_PROMPT,semantic.A_PROMPT) if compact else (B_PROMPT,A_PROMPT)
     b_schema,a_schema=(semantic.B_SCHEMA,semantic.A_SCHEMA) if compact else (B_SCHEMA,A_SCHEMA)
     if source_bound:
