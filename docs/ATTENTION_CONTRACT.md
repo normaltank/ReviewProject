@@ -116,7 +116,7 @@ T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_ob
 python -m reviewproto attention-import-a A_INPUT_JSON --workspace EXISTING_ANALYSIS --actor 编辑声明 --reason 接续理由
 ```
 
-桌面先打开分析包，再点“导入A参照版本”。Controller提供`import_attention_a(source,actor,reason)`，Workspace提供`import_a(input_path,actor=...,reason=...)`，与普通补丁共用`apply`事务、修订、历史及recover。`attention-a-input/1`包含`a_reference`和可选`source:{path,fingerprint}`；source路径相对清单或为绝对本地路径，fingerprint为原文件字节SHA-256。清单本身始终绑定字节指纹；可选source同时绑定原文，两者变化或不可读都保留旧快照并待核。
+桌面先打开分析包，再点“从已有A输入文件导入（高级）”。Controller提供`import_attention_a(source,actor,reason)`，Workspace提供`import_a(input_path,actor=...,reason=...)`，与普通补丁共用`apply`事务、修订、历史及recover。`attention-a-input/1`包含`a_reference`和可选`source:{path,fingerprint}`；source路径相对清单或为绝对本地路径，fingerprint为原文件字节SHA-256。清单本身始终绑定字节指纹；可选source同时绑定原文，两者变化或不可读都保留旧快照并待核。
 
 `a_reference`为`{version,parts:[{id,label}],items:[{id,text,locator,part_id}]}`；旧无分组参照可省parts/part_id，显示未分组，不猜新分组。完整条目包括原文限定、条件、例子和原字样，不按子句扩写新要求。所有ID唯一、part_id指向已知部分。同version下任何条目、文字、定位或分组变化均拒收；显式换版本保存旧参照与旧A绑定到`a_reference_history`，其中`replaced_at_revision`指向接续修订。原B身份及全部旧历史保持不变。内容完全相同的同版本可显式重绑到新文件，保留审计及旧绑定。
 
