@@ -43,6 +43,8 @@ def safe_message(error):
         return code + '：来源或A参照待核，旧快照已保留。请恢复关注页核对输入绑定；不能继续应用或静默转绑。'
     if code == 'E_ATTENTION_OUTPUT_RECOVER':
         return code + '：关注修改可能已提交，但页面输出失败。请恢复关注页并重开核对保存修订；不要改写补丁修订号。'
+    if code in {'E_ATTENTION_NOT_DEDICATED', 'E_ATTENTION_DIRECTORY', 'E_ATTENTION_EXISTS'}:
+        return code + '：目标已有文件或分析，已保护原内容。请另选空目录或建立独立新子目录。'
     if code.startswith('E_ATTENTION_'):
         return code + '：关注分析操作未完成。请保留所选文件，使用“恢复关注页”核对当前修订。'
     if code in {'E_REVISION_CONFLICT', 'E_PATCH_REVISION'}:
@@ -96,6 +98,19 @@ class Controller:
             return self._attention_result(ws.build(input_path=source))
         finally:
             ws.close()
+
+    def build_prepared_attention(self, draft, destination):
+        from .attention_input import build_prepared
+        def committed(path):
+            self.attention_path = path
+        return self._attention_result(build_prepared(draft, destination, on_committed=committed))
+
+    def import_prepared_attention_a(self, reference, actor, reason):
+        from .attention import AttentionWorkspace
+        from .attention_input import import_prepared_a
+        require(getattr(self, 'attention_path', None) is not None, 'E_ATTENTION_EMPTY')
+        with closing(AttentionWorkspace(self.attention_path)) as ws:
+            return self._attention_result(import_prepared_a(ws, reference, actor, reason))
 
     def _attention_result(self, state):
         return {'kind': 'attention', 'path': self.attention_path, 'revision': state['revision'], 'material_status': state['material_status']}
@@ -469,13 +484,14 @@ def main():
     ttk.Label(frame, textvariable=attention_location, wraplength=700).pack(anchor='w')
 
     def new_attention():
-        source = filedialog.askopenfilename(title='选择关注来源清单（可见转录或已有普通工作区）', filetypes=[('JSON', '*.json')])
-        if not source:
+        if busy:
             return
-        parent = filedialog.askdirectory(title='选择分析包父目录')
-        if parent:
-            destination = Path(parent) / ('attention-' + uuid.uuid4().hex[:12])
-            submit(lambda: controller.build_attention(source, destination), '关注分析已建立；请打开关注页。')
+        from .attention_input_ui import AttentionInputWindow
+        AttentionInputWindow(root, controller, on_result=input_result, available=lambda: not busy)
+
+    def input_result(result):
+        attention_location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · ' + result['material_status'])
+        status.set('输入已保存。打开关注页整理或核对；建包不表示已经理解B，下载草稿不等于已应用。')
 
     def choose_attention():
         path = filedialog.askdirectory(title='选择含 attention.sqlite3 的分析包')
@@ -504,6 +520,15 @@ def main():
             submit(lambda: controller.apply_attention(patch), '关注补丁已保存，请重开关注页。')
 
     def choose_attention_a():
+        if busy:
+            return
+        if not getattr(controller, 'attention_path', None):
+            status.set('请先打开要接续A版本的关注分析包。')
+            return
+        from .attention_input_ui import AttentionInputWindow
+        AttentionInputWindow(root, controller, a_only=True, on_result=input_result, available=lambda: not busy)
+
+    def choose_attention_a_file():
         source = filedialog.askopenfilename(title='选择A参照清单 attention-a-input/1', filetypes=[('JSON', '*.json')])
         if not source:
             return
@@ -512,8 +537,9 @@ def main():
         if actor and reason:
             submit(lambda: controller.import_attention_a(source, actor, reason), 'A参照已保存；旧版本及绑定保留在历史，请重开核对。')
 
-    button('导入A参照版本', choose_attention_a)
-    button('建立关注分析', new_attention)
+    button('录入A参照并显式换版', choose_attention_a)
+    button('准备A/B输入并建立独立分析', new_attention)
+    button('从已有A输入文件导入（高级）', choose_attention_a_file)
     button('迁入B关注工作稿', migrate_attention)
     button('打开关注分析包', choose_attention)
     button('打开关注页', lambda: submit(controller.open_attention_report))
