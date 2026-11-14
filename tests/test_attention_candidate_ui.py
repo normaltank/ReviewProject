@@ -26,6 +26,28 @@ def prepare(path):
 
 
 class CandidateWorkflow(unittest.TestCase):
+    def test_new_candidate_sessions_generate_and_preview_preserve_formal_file_bytes(self):
+        from reviewproto.attention_candidate_ui import CandidateSession
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'pack';prepare(path)
+            files=('attention.sqlite3','attention-state.json','attention.html','.gitignore')
+            def formal_bytes(): return {name:(path/name).read_bytes() for name in files}
+            # Each operation opens its own workspace connection, as the ordinary
+            # UI does. No already-open connection may mask constructor writes.
+            _,response=prepare(Path(tmp)/'fixture')
+            operations=(('new session',lambda:CandidateSession(path)),
+                ('generate',lambda:CandidateSession(path).generate('read-only',ReplayProvider([response]))),
+                ('preview',lambda:CandidateSession(path).preview('read-only')))
+            for label,operation in operations:
+                with self.subTest(operation=label):
+                    before=formal_bytes();operation()
+                    for name,original in before.items():
+                        self.assertTrue((path/name).read_bytes()==original,name+' changed during '+label)
+            before=formal_bytes()
+            saved=CandidateSession(path).accept('read-only',actor='synthetic editor',reason='explicit acceptance')
+            self.assertEqual(saved['revision'],1)
+            self.assertNotEqual((path/'attention.sqlite3').read_bytes(),before['attention.sqlite3'])
+
     def doCleanups(self):
         result = super().doCleanups()
         # Collect destroyed Tcl objects on their owning main thread before a
