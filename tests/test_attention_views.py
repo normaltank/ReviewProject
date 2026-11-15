@@ -1,3 +1,4 @@
+from attention_browser import open_panel
 import os
 import tempfile
 import unittest
@@ -78,6 +79,11 @@ class AttentionViews(unittest.TestCase):
                     path = Path(folder) / f'{case}.html'
                     path.write_text(render(saved), encoding='utf-8')
                     page.goto(path.as_uri())
+                    open_panel(page, 'view-statistics')
+                    open_panel(page, 'view-filters')
+                    open_panel(page, 'view-extra-views')
+                    open_panel(page, 'attention-editor')
+                    open_panel(page, 'reading-history')
                     page.get_by_text('A条目原文与历史版本', exact=True).click()
                     if expected is None:
                         self.assertIn('A工作参照尚未导入', page.locator('#a-version').inner_text())
@@ -117,6 +123,11 @@ class AttentionViews(unittest.TestCase):
                 browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
                 page = browser.new_page(offline=True, viewport={'width':1440,'height':1000})
                 page.goto(path.as_uri())
+                open_panel(page, 'view-statistics')
+                open_panel(page, 'view-filters')
+                open_panel(page, 'view-extra-views')
+                open_panel(page, 'attention-editor')
+                open_panel(page, 'reading-history')
                 self.assertIn('已保存修订 7', page.get_by_role('region', name='保存结果与筛选').inner_text(timeout=1500))
                 self.assertEqual(page.locator('#view-hits').inner_text(), '命中 3/4 · r1、r2、r3')
                 browser.close()
@@ -149,6 +160,11 @@ class AttentionViews(unittest.TestCase):
                 page=browser.new_page(offline=True,viewport={'width':1440,'height':1000})
                 errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
                 page.goto(path.as_uri())
+                open_panel(page, 'view-statistics')
+                open_panel(page, 'view-filters')
+                open_panel(page, 'view-extra-views')
+                open_panel(page, 'attention-editor')
+                open_panel(page, 'reading-history')
                 page.locator('#view-matrix-toggle').check();page.locator('#view-graph-toggle').check()
                 self.assertIn('3/4',page.locator('#view-hits').inner_text())
                 self.assertIn('已保存修订 7',page.locator('#view-matrix').inner_text())
@@ -172,6 +188,7 @@ class AttentionViews(unittest.TestCase):
                 page.locator('#view-boiler').select_option('true')
                 self.assertEqual(page.locator('#view-hits').inner_text(),'命中 1/4 · r2')
                 self.assertNotIn('condition',page.locator('#view-detail').inner_text())
+                page.locator('#view-detail > details[id^="view-relation-"] > summary').first.click()
                 self.assertIn('reason',page.locator('#view-detail').inner_text())
                 page.locator('#view-paper').select_option('"p2"')
                 self.assertEqual(page.locator('#view-hits').inner_text(),'命中 0/1 · 无命中记录')
@@ -188,6 +205,7 @@ class AttentionViews(unittest.TestCase):
                 page.locator('#view-matrix-toggle').uncheck();page.locator('#view-graph-toggle').uncheck()
                 self.assertFalse(page.locator('#view-graph').is_visible())
                 page.locator('#view-record-r1 > summary').click()
+                page.locator('#view-record-r1 .facet-a > summary').nth(1).click()
                 self.assertIn('合成在外范围',page.locator('#view-detail').inner_text())
                 for width in [1440,420]:
                     page.set_viewport_size({'width':width,'height':1000})
@@ -220,6 +238,11 @@ class AttentionViews(unittest.TestCase):
                     browser=p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'],headless=True)
                     page=browser.new_page(accept_downloads=True,offline=True)
                     page.on('dialog',lambda d:d.accept());page.goto((root/'analysis/attention.html').as_uri())
+                    open_panel(page, 'view-statistics')
+                    open_panel(page, 'view-filters')
+                    open_panel(page, 'view-extra-views')
+                    open_panel(page, 'attention-editor')
+                    open_panel(page, 'reading-history')
                     page.locator('#passage').select_option(index=1)
                     page.locator('#interpretation').fill('新增合成解释')
                     page.locator('#actor').fill('合成编辑');page.locator('#reason').fill('合成保存核对')
@@ -232,7 +255,13 @@ class AttentionViews(unittest.TestCase):
                     for selector in ['#view-version','#view-matrix','#view-graph']:
                         self.assertIn('已保存修订 0',page.locator(selector).inner_text())
                     controller.apply_attention(patch);controller.recover_attention()
-                    page.reload();page.locator('#view-matrix-toggle').check();page.locator('#view-graph-toggle').check()
+                    page.reload()
+                    open_panel(page, 'view-statistics')
+                    open_panel(page, 'view-filters')
+                    open_panel(page, 'view-extra-views')
+                    open_panel(page, 'attention-editor')
+                    open_panel(page, 'reading-history')
+                    page.locator('#view-matrix-toggle').check();page.locator('#view-graph-toggle').check()
                     self.assertEqual(page.locator('#view-hits').inner_text(),'命中 1/1 · synthetic')
                     for selector in ['#view-version','#view-matrix','#view-graph']:
                         self.assertIn('已保存修订 1',page.locator(selector).inner_text())

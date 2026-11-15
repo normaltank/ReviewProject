@@ -1,3 +1,4 @@
+from attention_browser import open_panel
 import copy
 import tempfile
 import unittest
@@ -78,7 +79,10 @@ class AttentionA(unittest.TestCase):
             browser=p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY','C:/Program Files/Google/Chrome/Application/chrome.exe'),headless=True)
             page=browser.new_page(accept_downloads=True,offline=True,viewport={'width':1440,'height':1000});page.on('dialog',lambda d:d.accept())
             errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-            page.goto((self.root/'analysis/attention.html').as_uri());page.locator('#opinion').select_option('o')
+            page.goto((self.root/'analysis/attention.html').as_uri())
+            open_panel(page, 'attention-editor')
+            open_panel(page, 'reading-history')
+            page.locator('#opinion').select_option('o')
             page.locator('#actor').fill('浏览器编辑');page.locator('#reason').fill('保存A范围')
             for kind in ['explicit','partial','related','undetermined','outside']:
                 page.locator('#a-kind').select_option(kind)
@@ -91,7 +95,10 @@ class AttentionA(unittest.TestCase):
             patchfile=self.root/'download.json'
             def save():
                 with page.expect_download() as d:page.locator('#download').focus();page.keyboard.press('Enter')
-                d.value.save_as(patchfile);controller.apply_attention(patchfile);controller.recover_attention();page.reload();page.locator('#opinion').select_option('o')
+                d.value.save_as(patchfile);controller.apply_attention(patchfile);controller.recover_attention();page.reload()
+                open_panel(page, 'attention-editor')
+                open_panel(page, 'reading-history')
+                page.locator('#opinion').select_option('o')
             save()
             self.assertEqual(len(self.ws.state()['opinions'][0]['facets'][0]['a_links']),4)
             if not page.locator('#saved').is_visible():

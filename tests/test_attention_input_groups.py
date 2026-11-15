@@ -1,4 +1,5 @@
 """Material groups travel from ordinary input through saved filters and details."""
+from attention_browser import open_panel
 from contextlib import closing
 import json
 import os
@@ -58,6 +59,7 @@ class AttentionInputGroups(unittest.TestCase):
             try:
                 page = browser.new_page(offline=True)
                 page.goto((path / 'attention.html').as_uri())
+                open_panel(page, 'view-filters')
                 choices = page.locator('#view-paper option').all_text_contents()
                 self.assertEqual(set(choices), {'全部', '材料甲', '材料乙', '未知材料组'})
                 for group, anchors in [('材料甲', {'甲一', '甲二'}), ('材料乙', {'乙'}), (None, {'未知'})]:
@@ -69,6 +71,7 @@ class AttentionInputGroups(unittest.TestCase):
                         self.assertIn('材料组：' + (group or '未知'), detail.inner_text())
                 context = browser.new_context(java_script_enabled=False, offline=True)
                 plain = context.new_page(); plain.goto((path / 'attention.html').as_uri())
+                open_panel(plain, 'view-statistics')
                 details = plain.locator('.attention-summary > details')
                 self.assertEqual(details.count(), 4)
                 for detail in details.all(): detail.locator('summary').click()

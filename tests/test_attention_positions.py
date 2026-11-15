@@ -1,4 +1,5 @@
 """Saved-position behavior, using the independent four-record oracle."""
+from attention_browser import open_panel
 import copy
 import unittest
 import os
@@ -74,6 +75,8 @@ class Positions(unittest.TestCase):
             errors = []
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto(path.as_uri())
+            open_panel(page, 'view-a-positions')
+            open_panel(page, 'view-filters')
             region = page.locator('#view-positions')
             self.assertEqual(errors, [])
             self.assertIn('B关注位置', region.inner_text())
@@ -121,6 +124,8 @@ class Positions(unittest.TestCase):
                 large['opinions'].append(opinion)
             path.write_text(render(large), encoding='utf-8')
             page.goto(path.as_uri())
+            open_panel(page, 'view-a-positions')
+            open_panel(page, 'view-filters')
             page.locator('[data-position-region="item:A1"] text').first.click()
             self.assertIn('48/49', page.locator('#position-drill').inner_text())
             self.assertEqual(page.locator('#position-drill li').count(), 20)
