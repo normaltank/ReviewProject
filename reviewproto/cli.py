@@ -131,7 +131,8 @@ def main(argv=None):
                 for error in run.get('errors',[]):
                     if error['code'] in API_HINTS: print(API_HINTS[error['code']],file=sys.stderr)
                 if audit['unfinished']:
-                    print('ATTEMPT_AUDIT result_and_usage=unknown server_receipt_not_confirmed=yes automatic_retry=no')
+                    pending=audit['pending_response']
+                    print('ATTEMPT_AUDIT pending_response='+(str(pending) if pending is not None else 'unknown')+' result_and_usage=unknown server_receipt_not_confirmed=yes automatic_retry=no')
                 print('CANDIDATES status=' + run['status'] + ' mode=' + run['mode'] + ' opinions=' + str(len(run['patch']['edits'])) + ' requests=' + (str(audit['count']) if audit['count'] is not None else 'unknown'))
                 return 2 if run['status'] in {'partial','failed','running'} else 0
             elif args.command == 'attention-build':
