@@ -554,18 +554,47 @@ def preview(workspace,run_id):
     run['validity']='current' if state['material_status']=='current' and run['binding']==_binding(state) else 'needs_revalidation'
     return run
 
+def _publish_receipt(receipt, data):
+    """Publish a complete immutable winner, using filesystem create-if-absent."""
+    from uuid import uuid4
+    temporary=receipt.with_name(receipt.name+'.'+uuid4().hex+'.pending')
+    try:
+        with temporary.open('xb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            # A hard link atomically creates the name and never replaces an
+            # existing winner. SQLite serializes applying that same fingerprint.
+            os.link(temporary,receipt)
+        except FileExistsError:
+            pass
+        return read_json(receipt)
+    except OSError:
+        raise ReviewError('E_ATTENTION_RECEIPT_WRITE') from None
+    finally:
+        try: temporary.unlink(missing_ok=True)
+        except OSError: pass  # Never remove the winner or mask successful publication.
+
+
 def accept(workspace,run_id,*,actor,reason):
     """Persist the exact acceptance patch before apply, including recoverable output failure."""
     path=_path(workspace,run_id); run=preview(workspace,run_id)
     receipt=checked_local(path/'acceptance.json')
     if receipt.exists():
         return workspace.apply(read_json(receipt))
-    require(run['validity']=='current' and workspace.state()['material_status']=='current','E_ATTENTION_REVALIDATION')
-    require(run['patch']['edits'],'E_ATTENTION_NO_CANDIDATES')
-    require(run['status'] in {'complete','partial'},'E_ATTENTION_RUN_INCOMPLETE')
-    text(actor); text(reason)
-    patch=copy.deepcopy(run['patch']); patch.update(actor=actor,reason=reason)
-    _machine(patch); _validate(workspace.state(),patch)
-    require(digest(encoded(run['patch']))==run['patch_hash'],'E_ATTENTION_RUN')
-    atomic(receipt,encoded(patch))
-    return workspace.apply(patch)
+    try:
+        require(run['validity']=='current' and workspace.state()['material_status']=='current','E_ATTENTION_REVALIDATION')
+        require(run['patch']['edits'],'E_ATTENTION_NO_CANDIDATES')
+        require(run['status'] in {'complete','partial'},'E_ATTENTION_RUN_INCOMPLETE')
+        text(actor); text(reason)
+        patch=copy.deepcopy(run['patch']); patch.update(actor=actor,reason=reason)
+        _machine(patch); _validate(workspace.state(),patch)
+        require(digest(encoded(run['patch']))==run['patch_hash'],'E_ATTENTION_RUN')
+        winner=_publish_receipt(receipt,encoded(patch))
+    except ReviewError:
+        # A winner may have committed after our initial absence check, making
+        # our prevalidation stale. Recover only its exact immutable receipt.
+        if not receipt.exists(): raise
+        winner=read_json(receipt)
+    return workspace.apply(winner)
