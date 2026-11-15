@@ -138,7 +138,7 @@ class APITransport(unittest.TestCase):
             self.assertEqual(run['calls'][0]['status'],'failed')
             self.assertEqual(run['calls'][0]['phase'],'prepare')
             self.assertTrue(run['unprocessed'])
-            saved=(ws.path/'candidate-runs/prepare-fail/run.json').read_text()
+            saved=(ws.path/'candidate-runs/prepare-fail/run.json').read_text(encoding='utf-8')
             self.assertNotIn('SYNTHETIC-PRIVATE-DETAIL',saved)
 
     def test_cli_resolves_model_by_provider_without_reading_credentials(self):
