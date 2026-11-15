@@ -43,13 +43,19 @@ def render_candidate_preview(run):
                    ('部分处理' if item['status'] == 'partial' else '已处理（仍须核对遗漏）') + '</li>')
     for item in run.get('unprocessed', []):
         explanation = {'B stage failed or capacity exceeded': '整条记录处理未完成或超出容量',
-                       'A mapping missing or rejected': 'A对照缺失或被拒收'}.get(item.get('reason'), item.get('reason', '未完成'))
+                       'A mapping missing or rejected': 'A对照缺失或被拒收',
+                       'B output rejected; no accepted candidates formed for this source': '此来源输出被拒收，未形成可接收候选；不表示模型未读取原文'}.get(item.get('reason'), item.get('reason', '未完成'))
         out.append('<li>未完成：' + esc(item.get('record_id', item.get('facet_id', ''))) +
                    ' · ' + esc(item.get('section_id', 'A对照')) + ' · ' + esc(explanation) +
                    ' · 请回查范围并重新生成或人工补录。</li>')
     out.append('</ul><p>处理错误 ' + str(len(run.get('errors', []))) + ' 项；拒收 ' +
                str(len(run.get('rejected', []))) + ' 项。完整运行记录保存在本包候选历史中。</p>')
+    repair_count=sum(c.get('purpose')=='format_repair' for c in run.get('calls',[]))
+    if repair_count:
+        out.append('<p>发生格式修复 '+str(repair_count)+' 次（实际请求 '+str(run.get('format_repair_count',0))+' 次）；首次失败、原始草稿与各次用量均保留。修复不等于语义通过，运行保持部分或失败状态。</p>')
     failures = {
+        'E_ATTENTION_JSON_FORMAT': '模型草稿不是有效JSON，原始输出保留；符合条件时最多一次格式修复。请查看修复记录及未形成候选的来源。',
+        'E_ATTENTION_SCHEMA_FORMAT': '模型JSON不符合原字段结构，原始输出和校验详情保留；符合条件时最多一次格式修复，逐字与语义核对仍独立执行。',
         'E_DEEPSEEK_CREDENTIAL_MISSING': 'DeepSeek API密钥缺失。请在模型设置输入并保存，或设置DEEPSEEK_API_KEY后重新生成。',
         'E_DEEPSEEK_CREDENTIAL_STORE': 'API凭据无法解密。请用当前Windows用户重新保存，或显式设置环境变量。',
         'E_ATTENTION_API_TRANSPORT': 'DeepSeek API连接未完成。请检查网络后显式重新生成；不会自动重试或回退本机。',
@@ -68,8 +74,8 @@ def render_candidate_preview(run):
         'E_ATTENTION_A_REWRITE': 'A对照试图改写B内容，已拒收；有效B草稿仍保留。',
         'E_ATTENTION_B_STAGE': 'B阶段混入A位置判断，已拒收。请重新生成并核对分析范围。',
         'E_ATTENTION_RESPONSE_TRUNCATED': '模型输出未完整结束，该次响应未接收。请核对模型设置后重新生成。',
-        'E_ATTENTION_HTTP': '本机模型请求未完成。请检查模型是否运行，再重新生成。',
-        'E_ATTENTION_PROVIDER': '模型未返回可用结果。请检查本机服务后重新生成。',
+        'E_ATTENTION_HTTP': '模型请求未完成。请核对提供方、网络或本机服务；本次没有HTTP重试。',
+        'E_ATTENTION_PROVIDER': '模型未返回可用结果。请核对提供方及原始运行记录后显式重新生成。',
     }
     out.append('<ul>')
     for item in run.get('errors', []) + run.get('rejected', []):

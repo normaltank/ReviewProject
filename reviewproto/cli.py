@@ -8,6 +8,8 @@ from .store import Workspace, encoded
 
 
 API_HINTS = {
+    'E_ATTENTION_JSON_FORMAT': 'E_ATTENTION_JSON_FORMAT: invalid JSON draft retained; inspect format repair and unprocessed source scopes.',
+    'E_ATTENTION_SCHEMA_FORMAT': 'E_ATTENTION_SCHEMA_FORMAT: schema-invalid draft retained; inspect format repair and unprocessed source scopes.',
     'E_ATTENTION_API_MODEL': 'Use --provider deepseek --model deepseek-flash (4.1 Flash / 1017). Pro is disabled.',
     'E_DEEPSEEK_CREDENTIAL_MISSING': 'Set DEEPSEEK_API_KEY or explicitly save an API key in the desktop model settings.',
     'E_DEEPSEEK_CREDENTIAL_STORE': 'Re-save the API key as the current Windows user or set DEEPSEEK_API_KEY.'}
@@ -122,6 +124,8 @@ def main(argv=None):
                     result = accept(workspace,args.run_id,actor=args.actor,reason=args.reason)
                     print('OK attention-accept revision=' + str(result['revision']) + ' material=' + result['material_status'])
                     return 0
+                if any(c.get('purpose')=='format_repair' for c in run.get('calls',[])):
+                    print('FORMAT_REPAIR requests='+str(run['format_repair_count'])+' original_failures_preserved=yes')
                 for error in run.get('errors',[]):
                     if error['code'] in API_HINTS: print(API_HINTS[error['code']],file=sys.stderr)
                 print('CANDIDATES status=' + run['status'] + ' mode=' + run['mode'] + ' opinions=' + str(len(run['patch']['edits'])) + ' requests=' + str(run.get('request_count',0)))
