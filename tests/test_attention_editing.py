@@ -1,3 +1,4 @@
+from attention_browser import open_panel
 import copy
 import tempfile
 import unittest
@@ -212,6 +213,8 @@ class AttentionEditing(unittest.TestCase):
                     page = browser.new_page(accept_downloads=True, offline=True, viewport={'width': 1440, 'height': 1000})
                     page.on('dialog', lambda dialog: dialog.accept())
                     page.goto((path / 'attention.html').as_uri())
+                    open_panel(page, 'attention-editor')
+                    open_panel(page, 'reading-history')
                     page.locator('#opinion').select_option('op')
                     page.locator('#facet').select_option('f-first')
                     for field in qualifiers:
@@ -243,6 +246,8 @@ class AttentionEditing(unittest.TestCase):
                         self.assertEqual(saved['themes'][0]['theme_id'], 't')
                         self.assertEqual(saved['themes'][0]['status'], 'needs_review')
                     page.reload()
+                    open_panel(page, 'attention-editor')
+                    open_panel(page, 'reading-history')
                     page.locator('#opinion').select_option('op')
                     page.locator('#facet').select_option('f-first')
                     for field in qualifiers + ['function']:
@@ -262,6 +267,8 @@ class AttentionEditing(unittest.TestCase):
             page = browser.new_page(accept_downloads=True, offline=True, viewport={'width': 1440, 'height': 1000})
             page.on('dialog', lambda d: d.accept())
             page.goto((self.root / 'analysis/attention.html').as_uri())
+            open_panel(page, 'attention-editor')
+            open_panel(page, 'reading-history')
             errors = []; page.on('pageerror', lambda e: errors.append(str(e)))
             page.locator('#passage').select_option('6:12')
             page.locator('#interpretation').fill('总体基本清晰')
@@ -310,6 +317,8 @@ class AttentionEditing(unittest.TestCase):
             controller = Controller(); controller.open_attention(self.root / 'analysis')
             controller.apply_attention(patchfile); controller.recover_attention()
             page.reload()
+            open_panel(page, 'attention-editor')
+            open_panel(page, 'reading-history')
             if not page.locator('#saved').is_visible():
                 page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('总体基本清晰', page.locator('#saved').inner_text())
@@ -335,6 +344,8 @@ class AttentionEditing(unittest.TestCase):
                 page.locator('#download').focus(); page.keyboard.press('Enter')
             download.value.save_as(patchfile)
             controller.apply_attention(patchfile); controller.recover_attention(); page.reload()
+            open_panel(page, 'attention-editor')
+            open_panel(page, 'reading-history')
             after = self.ws.state()
             self.assertEqual(after['themes'][0]['theme_id'], before['themes'][0]['theme_id'])
             self.assertEqual(after['relations'][0]['relation_id'], before['relations'][0]['relation_id'])

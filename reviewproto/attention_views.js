@@ -57,7 +57,9 @@ function refresh(){
  const facets=new Set(cs.map(c=>c.facet_id));
  const relations=base.relation_details.filter(r=>r.endpoints.length&&r.endpoints.every(e=>facets.has(e.facet_id)));
  current={ids,cs,relations};
- $('view-version').textContent='已保存修订 '+base.revision+' · A版本 '+(base.a_version||'未导入')+' · 分析约定版本 '+base.rules_version+' · 材料状态 '+(base.material_status||'未说明');
+ const aPending=cs.filter(c=>c.a_items.some(a=>a.kind==='needs_review')||c.a_unassigned.includes('needs_review')).length;
+ const outsidePending=cs.filter(c=>c.outside.includes('needs_review')).length;
+ $('view-version').textContent='已保存修订 '+base.revision+' · 当前范围 '+ids.length+' 条记录（分母） · B方面待核：'+cs.filter(c=>c.status==='needs_review').length+' 个 · A对应待核：'+aPending+' 个方面 · 清单外待核：'+outsidePending+' 个方面（可重叠）';
  const hits=unique(cs.map(c=>c.record_id));$('view-hits').textContent='命中 '+hits.length+'/'+ids.length+' · '+(hits.map(recordLabel).join('、')||'无命中记录');
  $('view-summary').replaceChildren();overview();
  node('p','各项允许重叠，父主题/A部分按记录取并集。工作解释、部分、相关、未定及待核分别保留；待核不合称明确覆盖。数字描述本批表达，不代表群体重要性、论文质量或A权重。未提及不表示不关注。',$('view-summary'));
@@ -75,15 +77,15 @@ function refresh(){
  details();matrix();graph();
  window.AttentionPositions.render({recordIds:ids, facetIds:cs.map(c=>c.facet_id),expressionFilters:v});
 }
-function details(){const root=$('view-detail');root.replaceChildren();node('h3','当前命中明细与原话原分',root);node('p','点击数字、矩阵或图只定位证据，不改变分母。未命中方面不混入当前结果；撤回/替换历史见页末。',root);
- for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)});node('summary',(r.anchor||id)+' · '+cs.length+'个命中方面',det);explain(det,'材料组',paperId(r)??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(det,'普通分区',s.section_id);node('blockquote',s.text,det);}explain(det,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');if(!cs.length)node('p','没有命中方面；该记录仍在分母中。',det);
+function details(){const root=$('view-detail');root.replaceChildren();node('p','按记录阅读方面，展开回查逐字证据、限定与原分。',root);if(!current.ids.length)node('p','当前筛选没有记录；请调整筛选。',root);else if(!current.cs.length)node('p','当前集合尚未形成有效观点方面；材料导入不等于完成分析。可调整筛选，或从原话、原分与纠正入口补录并保存。',root);
+ for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)});const heading=node('summary',null,det);node('span',(r.anchor||id)+' · '+cs.length+'个命中方面',heading,{class:'reading-meta'});for(const c of cs)node('span',facetLabel(c)+' · '+name(c.status),heading,{class:'reading-facet'});explain(det,'材料组',paperId(r)??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(det,'普通分区',s.section_id);node('blockquote',s.text,det);}explain(det,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');if(!cs.length)node('p','没有命中方面；该记录仍在分母中。',det);
  for(const c of cs){const entry=d.facets.find(e=>e.facet.facet_id===c.facet_id),f=entry.facet;const section=node('div',null,det,{id:facetAnchor(c.facet_id)});node('h4',f.interpretation,section);node('button','在原话与编辑区核对',section,{type:'button'}).onclick=()=>document.dispatchEvent(new CustomEvent('attention-edit-facet',{detail:{record_id:id,opinion_id:c.opinion_id,facet_id:c.facet_id}}));explain(section,'观点',entry.opinion_interpretation||c.opinion_id);explain(section,'类型 / 状态',name(c.kind)+' / '+name(c.status));evidence(section,f.evidence);for(const [key,title] of Object.entries({object:'对象',direction:'方向',degree:'程度',negation:'否定',reasons:'理由',conditions:'条件',actions:'动作',examples:'例示',alternatives:'备选'}))explain(section,title,f.qualifiers?.[key]);explain(section,'表达作用',c.expression.function||'未说明');explain(section,'套话候选',c.expression.boilerplate_candidate==null?'未判断':c.expression.boilerplate_candidate?'是候选':'非候选');explain(section,'主题与父组',c.theme_ids.map(id=>base.theme_definitions[id]?.label||id));
- for(const a of c.a_items)explain(section,'当前有效A列',a.id+' / '+name(a.kind));
- for(const a of f.a_links||[]){explain(section,'保存A关联',(a.a_item_id||'条目未定')+' / '+name(a.kind)+' / '+name(a.status)+' / '+a.version);explain(section,'范围',a.scope);explain(section,'依据',a.reason);evidence(section,a.evidence);}
- for(const a of f.outside||[]){explain(section,'清单外范围',a.scope);explain(section,'依据 / 状态',(a.reason||'未说明')+' / '+name(a.status));evidence(section,a.evidence);}
+ const aDetail=node('details',null,section,{class:'facet-a'});node('summary','与A对照的范围和理由',aDetail);for(const a of c.a_items)explain(aDetail,'当前有效A列',a.id+' / '+name(a.kind));
+ for(const a of f.a_links||[]){explain(aDetail,'保存A关联',(a.a_item_id||'条目未定')+' / '+name(a.kind)+' / '+name(a.status)+' / '+a.version);explain(aDetail,'范围',a.scope);explain(aDetail,'依据',a.reason);evidence(aDetail,a.evidence);}
+ for(const a of f.outside||[]){explain(aDetail,'清单外范围',a.scope);explain(aDetail,'依据 / 状态',(a.reason||'未说明')+' / '+name(a.status));evidence(aDetail,a.evidence);}
  }}
- node('h3','当前关系角色、方向与范围',root);
- for(const r of current.relations){const d=node('details',null,root,{id:relationAnchor(r.relation_id)});node('summary',name(r.type)+' · '+r.relation_id+' · '+name(r.status),d);for(const e of r.endpoints){const c=current.cs.find(c=>c.facet_id===e.facet_id),f=base.details[c.record_id].facets.find(f=>f.facet.facet_id===c.facet_id).facet;link(d,(e.role||'角色未说明')+'：'+f.interpretation,facetAnchor(e.facet_id));node('br',null,d);}for(const [k,t] of [['direction','原方向说明'],['scope','作用范围'],['reading','工作读法'],['ambiguity','歧义与未决']])explain(d,t,r[k]||'未说明');evidence(d,r.evidence);}
+ if(current.relations.length)node('h3','当前关系角色、方向与范围',root);
+ for(const r of current.relations){const d=node('details',null,root,{id:relationAnchor(r.relation_id)});node('summary',name(r.type)+' · '+name(r.status),d);explain(d,'关系标识',r.relation_id);for(const e of r.endpoints){const c=current.cs.find(c=>c.facet_id===e.facet_id),f=base.details[c.record_id].facets.find(f=>f.facet.facet_id===c.facet_id).facet;link(d,(e.role||'角色未说明')+'：'+f.interpretation,facetAnchor(e.facet_id));node('br',null,d);}for(const [k,t] of [['direction','原方向说明'],['scope','作用范围'],['reading','工作读法'],['ambiguity','歧义与未决']])explain(d,t,r[k]||'未说明');evidence(d,r.evidence);}
 }
 let matrixKind='theme';
 function matrix(){const root=$('view-matrix');root.hidden=!$('view-matrix-toggle').checked;if(root.hidden)return;root.replaceChildren();node('p','已保存修订 '+base.revision+' · 分母 '+current.ids.length+' · 与上方相同筛选。每格按记录去重；同一记录可落在多个列，列总数不可相加。A按有效关系种类分列，待核不冒称明确。清单外/条目未定独立保留。',root);const l=node('label','矩阵列',root),s=node('select',null,l,{id:'view-matrix-kind'});for(const [v,t] of [['theme','B主题'],['a','A部分与条目']])node('option',t,s,{value:v});s.value=matrixKind;s.onchange=()=>{matrixKind=s.value;matrix();};
@@ -113,6 +115,16 @@ function graph(){const root=$('view-graph');root.hidden=!$('view-graph-toggle').
  node('p','图中方面 '+cs.length+' 个；观点 '+ops.length+' 个；关系组 '+rs.length+' 个（均为辅助对象数，非独立记录数）。点击节点或蓝线可回查原话与关系明细。',root);
 }
 $('view-matrix-toggle').onchange=matrix;$('view-graph-toggle').onchange=graph;
-document.addEventListener('click',e=>{const a=e.target.closest('a');if(!a?.getAttribute('href')?.startsWith('#view-'))return;const id=a.getAttribute('href').slice(1),target=$(id);if(!target)return;for(let p=target;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;target.setAttribute('tabindex','-1');target.focus();});
+// Native disclosure navigation also works on direct links and browser history.
+function reveal(target){
+ if(!target)return;
+ for(let p=target;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;
+ target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView({block:'start'});
+}
+function hashTarget(hash){try{return $(hash.slice(1))||$(decodeURIComponent(hash.slice(1)));}catch{return null;}}
+window.AttentionReading={reveal};
+document.addEventListener('click',e=>{const href=e.target.closest('a')?.getAttribute('href');if(!href?.startsWith('#'))return;const target=hashTarget(href);if(target)reveal(target);});
+window.addEventListener('hashchange',()=>reveal(hashTarget(location.hash)));
 refresh();
+requestAnimationFrame(()=>reveal(hashTarget(location.hash)));
 })();

@@ -1,4 +1,5 @@
 """Ordinary candidate workflow; replay is engineering verification only."""
+from attention_browser import open_panel
 import json
 import tempfile
 import unittest
@@ -376,6 +377,8 @@ assert not errors, errors
                 page.set_default_timeout(6000)
                 errors = []; page.on('pageerror', lambda e: errors.append(str(e)))
                 page.goto(mapped_html.as_uri())
+                page.get_by_role('link', name='对照A与位置图', exact=True).click()
+                open_panel(page, 'view-filters')
                 overlay = page.locator('#candidate-position-overlay')
                 self.assertIn('未接收、全部待核', overlay.inner_text())
                 self.assertEqual(overlay.locator('[data-candidate-region="item:one"]').count(), 1)
@@ -406,10 +409,12 @@ assert not errors, errors
                         Path(output).mkdir(parents=True, exist_ok=True)
                         page.screenshot(path=str(Path(output) / f'candidate-preview-{width}.png'))
                 page.goto(preview_path.as_uri())
+                page.get_by_role('link', name='对照A与位置图', exact=True).click()
                 self.assertIn('未导入A', page.locator('#candidate-position-overlay').inner_text())
                 saved = session.accept('engineering', actor='工程编辑', reason='核对')
                 controller = Controller(); controller.open_attention(path)
                 page.goto((path / 'attention.html').as_uri())
+                open_panel(page, 'view-a-positions')
                 page.locator('#position-drill a').first.click()
                 page.get_by_role('button', name='在原话与编辑区核对').first.click()
                 self.assertEqual(page.locator('#facet').input_value(), saved['opinions'][0]['facets'][0]['facet_id'])
@@ -422,6 +427,7 @@ assert not errors, errors
                 self.assertEqual(controller.apply_attention(draft)['revision'], 2)
                 self.assertEqual(controller.recover_attention()['revision'], 2)
                 page.goto((path / 'attention.html').as_uri())
+                open_panel(page, 'view-a-positions')
                 page.locator('#position-drill a').first.click()
                 self.assertIn('如有记录才补充图例', page.locator('#view-detail').inner_text())
                 self.assertEqual(errors, [])

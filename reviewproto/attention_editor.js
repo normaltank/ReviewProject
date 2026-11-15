@@ -8,7 +8,7 @@ const qualifierLabels={object:'对象',direction:'方向',degree:'程度',negati
 const qualifierKeys = ['object','direction','degree','negation','reasons','conditions','actions','examples','alternatives'];
 const statusNames = {working:'工作解释',needs_review:'待核对',confirmed:'已核对分析',withdrawn:'撤回',superseded:'已被替换'};
 let evidence = null, facetEvidence = [], selectedChanged = false, endpoints = [], relationEvidence = [], dirty = false, rich = false;
-const write = (id,text) => { el(id).textContent = text; };
+const write = (id,text) => { el(id).textContent = text; if(id==='draft'){el('page-draft').textContent=text;el('page-draft').dataset.pending='true';} };
 const option = (select,text,value) => {const o=document.createElement('option');o.textContent=text;o.value=value;select.append(o);};
 const record = () => state.records.find(r=>r.record_id===el('record').value);
 const section = () => record().sections.find(s=>s.section_id===el('section').value);
@@ -189,7 +189,7 @@ el('download').onclick=()=>{
  a.href=url;a.download='attention-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  write('message','已下载草稿，尚未应用保存。请在本机窗口应用后重开。');
 };
-write('revision','已保存修订 '+state.revision+' · 分析约定版本 '+state.rules_version);
+write('revision','已保存修订 '+state.revision+' · '+state.records.length+' 条评语记录');
 write('material',state.material_status==='current'?(state.a_reference.items.length?'输入绑定有效；原话和A参照已冻结。':'输入绑定有效；B原话原分已冻结，A参照尚未导入。'):'来源已变化或不可读：保留旧快照，待重新核对；禁止继续应用。');
 if(state.material_status!=='current')for(const id of ['stage','split','merge','theme-stage','member-add','member-withdraw','relation-stage','a-save','a-remove'])el(id).disabled=true;
 state.records.forEach((r,i)=>option(el('record'),'记录 '+(i+1)+' · '+r.anchor,r.record_id));
@@ -251,6 +251,7 @@ for(const id of ['a-kind','a-item','a-scope','a-reason','a-status'])el(id).addEv
 // Saved position navigation never overwrites unstaged form changes.
 document.addEventListener('attention-edit-facet', event=>{
  const target=event.detail;
+ window.AttentionReading.reveal(el('attention-editor'));
  if(dirtyGroups.size){write('message','当前表单有未加入草稿的更改。请先加入草稿，再从位置明细重试定位。');el('message').scrollIntoView({block:'center'});return;}
  const op=allOpinions().find(o=>o.opinion_id===target.opinion_id&&o.record_id===target.record_id&&active(o));
  const f=op?.facets.find(f=>f.facet_id===target.facet_id&&!['withdrawn','superseded'].includes(f.status));

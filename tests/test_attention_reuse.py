@@ -2,6 +2,7 @@
 
 Only the OS directory chooser is mocked. All material is synthetic.
 """
+from attention_browser import open_panel
 import hashlib
 import json
 import os
@@ -82,9 +83,14 @@ class AttentionReuse(unittest.TestCase):
         page.on('request', lambda r: self.http.append(r.url) if r.url.startswith(('https:', 'http:')) else None)
         page.on('dialog', lambda d: d.accept())
         page.goto((self.controller.attention_path / 'attention.html').as_uri())
+        open_panel(page, 'attention-editor')
+        open_panel(page, 'view-statistics')
+        open_panel(page, 'view-filters')
+        open_panel(page, 'view-extra-views')
         return page
 
     def audit(self, page, reason='按给定原话保存工作解释'):
+        open_panel(page, 'attention-editor')
         page.locator('#actor').fill('合成核对者'); page.locator('#reason').fill(reason)
 
     def opinion(self, page, interpretation, passage=1):
@@ -107,6 +113,9 @@ class AttentionReuse(unittest.TestCase):
         self.assertEqual(self.state(), before, 'Download must not change saved state')
         self.assertIn('已保存修订 ' + str(before['revision']), page.get_by_role('region', name='当前关注概览').inner_text())
         self.controller.apply_attention(file); self.controller.recover_attention(); page.reload()
+        open_panel(page, 'view-statistics')
+        open_panel(page, 'view-filters')
+        open_panel(page, 'view-extra-views')
         after = self.state()
         self.assertEqual(after['revision'], before['revision'] + 1)
         if self.evidence: (self.evidence / (name + '-patch.json')).write_bytes(file.read_bytes())
@@ -161,6 +170,9 @@ class AttentionReuse(unittest.TestCase):
                 source = path / 'inputs/b-input.json'; original = source.read_bytes()
                 source.write_bytes(original + b' ')
                 self.controller.recover_attention(); page.reload()
+                open_panel(page, 'view-statistics')
+                open_panel(page, 'view-filters')
+                open_panel(page, 'view-extra-views')
                 self.assertIn('来源失效', page.get_by_role('region', name='当前关注概览').inner_text())
                 self.assertIn(S1[0][2], page.locator('#source').text_content())
                 before = self.state()
@@ -168,6 +180,9 @@ class AttentionReuse(unittest.TestCase):
                 self.assertEqual(self.state()['revision'], before['revision'])
                 self.web_shots(page, 's1-stale')
                 source.write_bytes(original); self.controller.recover_attention(); page.reload()
+                open_panel(page, 'view-statistics')
+                open_panel(page, 'view-filters')
+                open_panel(page, 'view-extra-views')
                 self.assertEqual(self.state()['material_status'], 'current')
                 source.rename(source.with_suffix('.missing'))
                 self.controller.recover_attention(); self.assertEqual(self.state()['b_material_status'], 'needs_revalidation')
@@ -250,6 +265,9 @@ class AttentionReuse(unittest.TestCase):
                 self.assertEqual(link['status'],'needs_review'); self.assertEqual(link['version'],'focus-β-01')
                 self.assertIn('focus-β-01',[h['a_reference']['version'] for h in changed['a_reference_history']])
                 page.reload(); self.audit(page,'明确纠正新A映射')
+                open_panel(page, 'view-statistics')
+                open_panel(page, 'view-filters')
+                open_panel(page, 'view-extra-views')
                 page.locator('#opinion').select_option(first_op); page.locator('#a-link').select_option(index=1)
                 page.locator('#a-item').select_option(changed['a_reference']['items'][0]['id']); page.locator('#a-status').select_option('working')
                 page.locator('#a-scope').fill('改写后对象边界'); page.locator('#a-reason').fill('逐字核对新条目后重新对应'); page.locator('#a-save').click()

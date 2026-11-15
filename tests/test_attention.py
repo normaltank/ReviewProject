@@ -1,3 +1,4 @@
+from attention_browser import open_panel
 import tempfile
 import unittest
 from pathlib import Path
@@ -181,6 +182,8 @@ class AttentionAcceptance(unittest.TestCase):
             page = browser.new_page(accept_downloads=True, offline=True, viewport={'width': 1440, 'height': 1000})
             page.on('dialog', lambda d: d.accept())
             page.goto((self.path / 'attention.html').as_uri())
+            open_panel(page, 'attention-editor')
+            open_panel(page, 'reading-history')
             errors = []; page.on('pageerror', lambda e: errors.append(str(e)))
             page.locator('#stage').click()
             self.assertIn('请选择原话证据', page.locator('#message').inner_text())
@@ -202,6 +205,8 @@ class AttentionAcceptance(unittest.TestCase):
             self.assertIn('尚未应用保存', page.locator('#message').inner_text())
             cli('attention-apply', patchfile); cli('attention-recover')
             page.reload()
+            open_panel(page, 'attention-editor')
+            open_panel(page, 'reading-history')
             self.assertIn('已保存修订 1', page.locator('#revision').inner_text())
             if not page.locator('#saved').is_visible():
                 page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
@@ -215,6 +220,8 @@ class AttentionAcceptance(unittest.TestCase):
             download.value.save_as(patchfile)
             self.assertEqual(controller.apply_attention(patchfile)['revision'], 2)
             controller.recover_attention(); page.reload()
+            open_panel(page, 'attention-editor')
+            open_panel(page, 'reading-history')
             if not page.locator('#saved').is_visible():
                 page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('纠正后的结构肯定', page.locator('#saved').inner_text())
