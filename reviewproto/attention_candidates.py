@@ -11,7 +11,7 @@ import time
 from itertools import islice
 from .core import ReviewError, require, digest
 from .store import encoded, atomic, now
-from .batch import checked_local, read_json, bounded
+from .batch import checked_local, read_json, bounded, LIMIT as BATCH_LIMIT
 from .attention_model import apply_objects, normalize_facet, text
 from .attention_provider import ReplayProvider, LocalProvider
 from . import attention_semantic as semantic
@@ -199,6 +199,20 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars, *,
     try:
         if callable(getattr(provider,'prepare_request',None)):
             request=provider.prepare_request(copy.deepcopy(request))
+        if run.get('analysis_strategy')=='record-batched':
+            # The complete dynamic matrix can exceed audit capacity before the
+            # ordinary input/context checks. Never attach an unsavable request
+            # to the run, including its error/finally paths. Sources stay whole
+            # in the snapshot; only bounded diagnostics describe this refusal.
+            planned=dict(call,request=request,request_hash=digest(encoded(request)),
+                         prompt_hash=digest(request['messages'][0]['content'].encode()),phase='request')
+            audit_bytes=len(encoded(dict(run,calls=run['calls'][:-1]+[planned])))
+            if audit_bytes>BATCH_LIMIT:
+                call.update(phase='capacity_preflight',request_hash=planned['request_hash'],
+                    prompt_hash=planned['prompt_hash'],capacity={'method':'candidate-audit-preflight/1',
+                    'audit_utf8_bytes':audit_bytes,'audit_limit_bytes':BATCH_LIMIT,
+                    'input_chars':len(json.dumps(payload,ensure_ascii=False)),'context_chars':context_chars})
+                raise ReviewError('E_ATTENTION_CAPACITY')
         call.update(request=request,request_hash=digest(encoded(request)),
             prompt_hash=digest(request['messages'][0]['content'].encode()),phase='request')
         _save(path,run)

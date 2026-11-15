@@ -329,5 +329,31 @@ class RecordBatched(unittest.TestCase):
             generate(self.ws,'invalid',provider,analysis_strategy='record-batched')
         self.assertFalse((self.ws.path/'candidate-runs/invalid').exists())
 
+    def test_oversized_matrix_audit_finishes_partial_and_valid_b_remains_acceptable(self):
+        items=[{'id':'a'+str(i),'text':'参照'+str(i)+'内容'*5000,'locator':'synthetic'} for i in range(20)]
+        original=''.join('请解释项目'+str(i)+'。' for i in range(20))
+        self.build(original,items)
+        b=b_response([facet('f'+str(i+1),'项目'+str(i),['p'+str(i+1)]) for i in range(20)])
+        run=generate(self.ws,'audit-capacity',replay([b]),context_chars=24000,analysis_strategy='record-batched')
+        self.assertEqual(run['status'],'partial',run['errors'])
+        self.assertEqual(run['request_count'],1)
+        self.assertEqual(run['calls'][-1]['stage'],'a_mapping')
+        self.assertFalse(run['calls'][-1]['attempted'])
+        self.assertEqual(run['calls'][-1]['error'],'E_ATTENTION_CAPACITY')
+        facets=run['patch']['edits'][0]['facets']
+        self.assertEqual(len(facets),20)
+        self.assertEqual({p['facet_id'] for p in run['unprocessed']},{f['facet_id'] for f in facets})
+        self.assertTrue(all(not f.get('a_links') and not f.get('outside') for f in facets))
+        self.assertEqual(run['snapshot']['a_reference']['items'],items)
+        self.assertEqual(preview(self.ws,'audit-capacity')['status'],'partial')
+        self.assertEqual(self.ws.state()['revision'],0)
+        accepted=accept(self.ws,'audit-capacity',actor='editor',reason='保留合法B，A尚未完成')
+        self.assertEqual(accepted['revision'],1)
+        self.assertEqual(len(accepted['opinions'][0]['facets']),20)
+        self.assertTrue(all(f['status']=='needs_review' for f in accepted['opinions'][0]['facets']))
+        self.assertEqual(accepted['records'][0]['text'],original)
+        self.assertEqual(accepted['records'][0]['scores'],[{'label':'SCORE_SENTINEL','raw_value':'12345'}])
+        self.assertEqual(accepted['records'][0]['source_id'],run['snapshot']['records'][0]['source_id'])
+
 
 if __name__=='__main__': unittest.main()
