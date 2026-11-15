@@ -107,6 +107,40 @@ class InterruptedAudit(unittest.TestCase):
             self.assertIsNone(repair['usage'])
             self.assertEqual(len(run['errors']),1)
 
+    def test_legacy_repair_missing_totals_and_attempt_marker_previews_unknown(self):
+        from reviewproto.attention_candidate_ui import CandidateSession
+        with tempfile.TemporaryDirectory() as tmp:
+            target,run=self.interrupted(tmp,repair=True)
+            for key in ('request_count','format_repair_count','capacity_request_count'):
+                run.pop(key,None)
+            repair=run['calls'][1]
+            repair.pop('attempted');repair.pop('attempt_started_at')
+            repair['status']='pending'
+            target.write_text(json.dumps(run),encoding='utf-8')
+            stream=io.StringIO()
+            with redirect_stdout(stream):
+                code=main(['attention-preview','--workspace',str(Path(tmp)/'pack'),'--run-id','interrupt'])
+            self.assertEqual(code,2)
+            self.assertIn('FORMAT_REPAIR requests=unknown',stream.getvalue())
+            self.assertIn('CANDIDATES status=running',stream.getvalue())
+            self.assertIn('requests=unknown',stream.getvalue())
+            page=CandidateSession(Path(tmp)/'pack').preview('interrupt').read_text()
+            self.assertIn('实际请求 未知 次',page)
+            self.assertNotIn('实际请求 0 次',page)
+            self.assertEqual(json.loads(target.read_text()),run)
+
+    def test_missing_repair_total_is_derived_when_attempt_markers_exist(self):
+        from reviewproto.attention_candidate_render import render_candidate_preview
+        with tempfile.TemporaryDirectory() as tmp:
+            target,run=self.interrupted(tmp,repair=True)
+            run.pop('format_repair_count')
+            target.write_text(json.dumps(run),encoding='utf-8')
+            stream=io.StringIO()
+            with redirect_stdout(stream):
+                main(['attention-preview','--workspace',str(Path(tmp)/'pack'),'--run-id','interrupt'])
+            self.assertIn('FORMAT_REPAIR requests=1',stream.getvalue())
+            self.assertIn('实际请求 1 次',render_candidate_preview(run))
+
     def test_prepare_failure_is_persisted_as_zero_without_entering_provider(self):
         class Broken(ReplayProvider):
             def prepare_request(self,request): raise RuntimeError('synthetic prepare failure')

@@ -59,7 +59,8 @@ def render_candidate_preview(run):
                str(len(run.get('rejected', []))) + ' 项。完整运行记录保存在本包候选历史中。</p>')
     repair_count=sum(c.get('purpose')=='format_repair' for c in run.get('calls',[]))
     if repair_count:
-        out.append('<p>发生格式修复 '+str(repair_count)+' 次（实际请求 '+str(run.get('format_repair_count',0))+' 次）；首次失败、原始草稿与各次用量均保留。修复不等于语义通过，运行保持部分或失败状态。</p>')
+        attempts=audit['format_repair_count']
+        out.append('<p>发生格式修复 '+str(repair_count)+' 次（实际请求 '+(str(attempts) if attempts is not None else '未知')+' 次）；首次失败、原始草稿与各次用量均保留。修复不等于语义通过，运行保持部分或失败状态。</p>')
     failures = {
         'E_ATTENTION_JSON_FORMAT': '模型草稿不是有效JSON，原始输出保留；符合条件时最多一次格式修复。请查看修复记录及未形成候选的来源。',
         'E_ATTENTION_SCHEMA_FORMAT': '模型JSON不符合原字段结构，原始输出和校验详情保留；符合条件时最多一次格式修复，逐字与语义核对仍独立执行。',

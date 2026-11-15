@@ -124,11 +124,12 @@ def main(argv=None):
                     result = accept(workspace,args.run_id,actor=args.actor,reason=args.reason)
                     print('OK attention-accept revision=' + str(result['revision']) + ' material=' + result['material_status'])
                     return 0
+                audit=request_audit(run)
                 if any(c.get('purpose')=='format_repair' for c in run.get('calls',[])):
-                    print('FORMAT_REPAIR requests='+str(run['format_repair_count'])+' original_failures_preserved=yes')
+                    repairs=audit['format_repair_count']
+                    print('FORMAT_REPAIR requests='+(str(repairs) if repairs is not None else 'unknown')+' original_failures_preserved=yes')
                 for error in run.get('errors',[]):
                     if error['code'] in API_HINTS: print(API_HINTS[error['code']],file=sys.stderr)
-                audit=request_audit(run)
                 if audit['unfinished']:
                     print('ATTEMPT_AUDIT result_and_usage=unknown server_receipt_not_confirmed=yes automatic_retry=no')
                 print('CANDIDATES status=' + run['status'] + ' mode=' + run['mode'] + ' opinions=' + str(len(run['patch']['edits'])) + ' requests=' + (str(audit['count']) if audit['count'] is not None else 'unknown'))

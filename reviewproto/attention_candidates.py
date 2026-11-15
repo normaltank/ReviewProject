@@ -61,7 +61,15 @@ def request_audit(run):
         count=None if running else sum(bool(call.get('attempted')) for call in calls)
     pending=sum(bool(call.get('attempted')) and 'response' not in call and
                 call.get('status') in {'pending','in_flight'} for call in calls)
-    return {'count':count,'pending_response':pending,'unfinished':running or bool(pending)}
+    repairs=[call for call in calls if call.get('purpose')=='format_repair']
+    if repairs and all('attempted' in call for call in repairs):
+        repair_count=sum(bool(call['attempted']) for call in repairs)
+    elif repairs:
+        repair_count=None
+    else:
+        repair_count=run.get('format_repair_count',0)
+    return {'count':count,'format_repair_count':repair_count,
+            'pending_response':pending,'unfinished':running or bool(pending)}
 
 
 def _binding(state):
