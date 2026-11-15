@@ -112,6 +112,52 @@ class FormatRepair(unittest.TestCase):
         self.assertIn('PRIVATE_VALIDATION_VALUE',sent[1]['messages'][2]['content'])
         self.assertEqual(run['calls'][0]['status'],'failed')
 
+    def test_nested_opinion_relations_diagnostic_names_wrong_and_allowed_fields(self):
+        invalid=copy.deepcopy(B)
+        invalid['opinions'][0]['relations']=[{'business_value':'DO_NOT_ECHO_VALUE'}]
+        run,sent=self.execute([reply(invalid),reply(B),reply({'function':'实质评价'})])
+        diagnostic=run['calls'][0]['format_diagnostic']
+        issue=next(e for e in diagnostic['errors'] if e['validator']=='additionalProperties')
+        self.assertEqual(issue['data_path'],['opinions',0])
+        self.assertEqual(issue['unexpected_fields'],['relations'])
+        self.assertEqual(set(issue['allowed_fields']),{'summary','facets'})
+        instruction=sent[1]['messages'][-1]['content']
+        self.assertNotIn('DO_NOT_ECHO_VALUE',instruction)
+        self.assertIn(json.dumps(diagnostic,ensure_ascii=False,separators=(',',':')),instruction)
+        self.assertEqual(sent[0]['messages'][:2],sent[1]['messages'][:2])
+        self.assertEqual(sent[0]['max_tokens'],sent[1]['max_tokens'])
+        self.assertEqual(run['calls'][1]['request_hash'],digest(encoded(sent[1])))
+        self.assertEqual(run['request_count'],3)
+        self.assertEqual(run['format_repair_count'],1)
+        self.assertEqual(run['status'],'partial')
+
+    def test_schema_diagnostic_reports_missing_fields_and_types_without_values(self):
+        invalid=copy.deepcopy(B)
+        del invalid['opinions'][0]['summary']
+        facet=invalid['opinions'][0]['facets'][0]
+        del facet['focus']
+        facet['themes']='PRIVATE_TYPE_VALUE'
+        invalid['unprocessed']='PRIVATE_OTHER_VALUE'
+        run,sent=self.execute([reply(invalid),reply(B),reply({'function':'实质评价'})])
+        errors=run['calls'][0]['format_diagnostic']['errors']
+        missing={tuple(e['data_path']):e['missing_fields'] for e in errors if e['validator']=='required'}
+        self.assertEqual(missing[('opinions',0)],['summary'])
+        self.assertEqual(missing[('opinions',0,'facets',0)],['focus'])
+        types={tuple(e['data_path']):(e['expected_type'],e['actual_type']) for e in errors if e['validator']=='type'}
+        self.assertEqual(types[('opinions',0,'facets',0,'themes')],('array','string'))
+        self.assertEqual(types[('unprocessed',)],('array','string'))
+        for value in ('PRIVATE_TYPE_VALUE','PRIVATE_OTHER_VALUE','FAKE-KEY','DO_NOT_SEND_PATH'):
+            self.assertNotIn(value,sent[1]['messages'][-1]['content'])
+        self.assertIn('PRIVATE_TYPE_VALUE',sent[1]['messages'][2]['content'])
+
+    def test_schema_diagnostic_collection_is_bounded(self):
+        invalid={'opinions':[{'facets':[]} for _ in range(30)],'relations':[],'unprocessed':[]}
+        run,_=self.execute([reply(invalid),reply(B),reply({'function':'实质评价'})])
+        diagnostic=run['calls'][0]['format_diagnostic']
+        self.assertLessEqual(len(diagnostic['errors']),16)
+        self.assertTrue(diagnostic['truncated'])
+        self.assertEqual(run['request_count'],3)
+
     def test_second_bad_output_stops_and_reports_source_without_third_attempt(self):
         run,sent=self.execute([reply('{'),reply('{')])
         self.assertEqual(len(sent),2)
