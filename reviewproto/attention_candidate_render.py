@@ -33,7 +33,7 @@ def render_candidate_preview(run):
     status = {'complete': '处理完成', 'partial': '部分处理', 'failed': '处理失败',
               'zero_candidates': '零候选', 'running': '未完成'}
     out.append('<p>运行 ' + esc(run['run_id']) + ' · ' + status.get(run['status'], '未完成') +
-               ' · ' + ('工程回放（非实际推理）' if run['mode'] == 'replay' else '实际本机推理') +
+               ' · ' + ('工程回放（非实际推理）' if run['mode'] == 'replay' else 'DeepSeek API联网推理' if run['mode']=='remote_api' else '实际本机推理') +
                ' · ' + ('绑定有效' if run.get('validity') == 'current' else '输入或修订已变，须重新生成') + '</p>')
     out.append('<p>处理状态不表示语义正确或人工确认。跨记录主题仍须人工整理。</p>')
     out.append('<h2>处理范围与未完成项</h2><ul>')
@@ -50,6 +50,9 @@ def render_candidate_preview(run):
     out.append('</ul><p>处理错误 ' + str(len(run.get('errors', []))) + ' 项；拒收 ' +
                str(len(run.get('rejected', []))) + ' 项。完整运行记录保存在本包候选历史中。</p>')
     failures = {
+        'E_DEEPSEEK_CREDENTIAL_MISSING': 'DeepSeek API密钥缺失。请在模型设置输入并保存，或设置DEEPSEEK_API_KEY后重新生成。',
+        'E_DEEPSEEK_CREDENTIAL_STORE': 'API凭据无法解密。请用当前Windows用户重新保存，或显式设置环境变量。',
+        'E_ATTENTION_API_TRANSPORT': 'DeepSeek API连接未完成。请检查网络后显式重新生成；不会自动重试或回退本机。',
         'E_ATTENTION_CAPACITY': '整条记录或A参照超出本次容量，未截断原文。请调整所选范围或人工补录。',
         'E_ATTENTION_CAPACITY_CHECK': '本机容量预检未完成，尚未发出该次模型推理。请核对本机服务后重新生成；原文未截断。',
         'E_ATTENTION_CAPACITY_PROFILE': '输出长度小于已验证配置所需的768，尚未发出该次推理。请提高最大输出长度后重新生成。',

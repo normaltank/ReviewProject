@@ -6,7 +6,7 @@
 
 1. 在本机窗口准备A/B输入并建包，或打开已有关注分析包。选择“生成并核对B内容与A位置候选”，核对窗口上方固定目标。
 2. 在“记录范围”多选本次B，默认选全部。每条所选记录的全部普通分区进入分析；超限和未完成范围会列出。
-3. 在“本机模型设置”从下拉列表选择已支持的模型配置，核对回环地址及容量。可使用已启动的本机服务，名称须与该服务一致。由窗口启动时，选择含`.tools/local-llm`的已安装资源根目录，再选择父目录建立全新独立运行目录。窗口提供启动及停止自己所启动模型的按钮，运行身份与原路径一同绑定；运行期间锁定模型选择，启动成功更新模型名称与8766地址。
+3. 在“模型设置”选择提供方与模型。普通窗口默认 DeepSeek API / `deepseek-flash`；也可切换到已安装本机4B/9B。API将联网发送所选普通评语及本次A，原话可能含身份；原分和本地路径不发送。点生成即按所选提供方处理。API密钥在遮罩输入框填写后显式保存；“检查API配置”显示已配置或缺失，生成时才读取凭据。使用本机模型时核对回环地址；由窗口启动时，选择含`.tools/local-llm`的资源根目录及全新独立运行目录。窗口只停止自己启动的实例，API选中时禁用本机启动，仍可停止本窗口已拥有的实例。
 4. 选择“生成所选记录候选”。处理在后台运行，结果进入候选历史。生成和预览不会提交正式分析；处理完成、部分、失败、零候选及工程回放分别标明。处理完成不代表语义正确。
 5. 选择“预览候选与位置”，核对选择范围、未完成项、拒收说明、原话原分、证据、限定、主题及关系。位置区域或标签可点击、键盘进入方面、原话和A对应理由。核对对象、否定、条件、处置含义以及理由是否实际对应所示A条目。
 6. 候选以待核虚线图显示，与生成时冻结的保存统计分开。一个方面可出现在多个区域；记录去重，区域数不能相加。无A、清单外、位置待核分别显示。记录/材料筛选改变分母，表达筛选保留分母。
@@ -23,12 +23,23 @@
 
 启动后尚未就绪或健康检查超时时，窗口仅凭本次脚本新发出的 PID/run 身份回执保留停止能力；在“本机模型设置”停止后可重试。单独存在的旧状态文件不会授予控制权。
 
-运行目录、候选、原始模型响应及预览继承来源权限。模型文件需事先准备，窗口不下载或回退云端。本轮实际能力验证仅合成输入和本机回环模型；真实包的本机处理须由用户明确发起，不取得任何外发许可。
+运行目录、候选、原始模型响应及预览继承来源权限。模型文件需事先准备，窗口不下载或回退云端。本轮实际能力验证仅使用合成输入；本机与获授权API的实测分别记录。真实包处理及任何外发须由用户明确发起，本轮合成验证不扩大材料使用授权。
+
+## DeepSeek API配置
+
+API只连接 `https://api.deepseek.com`，可接受同主机的 `/v1` 地址并标准化；不接受其他主机、HTTP、查询参数或用户信息。API仅支持 `deepseek-flash`，按用户指定采用4.1 Flash / 1017；官方于2026-11-15的映射为 DeepSeek-V4.1-Flash-1017。该名称是官方可调用别名，不是固定版本端点；服务返回的model原值保留在原始响应，不冒称已固定实际权重版本。Pro与其他模型明确拒绝，请改选Flash。旧抽取入口保持原行为。API与本机是显式选择，没有代理、重定向、自动重试或失败回退。
+
+API使用 `thinking: {type: enabled}`、`reasoning_effort: high`，默认输出上限32768、超时600秒；各阶段使用同一个用户设置，不暗中提高。最大输出包含思考token，可显式调低，但可能出现空内容或截断。截断、空内容或坏JSON均保留原始响应、用量和未完成范围，不能把HTTP成功当分析完成。API上下文按1,000,000 token保守预算，仍检查完整输入、输出与余量；不使用本机采样、模板、缓存或seed参数。
+
+密钥优先从显式 `DEEPSEEK_API_KEY` 环境变量在调用时读取，否则用当前Windows用户DPAPI解密 `%LOCALAPPDATA%\ReviewProject\credentials\deepseek.dpapi`。窗口保存的是原始DPAPI保护字节，使用应用专用entropy，不保存明文；输入框保存后清空。密钥不进入HTML、草稿补丁、运行配置、请求body或终端诊断，仅发送时加入官方HTTPS请求的Authorization header。文件存在仅表示已配置，凭据损坏、用户变更或服务拒绝仍会报错，须重新保存或核对环境变量。
+
+API的JSON模式为 `json_object`；完整业务schema写入system提示并在发送前完成请求准备。运行审计保留真正发送的body、其指纹、实际system提示及schema指纹、原始响应与原始usage（含服务返回的缓存/思考细项）。请求准备失败也留审计；不会把准备前的请求冒充wire body。`mode=remote_api`在预览中标为联网推理，工程fixture不能证明真实API语义质量。
 
 ## CLI与运行记录
 
 ```powershell
 python -m reviewproto attention-generate --workspace PATH_TO_ANALYSIS --run-id local-01 --local
+python -m reviewproto attention-generate --workspace PATH_TO_ANALYSIS --run-id api-01 --provider deepseek --model deepseek-flash --max-output-tokens 32768
 python -m reviewproto attention-preview --workspace PATH_TO_ANALYSIS --run-id local-01
 python -m reviewproto attention-accept --workspace PATH_TO_ANALYSIS --run-id local-01 --actor EDITOR --reason REVIEW_REASON
 ```
@@ -39,7 +50,7 @@ python -m reviewproto attention-accept --workspace PATH_TO_ANALYSIS --run-id loc
 
 关注标签与逐字证据分开：focus及范围标签可以忠实换词、概括多个片段，不要求逐字连续出现，也不以48字作为准入门槛。标签不能修复错误证据或推导精确坐标；审计分别保留原始标签和经校验的所选来源组，不声称标签就是引文。分类和A对照以所选来源组为范围权威，标签仅辅助理解，并另读本记录完整普通分区作只读语境；“据此/上述”等必要先行语境可以支持读法，但不自动成为新的关注范围。标签、表达分类和关系的语义仍须核对；例如“不要求”不能变成“不希望”，逐字证据校验本身不能证明概括忠实。
 
-固定模型身份与采样配置共用[模型 catalog](../reviewproto/local_model_profiles.json)，由 Python 与 PowerShell 读取。窗口、CLI 和旧启动脚本默认仍为 `reviewproject-qwen3-4b-q4km`；是否更换候选默认配置须经实际全路径验收另行决定。未知手写 alias 明确拒绝，不套用受支持配置。
+本机模型身份与采样配置共用[模型 catalog](../reviewproto/local_model_profiles.json)，由 Python 与 PowerShell 读取。本机选择、CLI `--local` / `--provider local` 和旧启动脚本仍默认 `reviewproject-qwen3-4b-q4km`。普通候选窗口的默认提供方已按授权改为DeepSeek API，不改变旧抽取器。未知手写 alias 明确拒绝，不套用受支持配置。
 
 - 4B：`Qwen3-4B-Q4_K_M.gguf`，2,497,280,256 字节；B抽取使用512 token有界思考，表达分类使用256 token有界思考，A对照非思考。输出上限至少768，不自动提高用户上限。旧抽取入口兼容保留。
 - 9B：`reviewproject-qwen35-9b-q4km`，文件 `Qwen_Qwen3.5-9B-Q4_K_M.gguf`，6,169,341,984 字节。来源 `bartowski/Qwen_Qwen3.5-9B-GGUF`，revision `182be2fd6c7bc44887d88a91cb03ff009cc9f549`，上游 `Qwen/Qwen3.5-9B`，Apache-2.0；SHA-256 `d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43`。所有阶段非思考，temperature 0.7、top_p 0.8、top_k 20、min_p 0、seed 42、cache_prompt false、presence_penalty 1.5，不继承4B的思考预算或阶段输出截短。每次请求保留用户配置的完整输出预算。

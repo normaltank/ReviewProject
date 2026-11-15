@@ -13,6 +13,7 @@ from .attention import AttentionWorkspace
 from .attention_candidates import generate, preview, accept, LocalProvider
 from .attention_candidate_render import render_candidate_preview
 from .local_model_profiles import profiles, profile, DEFAULT_MODEL
+from .attention_api_provider import DeepSeekProvider, API_MODELS, API_ENDPOINT, API_DEFAULT_TOKENS
 from .core import require
 
 
@@ -65,6 +66,14 @@ class CandidateSession:
 
 def candidate_message(error):
     code = str(error)
+    if code == 'E_DEEPSEEK_CREDENTIAL_MISSING':
+        return 'DeepSeek API密钥缺失。请在模型设置中输入并保存，或设置DEEPSEEK_API_KEY环境变量。'
+    if code == 'E_DEEPSEEK_CREDENTIAL_STORE':
+        return 'API凭据无法保存或解密。请使用当前Windows用户重新保存，或显式设置DEEPSEEK_API_KEY。'
+    if code == 'E_ATTENTION_API_MODEL':
+        return 'API仅支持用户指定的DeepSeek 4.1 Flash / 1017，请选择deepseek-flash；不会改用Pro。'
+    if code.startswith('E_ATTENTION_API'):
+        return 'DeepSeek API操作未完成。请核对官方地址、模型和凭据；不会自动重试或改用本机模型。'
     if code == 'E_LOCAL_MODEL_MISSING':
         return '所选模型未安装。请由操作员按候选分析操作说明，将对应 GGUF 文件放入资源根目录的 .tools/local-llm 后重试；窗口不会下载。'
     if code == 'E_LOCAL_MODEL_WEIGHT':
@@ -80,7 +89,7 @@ def candidate_message(error):
     if code == 'E_ATTENTION_OUTPUT_RECOVER':
         return '修改可能已经保存，但页面输出未完成。请点击恢复并重开，再核对修订；同一候选可安全重复接收。'
     if code in {'E_ATTENTION_ENDPOINT', 'E_ATTENTION_MODEL', 'E_ATTENTION_CAPACITY'}:
-        return '本机模型设置无效。请核对回环地址、模型名称、输出长度和上下文上限。'
+        return '模型设置无效。请核对提供方、服务地址、模型名称、输出长度和上下文上限。'
     if code == 'E_ATTENTION_NO_CANDIDATES':
         return '本次没有可接收候选。请查看预览中的未完成范围，调整选择后重新生成或人工补录。'
     if code.startswith('E_LOCAL_MODEL') or code == 'E_MODEL_NOT_OWNED':
@@ -143,7 +152,7 @@ class CandidateModelService:
 
 class AttentionCandidateWindow:
     """Tk owns controls; workers receive only captured values and frozen targets."""
-    def __init__(self, parent, controller, *, provider_factory=LocalProvider, on_result=None):
+    def __init__(self, parent, controller, *, provider_factory=None, on_result=None):
         import tkinter as tk
         from tkinter import ttk
         from .desktop import ROOT
@@ -157,9 +166,12 @@ class AttentionCandidateWindow:
         self.window.geometry('920x760'); self.window.minsize(640, 620)
         self.status = tk.StringVar(value='选择记录并生成。候选先理解B，再独立对照A；生成不会保存正式分析。')
         self.actor, self.reason = tk.StringVar(), tk.StringVar()
-        self.endpoint = tk.StringVar(value='http://127.0.0.1:8766/v1')
-        self.model = tk.StringVar(value=DEFAULT_MODEL)
-        self.context_chars, self.max_tokens = tk.StringVar(value='24000'), tk.StringVar(value='4096')
+        self.provider = tk.StringVar(value='deepseek')
+        self.endpoint = tk.StringVar(value=API_ENDPOINT)
+        self.model = tk.StringVar(value=API_MODELS[0])
+        self.api_key = tk.StringVar()
+        self.credential_status = tk.StringVar(value='未检查；可点击检查配置。生成时读取已保存凭据或环境变量。')
+        self.context_chars, self.max_tokens = tk.StringVar(value='24000'), tk.StringVar(value=str(API_DEFAULT_TOKENS))
         self.resource = tk.StringVar(value=str(ROOT))
         self.runtime = tk.StringVar(value=str(ROOT / 'work' / ('local-model-candidates-' + uuid.uuid4().hex[:12])))
         target_label = ttk.Label(self.window, text='固定目标：' + str(self.target_path), wraplength=850)
@@ -178,7 +190,7 @@ class AttentionCandidateWindow:
         for r in self.session.snapshot['records']:
             self.record_list.insert('end', r['anchor'] + ' · ' + str(len(r['sections'])) + ' 个完整分区 · ' + r['text'][:55])
         self.record_list.selection_set(0, 'end')
-        model_container = ttk.Frame(self.tabs); self.tabs.add(model_container, text='本机模型设置')
+        model_container = ttk.Frame(self.tabs); self.tabs.add(model_container, text='模型设置')
         canvas = tk.Canvas(model_container, highlightthickness=0)
         model_scroll = ttk.Scrollbar(model_container, command=canvas.yview)
         canvas.configure(yscrollcommand=model_scroll.set)
@@ -187,18 +199,28 @@ class AttentionCandidateWindow:
         model_body = canvas.create_window((0, 0), window=model_tab, anchor='nw')
         model_tab.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>', lambda e: canvas.itemconfigure(model_body, width=e.width))
-        model_note = ttk.Label(model_tab, text='可使用已由你启动的回环模型。仅下方“启动”创建的实例可由本窗口停止。', wraplength=750)
+        model_note = ttk.Label(model_tab, text='DeepSeek API将联网发送所选普通评语及本次A，原话可能含身份；原分和本地路径不发送。点击生成即按所选提供方处理。也可选择已安装本机模型；仅本窗口启动的实例可由本窗口停止。', wraplength=750)
         model_note.pack(fill='x', pady=5)
         model_note.bind('<Configure>', lambda e: model_note.configure(wraplength=max(200, e.width)))
         def entry(parent, label, variable):
             ttk.Label(parent, text=label).pack(anchor='w')
             e = ttk.Entry(parent, textvariable=variable); e.pack(fill='x', pady=(0, 6)); return e
-        entry(model_tab, '回环模型地址', self.endpoint)
-        ttk.Label(model_tab, text='已支持模型配置（需事先安装）').pack(anchor='w')
-        self.model_selector = ttk.Combobox(model_tab, textvariable=self.model, state='readonly', values=list(profiles()))
+        ttk.Label(model_tab, text='模型提供方').pack(anchor='w')
+        self.provider_selector = ttk.Combobox(model_tab,textvariable=self.provider,state='readonly',values=('deepseek','local'))
+        self.provider_selector.pack(fill='x',pady=(0,6))
+        self.provider_selector.bind('<<ComboboxSelected>>',lambda e:self.change_provider())
+        self.endpoint_entry = entry(model_tab, '服务地址（API限定官方HTTPS；本机限定回环）', self.endpoint)
+        ttk.Label(model_tab, text='模型名称（本机模型需事先安装）').pack(anchor='w')
+        self.model_selector = ttk.Combobox(model_tab, textvariable=self.model, state='readonly', values=API_MODELS)
         self.model_selector.pack(fill='x', pady=(0,6))
+        ttk.Label(model_tab,text='DeepSeek API密钥（输入后显式保存，仅当前Windows用户可解密）').pack(anchor='w')
+        self.key_entry=ttk.Entry(model_tab,textvariable=self.api_key,show='*'); self.key_entry.pack(fill='x')
+        credential_row=ttk.Frame(model_tab); credential_row.pack(fill='x')
+        self.save_key_button=ttk.Button(credential_row,text='保存API密钥',command=self.save_api_key); self.save_key_button.pack(side='left')
+        self.check_key_button=ttk.Button(credential_row,text='检查API配置',command=self.check_api_key); self.check_key_button.pack(side='left',padx=8)
+        ttk.Label(model_tab,textvariable=self.credential_status,wraplength=700).pack(fill='x',pady=(0,6))
         row = ttk.Frame(model_tab); row.pack(fill='x')
-        for label, value in [('输入字符上限（整段超限会明确列出）', self.context_chars), ('最大输出长度', self.max_tokens)]:
+        for label, value in [('输入字符上限（整段超限会明确列出）', self.context_chars), ('最大输出长度（API含思考token）', self.max_tokens)]:
             col = ttk.Frame(row); col.pack(side='left', fill='x', expand=True, padx=(0, 10)); entry(col, label, value)
         entry(model_tab, '已安装资源根目录（含 .tools/local-llm）', self.resource)
         from tkinter import filedialog
@@ -234,7 +256,38 @@ class AttentionCandidateWindow:
             b.configure(state='normal' if self.run_id and not self.busy else 'disabled')
         self.stop_button.configure(state='normal' if self.service.owned and not self.busy else 'disabled')
         self.history.configure(state='disabled' if self.busy else 'readonly')
-        self.model_selector.configure(state='disabled' if self.busy or self.service.owned else 'readonly')
+        api=self.provider.get()=='deepseek'
+        self.provider_selector.configure(state='disabled' if self.busy else 'readonly')
+        self.model_selector.configure(state='disabled' if self.busy or (self.service.owned and not api) else 'readonly')
+        self.endpoint_entry.configure(state='disabled' if self.busy else 'normal')
+        self.start_button.configure(state='disabled' if self.busy or api or self.service.owned else 'normal')
+        for widget in (self.key_entry,self.save_key_button,self.check_key_button):
+            widget.configure(state='normal' if api and not self.busy else 'disabled')
+
+    def change_provider(self):
+        if self.busy: return
+        api=self.provider.get()=='deepseek'
+        self.model_selector.configure(values=API_MODELS if api else list(profiles()))
+        self.model.set(API_MODELS[0] if api else getattr(self.service,'model_id',DEFAULT_MODEL))
+        self.endpoint.set(API_ENDPOINT if api else 'http://127.0.0.1:8766/v1')
+        self.max_tokens.set(str(API_DEFAULT_TOKENS) if api else '4096')
+        self.api_key.set('')
+        self._controls()
+
+    def check_api_key(self):
+        from .credential import credential_available
+        self.credential_status.set('已配置（生成时核验凭据可用性）' if credential_available() else
+            '缺失：输入并保存API密钥，或设置DEEPSEEK_API_KEY环境变量。')
+
+    def save_api_key(self):
+        from .credential import save_deepseek_key
+        try:
+            save_deepseek_key(self.api_key.get())
+            self.credential_status.set('已保存（仅当前Windows用户可解密；显式环境变量优先）。')
+        except Exception as exc:
+            self.credential_status.set(candidate_message(exc))
+        finally:
+            self.api_key.set('')
 
     def _target_current(self):
         current = getattr(self.controller, 'attention_path', None)
@@ -260,9 +313,13 @@ class AttentionCandidateWindow:
             self.status.set('请至少选择一条评语记录。每条所选记录的全部普通分区均会处理。'); return
         try:
             chars, tokens = int(self.context_chars.get()), int(self.max_tokens.get())
-            provider = self.provider_factory(endpoint=self.endpoint.get(), model=self.model.get(), max_tokens=tokens)
-        except Exception:
-            self.status.set('请核对本机模型设置；输入和输出上限须为有效整数，地址须为本机回环。'); return
+            if self.provider.get()=='deepseek' and self.api_key.get():
+                self.status.set('请先点击保存API密钥，再生成候选。'); return
+            factory=self.provider_factory or (DeepSeekProvider if self.provider.get()=='deepseek' else LocalProvider)
+            provider = factory(endpoint=self.endpoint.get(), model=self.model.get(), max_tokens=tokens)
+        except Exception as exc:
+            from .core import ReviewError
+            self.status.set(candidate_message(exc) if isinstance(exc,ReviewError) else '请核对模型设置；输入和输出上限须为有效整数。'); return
         run_id = 'desktop-' + uuid.uuid4().hex
         session = self.session
         self.submit('generate', lambda: session.generate(run_id, provider, ids, chars))
@@ -291,6 +348,7 @@ class AttentionCandidateWindow:
         self.submit('saved', recover)
 
     def start_service(self):
+        if self.provider.get()!='local': return
         resource, runtime, service = self.resource.get(), self.runtime.get(), self.service
         model = self.model.get()
         self.submit('start', lambda: service.start(resource, runtime, model))
@@ -310,8 +368,12 @@ class AttentionCandidateWindow:
                     self.run_id = result['run_id']; self.history.configure(values=self.session.runs()); self.history.set(self.run_id)
                     statuses = {'complete': '处理完成', 'partial': '部分处理', 'failed': '处理失败', 'zero_candidates': '零候选'}
                     self.status.set(statuses.get(result['status'], '未完成') + ' · ' +
-                        ('工程回放（非实际推理）' if result['mode'] == 'replay' else '实际本机推理') +
+                        ('工程回放（非实际推理）' if result['mode'] == 'replay' else 'DeepSeek API联网推理' if result['mode']=='remote_api' else '实际本机推理') +
                         '。候选未接收、全部待核。请预览原话、限定、位置和未完成范围。')
+                    if result.get('errors'):
+                        code=result['errors'][0]['code']
+                        if code.startswith('E_DEEPSEEK_') or code.startswith('E_ATTENTION_API'):
+                            self.status.set(self.status.get()+' '+candidate_message(code))
                     self.tabs.select(2)
                 elif action == 'preview':
                     self._launch(result, '候选预览已打开；尚未接收。请回查逐字证据、限定和建议位置。')
@@ -324,8 +386,9 @@ class AttentionCandidateWindow:
                     if self.on_result and current is not None and Path(current).absolute() == self.target_path:
                         self.on_result(dict(kind='attention', path=self.target_path, revision=result['revision'], material_status=result['material_status']))
                 elif action == 'start':
-                    self.model.set(self.service.model_id)
-                    self.endpoint.set('http://127.0.0.1:8766/v1')
+                    if self.provider.get()=='local':
+                        self.model.set(self.service.model_id)
+                        self.endpoint.set('http://127.0.0.1:8766/v1')
                     self.status.set('本窗口启动的模型已运行。模型生成只在你点击生成时进行。')
                 elif action == 'stop': self.status.set('本窗口启动的模型已停止。')
                 self._controls()

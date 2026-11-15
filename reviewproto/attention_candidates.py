@@ -92,10 +92,14 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars):
         request.update({key:copy.deepcopy(provider.config[key]) for key in
             ('temperature','top_p','top_k','min_p','seed','cache_prompt','presence_penalty','chat_template_kwargs') if key in provider.config})
         request.update(copy.deepcopy(provider.config.get('stage_profiles',{}).get(stage,{})))
-    call={'stage':stage,'request':request,'request_hash':digest(encoded(request)),'prompt_hash':digest(prompt.encode()),'schema_hash':digest(encoded(schema)),'at':now(),'status':'pending','usage':None}
+    call={'stage':stage,'schema_hash':digest(encoded(schema)),'at':now(),'status':'pending','usage':None,'phase':'prepare'}
     run['calls'].append(call)
-    _save(path,run)
     try:
+        if callable(getattr(provider,'prepare_request',None)):
+            request=provider.prepare_request(copy.deepcopy(request))
+        call.update(request=request,request_hash=digest(encoded(request)),
+            prompt_hash=digest(request['messages'][0]['content'].encode()),phase='request')
+        _save(path,run)
         require(request.get('max_tokens',provider.config.get('max_tokens',4096))<=provider.config.get('max_tokens',4096),'E_ATTENTION_CAPACITY_PROFILE')
         size=len(json.dumps(request,ensure_ascii=False,separators=(',',':')).encode('utf-8'))
         # Input limit excludes fixed prompts/grammar. The context budget still
@@ -128,6 +132,9 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars):
         return result
     except Exception as exc:
         call['status']='failed'
+        if call['phase']=='prepare':
+            call['preparation_input']=request
+            call['preparation_input_hash']=digest(encoded(request))
         call['error']=str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_PROVIDER'
         run['errors'].append({'stage':stage,'code':call['error']})
         return None
@@ -250,7 +257,7 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
         a_prompt,a_schema=semantic.SCOPED_A_PROMPT,semantic.SCOPED_A_SCHEMA
     require(state['material_status']=='current','E_ATTENTION_REVALIDATION')
     require(type(context_chars) is int and 1 <= context_chars <= 1_000_000,'E_ATTENTION_CAPACITY')
-    require(provider.mode in {'replay','local_model'},'E_ATTENTION_PROVIDER')
+    require(provider.mode in {'replay','local_model','remote_api'},'E_ATTENTION_PROVIDER')
     if focused and provider.mode=='local_model':
         profile=provider.config.get('stage_profiles',{}).get('b_expression',{})
         require(provider.config['max_tokens']>=profile.get('max_tokens',1),'E_ATTENTION_CAPACITY_PROFILE')
@@ -261,7 +268,7 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     path.mkdir(parents=True)
     records=[copy.deepcopy(r) for r in state['records'] if r['record_id'] in ids]
     patch={'schema':'attention-patch/2','analysis_id':state['analysis_id'],'base_revision':state['revision'],'actor':'candidate-preview','reason':'machine candidates pending review','edits':[],'themes':[],'relations':[]}
-    run={'schema':PROTOCOL,'run_id':run_id,'created_at':now(),'analysis_id':state['analysis_id'],'binding':_binding(state),'snapshot':state,'record_ids':ids,'mode':provider.mode,'provider_config':copy.deepcopy(provider.config),'context_chars':context_chars,'prompt_hashes':{'b':digest(b_prompt.encode()),'a':digest(a_prompt.encode())},'schema_hashes':{'b':digest(encoded(b_schema)),'a':digest(encoded(a_schema))},'adapter_hash':digest(__import__('pathlib').Path(__file__).read_bytes()),'provider_adapter_hash':digest(__import__('pathlib').Path(__file__).with_name('attention_provider.py').read_bytes()),'calls':[],'errors':[],'rejected':[],'unprocessed':[],'patch':patch,'status':'running','intermediate_protocol':semantic.PROTOCOL if compact else 'attention-canonical-replay/1','semantic_adapter_hash':digest(__import__('pathlib').Path(semantic.__file__).read_bytes()),'grounding_adapter':'literal-or-explicit-passage/3','approval':'needs_review','limitations':['Themes are generated per record; cross-record theme consolidation requires manual review.','Processing status does not establish semantic accuracy or approval.']}
+    run={'schema':PROTOCOL,'run_id':run_id,'created_at':now(),'analysis_id':state['analysis_id'],'binding':_binding(state),'snapshot':state,'record_ids':ids,'mode':provider.mode,'provider_config':copy.deepcopy(provider.config),'context_chars':context_chars,'prompt_hashes':{'b':digest(b_prompt.encode()),'a':digest(a_prompt.encode())},'schema_hashes':{'b':digest(encoded(b_schema)),'a':digest(encoded(a_schema))},'adapter_hash':digest(__import__('pathlib').Path(__file__).read_bytes()),'provider_adapter_hash':digest(__import__('pathlib').Path(__file__).with_name('attention_api_provider.py' if provider.mode=='remote_api' else 'attention_provider.py').read_bytes()),'calls':[],'errors':[],'rejected':[],'unprocessed':[],'patch':patch,'status':'running','intermediate_protocol':semantic.PROTOCOL if compact else 'attention-canonical-replay/1','semantic_adapter_hash':digest(__import__('pathlib').Path(semantic.__file__).read_bytes()),'grounding_adapter':'literal-or-explicit-passage/3','approval':'needs_review','limitations':['Themes are generated per record; cross-record theme consolidation requires manual review.','Processing status does not establish semantic accuracy or approval.']}
     _save(path,run)
     # Avoid identity metadata, paths, scores and all of A in B requests.
     aggregate=patch
