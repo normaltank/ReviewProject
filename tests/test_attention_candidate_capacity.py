@@ -42,6 +42,28 @@ def server_for(token_response=None, focused=False):
 
 
 class CandidateCapacity(unittest.TestCase):
+    def test_preview_excludes_whole_calls_and_unknown_nested_diagnostics(self):
+        from reviewproto.attention_candidates import ReplayProvider
+        from reviewproto.attention_candidate_render import render_candidate_preview
+        from test_attention_candidate_ui import prepare
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'pack'; _, response = prepare(path)
+            run = CandidateSession(path).generate('private-unknown', ReplayProvider([response]))
+            private = 'SYNTHETIC_UNRECOGNIZED_PRIVATE_PAYLOAD'
+            run['calls'] = [dict(stage='b_extraction', status='complete', attempted=True,
+                request=dict(messages=[dict(content=private)]), response=dict(unrecognized=[dict(
+                    reasoning=dict(chunks=[private]))]), raw_calls=[dict(new_vendor_field=private)])]
+            run['errors'] = [dict(code='E_ATTENTION_JSON_FORMAT', future_diagnostics=dict(response=private))]
+            before = json.dumps(run, ensure_ascii=False)
+            page = render_candidate_preview(run)
+            self.assertNotIn(private, page)
+            self.assertNotIn('new_vendor_field', page)
+            self.assertNotIn('future_diagnostics', page)
+            self.assertIn('处理错误 1 项', page)
+            self.assertIn('若有记录，请标明图例。', page)
+            self.assertIn('条件：若有记录', page)
+            self.assertEqual(json.dumps(run, ensure_ascii=False), before)
+
     def test_too_small_user_output_cap_is_rejected_without_raising_it(self):
         from reviewproto.core import ReviewError
         with server_for(focused=True) as (endpoint,requests), tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:

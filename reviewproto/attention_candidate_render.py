@@ -98,11 +98,10 @@ def render_candidate_preview(run):
                    (field_label+'字段：' if field_label else '') +
                    failures.get(item.get('code'), '响应缺少有效证据、范围或结构，未接收该项。请回查原话后重新生成或人工补录。') + '</li>')
     out.append('</ul>')
-    out.append('<details><summary>原始错误与拒收记录</summary><pre>' +
-               esc(json.dumps(dict(errors=run.get('errors', []), rejected=run.get('rejected', [])), ensure_ascii=False, indent=2)) + '</pre></details>')
-    out.append('<details><summary>请求、响应与用量审计</summary><p>运行 ' + esc(run['run_id']) +
-               '；以下保留真实请求、原始响应及指纹，不表示语义通过。</p><pre>' +
-               esc(json.dumps(run.get('calls', []), ensure_ascii=False, indent=2)) + '</pre></details>')
+    # Raw calls and extensible diagnostics can contain private reasoning. They
+    # stay in the local audit, never in ordinary HTML (even inside a disclosure).
+    out.append('<p>运行 ' + esc(run['run_id']) +
+               '：完整请求、原始响应、用量及原始错误/拒收记录仅保存在本地候选历史的 run.json，供操作员回查；不嵌入普通页面。</p>')
     audit_html = ''.join(out)
     out = reading
     qualifiers = dict(object='对象', direction='判断方向', degree='程度', negation='否定',
