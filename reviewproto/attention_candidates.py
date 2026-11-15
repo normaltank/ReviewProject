@@ -90,7 +90,7 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars):
     if provider.mode == 'local_model':
         request.update(model=provider.config['model'],max_tokens=provider.config['max_tokens'])
         request.update({key:copy.deepcopy(provider.config[key]) for key in
-            ('temperature','top_p','top_k','min_p','seed','cache_prompt','chat_template_kwargs') if key in provider.config})
+            ('temperature','top_p','top_k','min_p','seed','cache_prompt','presence_penalty','chat_template_kwargs') if key in provider.config})
         request.update(copy.deepcopy(provider.config.get('stage_profiles',{}).get(stage,{})))
     call={'stage':stage,'request':request,'request_hash':digest(encoded(request)),'prompt_hash':digest(prompt.encode()),'schema_hash':digest(encoded(schema)),'at':now(),'status':'pending','usage':None}
     run['calls'].append(call)
@@ -253,7 +253,7 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     require(provider.mode in {'replay','local_model'},'E_ATTENTION_PROVIDER')
     if focused and provider.mode=='local_model':
         profile=provider.config.get('stage_profiles',{}).get('b_expression',{})
-        require(provider.config['max_tokens']>=profile.get('max_tokens',768),'E_ATTENTION_CAPACITY_PROFILE')
+        require(provider.config['max_tokens']>=profile.get('max_tokens',1),'E_ATTENTION_CAPACITY_PROFILE')
     ids=[r['record_id'] for r in state['records']] if record_ids is None else list(record_ids)
     require(ids and len(ids)==len(set(ids)) and set(ids)<={r['record_id'] for r in state['records']},'E_ATTENTION_RECORD')
     path=_path(workspace,run_id)
