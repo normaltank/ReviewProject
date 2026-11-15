@@ -469,8 +469,8 @@ def relation_basis(record,raw,evs,endpoints,facets):
                     'E_ATTENTION_RELATION_RANGE')
         return
     connectors=[(r'理由|支持|因果|reason|causal',r'因为|由于|因此|所以|故而|以致|原因(?:是|在于)|because|therefore'),
-                (r'备选|替代|选择|alternative',r'.+(?:或者|或是|还是|(?<!可)或(?!许)|(?:也|亦)可|\bor\b).+|alternatively'),
-                (r'对照|对比|转折|contrast',r'但是|但|然而|却|相反|不同于|不是.+而是|however|\bbut\b'),
+                (r'备选|替代|选择|alternative',r'.+(?:或者|或是|还是|(?<!可)或(?!许)|(?:也|亦)可|\bor\b).+|也行|二选一|选一种|择一|alternatively'),
+                (r'对照|对比|转折|contrast',r'但是|但|不过|然而|却|相反|不同于|不是.+而是|however|\bbut\b'),
                 (r'先后|时序|sequence',r'先.+(?:再|然后)|之前|之后|随后|然后|\bbefore\b|\bafter\b'),
                 (r'动作组|并列|action.group',r'同时|并且|以及|既.+又|一方面.+另一方面'),
                 (r'归属|转述|引用|attribution|voice',r'原话|引用|转述|主张|声称|受访者|作者|\bsaid\b|\bquote\b|according to')]
