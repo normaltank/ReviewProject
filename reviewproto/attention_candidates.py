@@ -48,28 +48,30 @@ def _save(path, run):
 
 
 def request_audit(run):
-    """Read persisted client attempts, without inferring server receipt or usage."""
+    """Read client attempt evidence; missing evidence stays unknown in every count."""
     calls=run.get('calls',[])
     running=run.get('status')=='running'
-    if running and any('attempted' not in call for call in calls):
-        count=None
-    elif calls and all('attempted' in call for call in calls):
-        count=sum(bool(call['attempted']) for call in calls)
-    elif type(run.get('request_count')) is int:
-        count=run['request_count']
-    else:
-        count=None if running else sum(bool(call.get('attempted')) for call in calls)
-    pending=sum(bool(call.get('attempted')) and 'response' not in call and
-                call.get('status') in {'pending','in_flight'} for call in calls)
+    def attempted(call):
+        if type(call.get('attempted')) is bool: return call['attempted']
+        return True if 'response' in call else None
+    def count_attempts(selected,field,unknown_empty=False):
+        states=[attempted(call) for call in selected]
+        if states and all(state is not None for state in states): return sum(states)
+        stored=run.get(field)
+        if type(stored) is int and stored>=0 and (not states or not running): return stored
+        if states or unknown_empty: return None
+        return 0
+    count=count_attempts(calls,'request_count',unknown_empty=running)
     repairs=[call for call in calls if call.get('purpose')=='format_repair']
-    if repairs and all('attempted' in call for call in repairs):
-        repair_count=sum(bool(call['attempted']) for call in repairs)
-    elif repairs:
-        repair_count=None
+    repair_count=count_attempts(repairs,'format_repair_count')
+    pending_calls=[call for call in calls if 'response' not in call and call.get('status') in {'pending','in_flight'}]
+    pending_states=[attempted(call) for call in pending_calls]
+    if any(state is None for state in pending_states) or (running and not calls and count is None):
+        pending=None
     else:
-        repair_count=run.get('format_repair_count',0)
-    return {'count':count,'format_repair_count':repair_count,
-            'pending_response':pending,'unfinished':running or bool(pending)}
+        pending=sum(pending_states)
+    return {'count':count,'format_repair_count':repair_count,'pending_response':pending,
+            'unfinished':running or pending is None or bool(pending)}
 
 
 def _binding(state):

@@ -40,7 +40,7 @@ def render_candidate_preview(run):
     audit=request_audit(run)
     out.append('<p>已记录的提供方尝试数：'+(str(audit['count']) if audit['count'] is not None else '未知')+'。尝试数不代表服务器已收到请求、完成响应或计费成功。</p>')
     if audit['unfinished']:
-        out.append('<p>运行尚未结束，可能仍在执行或已经中断。已开始而未保存响应的尝试：'+str(audit['pending_response'])+'；结果与用量未知，不代表服务器已收到或已计费。不会自动继续或重试，请核对原运行记录。</p>')
+        out.append('<p>运行尚未结束，可能仍在执行或已经中断。已开始而未保存响应的尝试：'+(str(audit['pending_response']) if audit['pending_response'] is not None else '未知')+'；结果与用量未知，不代表服务器已收到或已计费。不会自动继续或重试，请核对原运行记录。</p>')
         if audit['count'] is None:
             out.append('<p>旧运行缺少完整尝试标记，次数未知，不能按0处理。</p>')
     out.append('<h2>处理范围与未完成项</h2><ul>')
