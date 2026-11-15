@@ -1,19 +1,28 @@
 # Start the already installed, verified local model. No download or cloud fallback.
 [CmdletBinding()]
-param()
+param(
+    [string]$ResourceRoot,
+    [string]$RuntimeDir,
+    [string]$ModelId = 'reviewproject-qwen3-4b-q4km'
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$exe = Join-Path $repoRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
-$model = Join-Path $repoRoot '.tools/local-llm/Qwen3-4B-Q4_K_M.gguf'
-$modelHash = '7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5'
-$runtimeDir = Join-Path $repoRoot 'work/local-model'
+if (-not $ResourceRoot) { $ResourceRoot = $repoRoot }
+$ResourceRoot = (Resolve-Path -LiteralPath $ResourceRoot).Path
+if (-not $RuntimeDir) { $RuntimeDir = Join-Path $repoRoot 'work/local-model' }
+$runtimeDir = [IO.Path]::GetFullPath($RuntimeDir)
+$exe = Join-Path $ResourceRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
+. (Join-Path $PSScriptRoot 'local-model-profile.ps1')
+$profile = Get-LocalModelProfile $ModelId
+$model = Join-Path $ResourceRoot ('.tools/local-llm/' + $profile.filename)
+$modelHash = $profile.sha256
 $statePath = Join-Path $runtimeDir 'server-state.json'
 $owner = 'ReviewProject/scripts/local-model/v1'
 
 function Get-ModelArguments([string]$runId) {
-    return '-m "' + $model + '" --alias reviewproject-qwen3-4b-q4km --tags reviewproject-local-run-' + $runId + ' --host 127.0.0.1 --port 8766 --cors-origins localhost -c 16384 -np 1 -ngl 99 --device Vulkan0 --reasoning off --offline --no-webui --no-slots --no-cache-prompt --cache-ram 0 --log-colors off'
+    return Get-LocalModelArguments $model $ModelId $profile.context_tokens $runId
 }
 
 $guard = [Threading.Mutex]::new($false, 'Local\ReviewProjectLocalModel8766')
@@ -30,7 +39,10 @@ if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
     throw 'Install the approved llama.cpp b12110 Windows Vulkan package under .tools/local-llm first.'
 }
 if (-not (Test-Path -LiteralPath $model -PathType Leaf)) {
-    throw 'The approved local Qwen3-4B-Q4_K_M.gguf file is missing. This script does not download models.'
+    throw ('E_MODEL_MISSING: place ' + $profile.filename + ' under ResourceRoot/.tools/local-llm. This script does not download models.')
+}
+if ((Get-Item -LiteralPath $model).Length -ne $profile.size) {
+    throw 'E_MODEL_SIZE: The local model size does not match the approved weight. Nothing was started.'
 }
 if ((Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant() -ne $modelHash) {
     throw 'The local model SHA-256 does not match the approved official weight. Nothing was started.'
@@ -50,7 +62,7 @@ if (Test-Path -LiteralPath $runtimeDir) {
         }
         try { $previous = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json }
         catch { throw 'The existing local service state is not readable JSON. Refusing to overwrite it.' }
-        if ($previous.owner -ne $owner -or $previous.repo_root -ne $repoRoot -or
+        if (-not (Test-LocalModelStateProfile $previous $ModelId) -or $previous.owner -ne $owner -or $previous.repo_root -ne $repoRoot -or
             $previous.executable -ne $exe -or $previous.model_path -ne $model -or
             $previous.model_sha256 -ne $modelHash -or $previous.run_id -notmatch '^[0-9a-f]{32}$' -or
             $previous.arguments -cne (Get-ModelArguments $previous.run_id) -or
@@ -88,10 +100,14 @@ $state = [ordered]@{
     arguments = $arguments
     process_command_line = $processInfo.CommandLine
     endpoint = 'http://127.0.0.1:8766/v1'
-    model_id = 'reviewproject-qwen3-4b-q4km'
+    model_id = $ModelId
+    profile_id = $ModelId
+    model_size = $profile.size
+    profile_catalog_sha256 = (Get-FileHash -LiteralPath (Join-Path $repoRoot 'reviewproto/local_model_profiles.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     status = 'starting'
 }
 $state | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
+Write-Output ('Owned PID ' + $proc.Id + ' RUN ' + $runId)
 
 $deadline = [DateTime]::UtcNow.AddSeconds(60)
 while ([DateTime]::UtcNow -lt $deadline) {
@@ -107,7 +123,7 @@ while ([DateTime]::UtcNow -lt $deadline) {
             if ($health.status -eq 'ok') {
                 $state.status = 'ready'
                 $state | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding utf8
-                Write-Output ('Local model ready: http://127.0.0.1:8766/v1; model reviewproject-qwen3-4b-q4km; PID ' + $proc.Id)
+                Write-Output ('Local model ready: http://127.0.0.1:8766/v1; model ' + $ModelId + '; PID ' + $proc.Id)
                 $proc.Dispose()
                 return
             }

@@ -248,3 +248,16 @@ function editALink(remove=false){
 el('a-link').onchange=chooseALink;el('a-item').onchange=showAItem;el('a-kind').onchange=showAItem;
 el('a-save').onclick=()=>editALink();el('a-remove').onclick=()=>editALink(true);
 for(const id of ['a-kind','a-item','a-scope','a-reason','a-status'])el(id).addEventListener('input',()=>{dirtyGroups.add('a');dirty=true;el('download').disabled=true;write('draft','关联表单有未加入草稿的更改。');});
+// Saved position navigation never overwrites unstaged form changes.
+document.addEventListener('attention-edit-facet', event=>{
+ const target=event.detail;
+ if(dirtyGroups.size){write('message','当前表单有未加入草稿的更改。请先加入草稿，再从位置明细重试定位。');el('message').scrollIntoView({block:'center'});return;}
+ const op=allOpinions().find(o=>o.opinion_id===target.opinion_id&&o.record_id===target.record_id&&active(o));
+ const f=op?.facets.find(f=>f.facet_id===target.facet_id&&!['withdrawn','superseded'].includes(f.status));
+ if(!f||!state.records.some(r=>r.record_id===target.record_id)){write('message','该保存对象已不可编辑，请恢复并重开页面核对。');return;}
+ el('record').value=target.record_id;chooseRecord();
+ const sec=f.evidence?.[0]?.section_id;
+ if(sec&&record().sections.some(s=>s.section_id===sec)){el('section').value=sec;chooseSection();}
+ el('opinion').value=op.opinion_id;chooseOpinion();el('facet').value=f.facet_id;chooseFacet();
+ write('message','已定位保存方面；修改后仍需加入草稿、应用并重开。');el('source').scrollIntoView({block:'center'});el('source').focus();
+});

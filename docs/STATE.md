@@ -1,4 +1,4 @@
-# 交接状态 2026-11-14
+# 交接状态 2026-11-15
 
 <a id="当前目标与a参照"></a>
 <a id="已确认的业务边界"></a>
@@ -29,9 +29,23 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
 
+本轮[父任务#26](https://github.com/normaltank/ReviewProject/issues/26)与[PR31](https://github.com/normaltank/ReviewProject/pull/31)补齐可变A/B的实际候选路径；规格及依赖见[内容与位置规格](specs/b-attention-candidates.md)和[施工计划](plans/b-attention-candidates-construction.md)。C1—C3及集中返修经独立merger串行集成，候选代码头为`247d26bcb466b3060ca35b1f5974d89ed411fbff`。先分析全部所选普通B分区，再独立对照当批A；无A可先分析，不强填清单外。普通操作见[候选生成与核对](ATTENTION_CANDIDATES.md)。
+
+用户于2026-11-15要求直接接入API，指定4.1 Flash 1017、不用Pro。普通窗口默认官方DeepSeek API及`deepseek-flash`，凭据保存在仓库外当前Windows用户DPAPI或显式环境变量；不本地微调、不自动下载或回退。别名对应当日官方映射，不能冒称永久锁定权重版本。本轮实际外发仅合成材料，真实主包修订7及原始指纹保持，原D盘分支和69项未提交成果保留。
+
+新输入05在`76dd114`干净版本冻结后才推理：7条B、8个普通段落，A分别3/2/0项，64次实际Flash调用，独立首评7通过、0部分、0失败，108处Unicode逐字坐标一致。一次A结构错误经允许的单次格式修复后继续，原失败、原草稿和全部用量保留，运行仍可标部分；处理状态不等于语义核实。核对的是本项目处理，不是专业复审；代理演练不等于用户体验、专业金标或未来任意输入的正确率。
+
+实际普通Tk输入→Flash生成→Chrome位置/原文回查→接收→纠正→下载→应用/恢复重开已贯通1→2→3；生成前后正式文件字节不变，重复接收保留人工纠正及限定。桌面1440与窄屏420、原生920/760窗口有实际截图及零JS错误/横向溢出检查；独立视觉Finish结论为`disposition: ship`，仅覆盖所审界面。跨记录主题归并及所有候选仍需人工核对，不能自动升级为confirmed。
+
+独立Standards在`76dd114`发现同run并发接收覆盖成功收据；返修后以不可覆盖原子发布保存唯一接收补丁，并核对真实双进程、失败恢复、过期和人工成果保留。除accept外17个既有函数AST及其余42个生产文件字节与实际推理版本相同；这是路径等价凭证，不是新增API调用。另在未接收合成副本用最终接收代码走普通Tk/Chrome首次接收、纠正、应用及重开0→1→2，未重新推理或改写首评分数。
+
+历史失败保留：本机4B两轮新输入未通过；9B组合在已知池为2通过、4部分、1失败，新旧适配不同，不能把差异全归于权重。Flash新03及新04首评均5通过、1部分、1失败；后续复跑和有限控制属于已知开发，不重标独立通过。额外A前提核查因误删合法局部交集未采用，当前在原A对照入口明确对象、属性、语境及partial/related边界。故障前请求意图先持久化，用量未知不写0；候选审计本地写入限次恢复与HTTP重试分开。
+
+`76dd114`的规范完整检查429项、零失败/错误/跳过（含真实Chrome）。接收返修后的完整检查、固定版本Spec/Standards复核、最终CI、获授权的main交付及运行树SHA，分别以[PR31](https://github.com/normaltank/ReviewProject/pull/31)和本地HANDOFF的实际终态为准，不把此前检查或工程集成冒充最终交付。后续从普通输入清单开始；现有真实包保持原分析，不因工具换版自动重算或外发。
+
 前轮[Issue #12](https://github.com/normaltank/ReviewProject/issues/12)及T1—T6已由[PR #19](https://github.com/normaltank/ReviewProject/pull/19)合入main `5b31b393294144b90786128c1d1b7bcb0ea037c8`，相关任务已关闭。T6贯通、集中返修和两轴审查完成：Spec无未解决项；Standards的A原文列表待核误显明确问题已修复并独立复核通过。原Standards角色入口失效后，由fresh default代理按同一角色约定接续复核，实际覆盖及限制留在PR证据。main CI成功。不重复施工或把NOT-MAIN演练回灌主包。
 
-当前父任务为[Issue #21](https://github.com/normaltank/ReviewProject/issues/21)，对应[可复用工具施工计划](plans/b-attention-reuse-construction.md)及[PR25](https://github.com/normaltank/ReviewProject/pull/25)：普通输入建包/A录入（#22）、同保存修订的通用概览（#23）已由独立merger集成；两组变化A/B的普通Tk→网页表单→下载/应用/重开（#24）已贯通。无A2B与不同结构A/3B验证Unicode/原分、主题/关系/A对应、换A历史与纠正、材料组分母、另建变化B及旧包文件保护、来源失效/失联恢复。仅用合成材料，不等同用户本人体验或专业语义金标。最终完整检查、两轴审查及main状态以PR25实际交付证据为准。
+前轮父任务[Issue #21](https://github.com/normaltank/ReviewProject/issues/21)，对应[可复用工具施工计划](plans/b-attention-reuse-construction.md)及[PR25](https://github.com/normaltank/ReviewProject/pull/25)已交付关闭：普通输入建包/A录入（#22）、同保存修订的通用概览（#23）已由独立merger集成；两组变化A/B的普通Tk→网页表单→下载/应用/重开（#24）已贯通。无A2B与不同结构A/3B验证Unicode/原分、主题/关系/A对应、换A历史与纠正、材料组分母、另建变化B及旧包文件保护、来源失效/失联恢复。仅用合成材料，不等同用户本人体验或专业语义金标。PR25终版完整检查316项、零失败/错误/跳过，两轴审查和main CI通过。
 
 下一批从普通输入清单开始，已有真实包继续打开；不重做旧迁入或为新批写专用报告脚本。B变化先走独立新包并保留旧分析，原包内B替换/旧标注迁移未实现。冻结样例导读[Issue #20](https://github.com/normaltank/ReviewProject/issues/20)已按其范围交付关闭，仍不代表整体工具验收。
 
