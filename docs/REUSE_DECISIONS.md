@@ -41,3 +41,12 @@
 新增A关联前提核查曾在代码外做有限实测：两轮5个已知控制分别为3/5和4/5，虽撤回了内容含义被偷换为视觉辨读的关联，也误删了有据的局部分母交集。独立来源复核确认它漂移为“B是否满足A全部要求”，因此未采用该额外阶段。原A入口明确比较具体对象、所论属性和语境，同时保留partial/related的局部交集；同一组控制为5/5，仅作开发证据，不声称因果或未来准确率。
 
 实现冻结后的新输入05为7条B、8个普通段落，A分别3/2/0项；在`76dd114`实际Flash调用64次，独立首评7条均通过，108处Unicode逐字坐标一致。一次A结构错误经允许的单次格式修复继续，原失败及用量保持，人工改文不计入原始评分。旧03/04的5通过、1部分、1失败首评均保留；各池一经评分即成为已知开发材料。接收并发返修与该推理版本分别验证，后续版本须核对未变路径及实际工程证据，不能换标新推理。跨记录主题合并仍由人核对，不将本批结果称为专业金标、用户验收或任意未来输入的准确率保证。
+
+
+## 按根本任务复查工具与方法 · 2026-11-15
+
+用户要求同时改善软件结果页和交付说明，并跨领域找能解决根本问题的工具/论文。本次先把阅读层收拢：已有B解释先行，原话、A对照、统计和运行诊断点击展开；必要待核、未完成、来源和草稿状态直接显示。操作见[阅读说明](ATTENTION_READING.md)，实际交付状态见[Issue32](https://github.com/normaltank/ReviewProject/issues/32)。本轮不新增模型推理或切换后端。
+
+路线复查已实际读取主源：[LLooM原论文](https://hci.stanford.edu/publications/2024/Lam_LLooM_CHI24.pdf)提供可编辑概念与例子下钻，适合研究跨记录归纳；[Gemini Decisions官方发布](https://blog.google/innovation-and-ai/technology/developers-tools/gemini-decisions-api/)及[Google Codelab](https://codelabs.developers.google.com/codelabs/discriminative-models)支持有限选项判断，适合表达分类对照；[GLiNER2论文](https://arxiv.org/abs/2507.18546)和[2.5多语模型](https://huggingface.co/fastino/gliner2.5-multi-v1)、[NuExtract3](https://huggingface.co/numind/NuExtract3)是不同于通用小模型的专用本机候选。它们的公开任务、模型卡与本项目中文语义保真/实际省时分别评价，未获本项目实测优势。
+
+[QualCoder](https://qualcoder.org/doc/en/)与[MAXQDA AI Report](https://www.maxqda.com/help/ai-assist/ai-report)作为现成工作台/报告路线对照。不能把编码次数当记录覆盖；父组并集、原文区间、指定Flash适配和导出引用须同任务验证。比较也应包含同一Flash更简单的先B后A批量流程，不将当前调用粒度或内部字段当不可变需求。若轻量组合能以更低总负担完成理解、回查、纠正与换批，应缩减自建。上述是选型依据和待测路线，不是已接入或已验证能力；相关新API与模型尚未运行。
