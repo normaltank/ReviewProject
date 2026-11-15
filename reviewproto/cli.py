@@ -103,7 +103,7 @@ def main(argv=None):
             from .attention import AttentionWorkspace
             workspace = AttentionWorkspace(args.workspace)
             if args.command in {'attention-generate','attention-preview','attention-accept'}:
-                from .attention_candidates import generate, preview, accept, ReplayProvider, LocalProvider
+                from .attention_candidates import generate, preview, accept, ReplayProvider, LocalProvider, request_audit
                 if args.command == 'attention-generate':
                     if args.replay:
                         from .batch import read_json
@@ -128,7 +128,10 @@ def main(argv=None):
                     print('FORMAT_REPAIR requests='+str(run['format_repair_count'])+' original_failures_preserved=yes')
                 for error in run.get('errors',[]):
                     if error['code'] in API_HINTS: print(API_HINTS[error['code']],file=sys.stderr)
-                print('CANDIDATES status=' + run['status'] + ' mode=' + run['mode'] + ' opinions=' + str(len(run['patch']['edits'])) + ' requests=' + str(run.get('request_count',0)))
+                audit=request_audit(run)
+                if audit['unfinished']:
+                    print('ATTEMPT_AUDIT result_and_usage=unknown server_receipt_not_confirmed=yes automatic_retry=no')
+                print('CANDIDATES status=' + run['status'] + ' mode=' + run['mode'] + ' opinions=' + str(len(run['patch']['edits'])) + ' requests=' + (str(audit['count']) if audit['count'] is not None else 'unknown'))
                 return 2 if run['status'] in {'partial','failed','running'} else 0
             elif args.command == 'attention-build':
                 result = workspace.build(input_path=args.input)
