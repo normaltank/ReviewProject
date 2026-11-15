@@ -29,7 +29,9 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
 
-本轮工程集成头`bfacebce93c7d3af190e14f25862adca1dbab364`，独立merger已接收C1/C2/C3，候选核心25项、普通UI8项、位置3项、视图4项相关检查通过。实际合成本机推理已运行，18项A容量路径可用；新7条独立语义核对为1通过、1部分、5不满足，发现A理由错配、处置分类和情态问题，C4保持开放，待双轴审查后统一返修。工程集成不等于本轮验收或main交付；当前稳定运行树仍为PR25。
+本轮工程集成头`ddf100ea3aff69183dc3412d678d8f1b72ef7aee`，独立merger已接收C1/C2/C3及集中返修；来源组、表达与A对照接口、owned服务和普通候选路径已接通。另修复了把概括标签误当逐字证据的准入限制，以及只读打开已有分析库时改写SQLite头部的问题；逐字证据、坐标、来源范围和接收事务约束保持。实际Tk与Chrome已贯通本机启动、生成、预览、接收、原话纠正、下载、应用及恢复重开，保存修订1→2，重复接收保留人工纠正；这是合成材料的代理演练。
+
+语义验收仍开放：首轮新7条为1通过、1部分、5不满足，第二轮新7条/8普通分区、A3/0/1实际42调用后为0通过、2部分、5不满足。失败记录与原始响应均保留，此后用作开发材料，不能重新标为独立通过。已有4B后端调参未证明稳定修复，正以固定来源、许可、大小及哈希的免费本机权重作比较；尚未作为已验收默认。最终仍需全新输入、固定版本双轴复核、完整检查及CI，C4和草稿PR31保持开放。工程集成不等于本轮验收或main交付；当前稳定运行树仍为PR25。
 
 当前在main `d78cb256e5ccf5d3111b87771f583df3f3638692`（PR25）之后，按用户的问题重构及“继续施工”实施[内容与位置候选规格](specs/b-attention-candidates.md)和[施工计划](plans/b-attention-candidates-construction.md)。父任务[Issue #26](https://github.com/normaltank/ReviewProject/issues/26)：先B内容分析、再独立A对照，补可回查的直观位置与普通界面候选路径；沿[C1 #27](https://github.com/normaltank/ReviewProject/issues/27)/[C2 #28](https://github.com/normaltank/ReviewProject/issues/28)并行、[C3 #29](https://github.com/normaltank/ReviewProject/issues/29)贯通、[C4 #30](https://github.com/normaltank/ReviewProject/issues/30)新输入实际验证推进。当前稳定版本仍需人工填写语义对象，不把已有输入/编辑能力称为自动理解。新施工状态与实际验证跟随本轮Issue/PR，完成前不修改真实主包。
 
