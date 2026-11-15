@@ -29,6 +29,8 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
 
+最新费用与工具决定见[当前名单](research/attention-tools.md)：只保留已授权DS Flash费用，Gemini Decisions/MAXQDA退出实施，LLooM/LLMCode保留方法参考。[Issue34](https://github.com/normaltank/ReviewProject/issues/34)的记录级DS对照已形成不采用结论：少请求未带来费用/质量优势，原型留在隔离分支，不进入main运行路径。main仅收拢名单和依据，具体交付/CI终态见工作项。现有默认仍有待核边界，不能称任意新输入的正确率保证。结果阅读层由[PR33](https://github.com/normaltank/ReviewProject/pull/33)交付，操作见[阅读说明](ATTENTION_READING.md)。
+
 本轮[父任务#26](https://github.com/normaltank/ReviewProject/issues/26)与[PR31](https://github.com/normaltank/ReviewProject/pull/31)补齐可变A/B的实际候选路径；规格及依赖见[内容与位置规格](specs/b-attention-candidates.md)和[施工计划](plans/b-attention-candidates-construction.md)。C1—C3及集中返修经独立merger串行集成，候选代码头为`247d26bcb466b3060ca35b1f5974d89ed411fbff`。先分析全部所选普通B分区，再独立对照当批A；无A可先分析，不强填清单外。普通操作见[候选生成与核对](ATTENTION_CANDIDATES.md)。
 
 用户于2026-11-15要求直接接入API，指定4.1 Flash 1017、不用Pro。普通窗口默认官方DeepSeek API及`deepseek-flash`，凭据保存在仓库外当前Windows用户DPAPI或显式环境变量；不本地微调、不自动下载或回退。别名对应当日官方映射，不能冒称永久锁定权重版本。本轮实际外发仅合成材料，真实主包修订7及原始指纹保持，原D盘分支和69项未提交成果保留。
