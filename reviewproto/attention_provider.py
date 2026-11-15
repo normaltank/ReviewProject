@@ -43,14 +43,13 @@ class LocalProvider:
         require(parsed.netloc == '127.0.0.1' or parsed.netloc == '127.0.0.1:' + str(parsed.port), 'E_ATTENTION_ENDPOINT')
         require(type(max_tokens) is int and 1 <= max_tokens <= 8192 and isinstance(timeout,(int,float)) and 0 < timeout <= 600, 'E_ATTENTION_CAPACITY')
         require(isinstance(model,str) and model.strip(), 'E_ATTENTION_MODEL')
-        self.config = {'endpoint':endpoint.rstrip('/'), 'model':model, 'max_tokens':max_tokens, 'timeout':timeout, 'context_tokens':16384,
-            'temperature':0.7,'top_p':0.8,'top_k':20,'min_p':0,'seed':42,'cache_prompt':False,
-            'chat_template_kwargs':{'enable_thinking':False},
-            'stage_profiles':{'b_analysis':{'temperature':0.6,'top_p':0.95,'top_k':20,'min_p':0,'seed':42,
-                'chat_template_kwargs':{'enable_thinking':True},'reasoning_format':'deepseek','reasoning_budget_tokens':512},
-                'b_expression':{'temperature':0.6,'top_p':0.95,'top_k':20,'min_p':0,'seed':42,
-                'chat_template_kwargs':{'enable_thinking':True},'reasoning_format':'deepseek',
-                'reasoning_budget_tokens':256,'max_tokens':768}}}
+        from .local_model_profiles import profile, catalog_hash
+        selected = profile(model)
+        self.config = {'endpoint':endpoint.rstrip('/'), 'model':model, 'profile_id':model,
+            'profile_catalog_sha256':catalog_hash(), 'model_identity':{key:selected[key] for key in
+                ('filename','size','sha256','publisher','revision','source','license') if key in selected},
+            'max_tokens':max_tokens, 'timeout':timeout, 'context_tokens':selected['context_tokens'],
+            **selected['sampling'], 'stage_profiles':selected['stage_profiles']}
 
     def complete(self, request):
         return self._post('/v1/chat/completions',request)

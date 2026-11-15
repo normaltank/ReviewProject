@@ -12,6 +12,7 @@ import uuid
 from .attention import AttentionWorkspace
 from .attention_candidates import generate, preview, accept, LocalProvider
 from .attention_candidate_render import render_candidate_preview
+from .local_model_profiles import profiles, profile, DEFAULT_MODEL
 from .core import require
 
 
@@ -64,6 +65,12 @@ class CandidateSession:
 
 def candidate_message(error):
     code = str(error)
+    if code == 'E_LOCAL_MODEL_MISSING':
+        return '所选模型未安装。请由操作员按候选分析操作说明，将对应 GGUF 文件放入资源根目录的 .tools/local-llm 后重试；窗口不会下载。'
+    if code == 'E_LOCAL_MODEL_WEIGHT':
+        return '所选模型大小或 SHA-256 不符。请由操作员按候选分析操作说明核对固定文件版本并重新安装。'
+    if code == 'E_ATTENTION_MODEL_PROFILE':
+        return '模型名称不在已支持的固定配置中。请从模型下拉列表选择。'
     if code == 'E_ATTENTION_CAPACITY_PROFILE':
         return '表达分类需要至少768的输出长度以保留有界思考和完整结果。请将最大输出长度设为至少768后重新生成；本次未提高你设置的上限。'
     if code == 'E_ATTENTION_TARGET':
@@ -86,14 +93,20 @@ class CandidateModelService:
     def __init__(self):
         self.owned = None
 
-    def start(self, resource, runtime):
+    def start(self, resource, runtime, model=DEFAULT_MODEL):
         from .desktop import ROOT, run_powershell
         require(self.owned is None, 'E_LOCAL_MODEL_OWNED')
+        selected = profile(model)
+        def matches_profile(state):
+            if 'profile_id' not in state: return model == DEFAULT_MODEL
+            return (state.get('profile_id') == model and state.get('model_id') == model and
+                    state.get('model_sha256') == selected['sha256'] and state.get('model_size') == selected['size'])
         resource, runtime = Path(resource).resolve(), Path(runtime).absolute()
         result = run_powershell(['-ExecutionPolicy', 'Bypass', '-File', ROOT / 'scripts/start-local-model.ps1',
-                                 '-ResourceRoot', resource, '-RuntimeDir', runtime])
+                                 '-ResourceRoot', resource, '-RuntimeDir', runtime, '-ModelId', model])
         output = result.stdout.decode('utf-8', errors='replace') if isinstance(result.stdout, bytes) else result.stdout
         receipt = re.search(r'Owned PID (\d+) RUN ([0-9a-f]{32})', output or '')
+        self.model_id = model
         if result.returncode != 0:
             # A stale state file alone never grants control. The current script
             # emits this receipt only after verifying its newly created process.
@@ -102,14 +115,17 @@ class CandidateModelService:
                     state = json.loads((runtime / 'server-state.json').read_text(encoding='utf-8-sig'))
                     if (state.get('pid') == int(receipt[1]) and state.get('run_id') == receipt[2] and
                             Path(state.get('repo_root', '')).absolute() == ROOT and
-                            state.get('owner') == 'ReviewProject/scripts/local-model/v1'):
+                            state.get('owner') == 'ReviewProject/scripts/local-model/v1' and matches_profile(state)):
                         self.owned = (resource, runtime, state['run_id'])
                 except (OSError, ValueError, TypeError):
                     pass
+            details = str(getattr(result, 'stderr', ''))
+            require('E_MODEL_MISSING' not in details, 'E_LOCAL_MODEL_MISSING')
+            require('E_MODEL_SIZE' not in details and 'SHA-256' not in details, 'E_LOCAL_MODEL_WEIGHT')
             require(False, 'E_LOCAL_MODEL_START')
         state = json.loads((runtime / 'server-state.json').read_text(encoding='utf-8-sig'))
-        match = re.search(r'PID (\d+)', output or '')
-        require(match is not None and state.get('pid') == int(match[1]) and
+        require(receipt is not None and state.get('pid') == int(receipt[1]) and
+                state.get('run_id') == receipt[2] and matches_profile(state) and
                 Path(state.get('repo_root', '')).absolute() == ROOT and
                 re.fullmatch('[0-9a-f]{32}', state.get('run_id', '')) is not None and
                 state.get('owner') == 'ReviewProject/scripts/local-model/v1', 'E_MODEL_NOT_OWNED')
@@ -142,7 +158,7 @@ class AttentionCandidateWindow:
         self.status = tk.StringVar(value='选择记录并生成。候选先理解B，再独立对照A；生成不会保存正式分析。')
         self.actor, self.reason = tk.StringVar(), tk.StringVar()
         self.endpoint = tk.StringVar(value='http://127.0.0.1:8766/v1')
-        self.model = tk.StringVar(value='reviewproject-qwen3-4b-q4km')
+        self.model = tk.StringVar(value=DEFAULT_MODEL)
         self.context_chars, self.max_tokens = tk.StringVar(value='24000'), tk.StringVar(value='4096')
         self.resource = tk.StringVar(value=str(ROOT))
         self.runtime = tk.StringVar(value=str(ROOT / 'work' / ('local-model-candidates-' + uuid.uuid4().hex[:12])))
@@ -178,7 +194,9 @@ class AttentionCandidateWindow:
             ttk.Label(parent, text=label).pack(anchor='w')
             e = ttk.Entry(parent, textvariable=variable); e.pack(fill='x', pady=(0, 6)); return e
         entry(model_tab, '回环模型地址', self.endpoint)
-        entry(model_tab, '模型名称', self.model)
+        ttk.Label(model_tab, text='已支持模型配置（需事先安装）').pack(anchor='w')
+        self.model_selector = ttk.Combobox(model_tab, textvariable=self.model, state='readonly', values=list(profiles()))
+        self.model_selector.pack(fill='x', pady=(0,6))
         row = ttk.Frame(model_tab); row.pack(fill='x')
         for label, value in [('输入字符上限（整段超限会明确列出）', self.context_chars), ('最大输出长度', self.max_tokens)]:
             col = ttk.Frame(row); col.pack(side='left', fill='x', expand=True, padx=(0, 10)); entry(col, label, value)
@@ -216,6 +234,7 @@ class AttentionCandidateWindow:
             b.configure(state='normal' if self.run_id and not self.busy else 'disabled')
         self.stop_button.configure(state='normal' if self.service.owned and not self.busy else 'disabled')
         self.history.configure(state='disabled' if self.busy else 'readonly')
+        self.model_selector.configure(state='disabled' if self.busy or self.service.owned else 'readonly')
 
     def _target_current(self):
         current = getattr(self.controller, 'attention_path', None)
@@ -273,7 +292,8 @@ class AttentionCandidateWindow:
 
     def start_service(self):
         resource, runtime, service = self.resource.get(), self.runtime.get(), self.service
-        self.submit('start', lambda: service.start(resource, runtime))
+        model = self.model.get()
+        self.submit('start', lambda: service.start(resource, runtime, model))
 
     def stop_service(self):
         self.submit('stop', self.service.stop)
@@ -303,7 +323,10 @@ class AttentionCandidateWindow:
                     current = getattr(self.controller, 'attention_path', None)
                     if self.on_result and current is not None and Path(current).absolute() == self.target_path:
                         self.on_result(dict(kind='attention', path=self.target_path, revision=result['revision'], material_status=result['material_status']))
-                elif action == 'start': self.status.set('本窗口启动的模型已运行。模型生成只在你点击生成时进行。')
+                elif action == 'start':
+                    self.model.set(self.service.model_id)
+                    self.endpoint.set('http://127.0.0.1:8766/v1')
+                    self.status.set('本窗口启动的模型已运行。模型生成只在你点击生成时进行。')
                 elif action == 'stop': self.status.set('本窗口启动的模型已停止。')
                 self._controls()
         except queue.Empty:

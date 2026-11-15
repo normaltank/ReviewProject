@@ -17,7 +17,6 @@ $ResourceRoot = (Resolve-Path -LiteralPath $ResourceRoot).Path
 if (-not $RuntimeDir) { $RuntimeDir = Join-Path $repoRoot 'work/local-model' }
 $runtimeDir = [IO.Path]::GetFullPath($RuntimeDir)
 $exe = Join-Path $ResourceRoot '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
-$model = Join-Path $ResourceRoot '.tools/local-llm/Qwen3-4B-Q4_K_M.gguf'
 $statePath = Join-Path $runtimeDir 'server-state.json'
 $guard = [Threading.Mutex]::new($false, 'Local\ReviewProjectLocalModel8766')
 $lockHeld = $false
@@ -36,10 +35,16 @@ catch { throw 'The local service state is not readable JSON. No process was stop
 if ($PSBoundParameters.ContainsKey('ExpectedRunId') -and $state.run_id -cne $ExpectedRunId) {
     throw 'E_MODEL_NOT_OWNED'
 }
-$expectedArguments = '-m "' + $model + '" --alias reviewproject-qwen3-4b-q4km --tags reviewproject-local-run-' + $state.run_id + ' --host 127.0.0.1 --port 8766 --cors-origins localhost -c 16384 -np 1 -ngl 99 --device Vulkan0 --reasoning off --offline --no-webui --no-slots --no-cache-prompt --cache-ram 0 --log-colors off'
+. (Join-Path $PSScriptRoot 'local-model-profile.ps1')
+$modelId = 'reviewproject-qwen3-4b-q4km'
+if ($state.PSObject.Properties.Name -contains 'profile_id') { $modelId = $state.profile_id }
+$profile = Get-LocalModelProfile $modelId
+if (-not (Test-LocalModelStateProfile $state $modelId)) { throw 'E_MODEL_PROFILE' }
+$model = Join-Path $ResourceRoot ('.tools/local-llm/' + $profile.filename)
+$expectedArguments = Get-LocalModelArguments $model $modelId $profile.context_tokens $state.run_id
 if ($state.owner -ne 'ReviewProject/scripts/local-model/v1' -or $state.repo_root -ne $repoRoot -or
     $state.executable -ne $exe -or $state.model_path -ne $model -or
-    $state.model_sha256 -ne '7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5' -or
+    $state.model_sha256 -ne $profile.sha256 -or
     $state.run_id -notmatch '^[0-9a-f]{32}$' -or $state.arguments -cne $expectedArguments -or
     ($state.pid -isnot [int] -and $state.pid -isnot [long]) -or
     $state.pid -le 0 -or $state.pid -gt [int]::MaxValue) {
@@ -59,6 +64,10 @@ try {
         $processInfo.CommandLine -cne $state.process_command_line -or
         -not $processInfo.CommandLine.EndsWith($expectedArguments, [StringComparison]::Ordinal)) {
         throw 'The PID, creation time, executable or command target changed. Refusing to stop a reused or unrelated process.'
+    }
+    $listener = @(Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue)
+    if (@($listener | Where-Object { $_.OwningProcess -ne $state.pid -or $_.LocalAddress -ne '127.0.0.1' }).Count -gt 0) {
+        throw 'Port 8766 has an unexpected listener. No process was stopped.'
     }
     $target.Kill()
     if (-not $target.WaitForExit(10000)) { throw 'The identified process did not exit within 10 seconds.' }

@@ -148,7 +148,7 @@ assert not errors, errors
                 run_id = 'a' * 32
                 (runtime / 'server-state.json').write_text(json.dumps(dict(pid=123, run_id=run_id,
                     repo_root=str(ROOT), owner='ReviewProject/scripts/local-model/v1')), encoding='utf-8')
-                command.return_value = SimpleNamespace(returncode=0, stdout=b'Started PID 123')
+                command.return_value = SimpleNamespace(returncode=0, stdout=('Owned PID 123 RUN '+run_id).encode())
                 service.start(resource, runtime)
                 self.assertIn(str(resource.resolve()), [str(v) for v in command.call_args.args[0]])
                 self.assertIn(str(runtime), [str(v) for v in command.call_args.args[0]])
