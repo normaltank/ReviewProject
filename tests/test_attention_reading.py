@@ -1,6 +1,8 @@
 """Read, trace and correct synthetic results through the ordinary offline page."""
 import os
 import copy
+import json
+from contextlib import closing
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +16,81 @@ from test_attention_candidate_ui import prepare
 
 
 class AttentionReading(unittest.TestCase):
+    def test_a_replacement_pending_scopes_remain_visible_and_follow_saved_filters(self):
+        from reviewproto.attention import AttentionWorkspace
+        from attention_browser import open_panel
+        with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
+            root = Path(tmp); pack = root / 'pack'
+            with closing(AttentionWorkspace(pack)) as ws:
+                saved = ws.build({'schema': 'attention-input/1', 'records': [dict(
+                    anchor=anchor, text='可以说明样本。', visibility='author_visible', paper_id=group)
+                    for anchor, group in [('甲', '材料甲'), ('乙', '材料乙')]],
+                    'a_reference': dict(version='v1', items=[dict(id=k, text='说明样本', locator='合成') for k in ('a', 'b')])})
+                record = saved['records'][0]
+                ev = dict(source_id=record['source_id'], section_id='甲', start=0, end=7, quote='可以说明样本。')
+                facet = dict(facet_id='f', interpretation='说明样本', status='working', evidence=[ev],
+                    expression=dict(function='具体建议', boilerplate_candidate=False), a_links=[dict(a_item_id=k, version='v1', kind='partial',
+                    scope='样本', reason='仅样本说明', evidence=[ev], status='working') for k in ('a', 'b')],
+                    outside=[dict(scope='其他范围', reason='未列入清单', evidence=[ev], status='working')])
+                opinion = dict(opinion_id='o', record_id=record['record_id'], interpretation='说明样本', status='working', facets=[facet])
+                def saved_opinion():
+                    source = ws.state()['opinions'][0]
+                    return {key: copy.deepcopy(source[key]) for key in
+                        ('opinion_id', 'record_id', 'interpretation', 'status', 'facets', 'replaces')}
+                def apply():
+                    ws.apply(dict(schema='attention-patch/2', analysis_id=saved['analysis_id'], base_revision=ws.state()['revision'],
+                        actor='合成核对者', reason='核对范围', edits=[opinion]))
+                    ws.recover()
+                apply()
+                browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+                page = browser.new_page(offline=True, viewport={'width': 420, 'height': 1000})
+                def view(expected_a, expected_outside, denominator=2):
+                    header = page.locator('#view-version')
+                    self.assertTrue(header.is_visible())
+                    self.assertIn('B方面待核：0 个', header.inner_text())
+                    self.assertIn(f'A对应待核：{expected_a} 个方面', header.inner_text())
+                    self.assertIn(f'清单外待核：{expected_outside} 个方面', header.inner_text())
+                    self.assertIn(f'当前范围 {denominator} 条记录（分母）', header.inner_text())
+                page.goto((pack / 'attention.html').as_uri())
+                source = root / 'new-a.json'
+                source.write_text(json.dumps(dict(schema='attention-a-input/1', a_reference=dict(version='v2',
+                    items=[dict(id='a', text='可以说明样本范围', locator='新合成')]))), encoding='utf-8')
+                ws.import_a(source, actor='合成核对者', reason='显式换版'); current = ws.recover()
+                self.assertEqual(current['opinions'][0]['facets'][0]['status'], 'working')
+                self.assertTrue(all(link['status'] == 'needs_review' for link in
+                    current['opinions'][0]['facets'][0]['a_links'] + current['opinions'][0]['facets'][0]['outside']))
+                page.reload(); view(1, 1)  # two A links, one facet; overlap is not summed
+                self.assertTrue(all(page.locator('#' + key).get_attribute('open') is None
+                    for key in ('view-statistics', 'view-a-positions', 'attention-editor', 'reading-history')))
+                # A B correction also keeps the old destinations pending, while
+                # the facet itself remains a working interpretation.
+                opinion = saved_opinion()
+                opinion['facets'][0]['interpretation'] = '仅说明样本'
+                apply(); page.reload(); view(1, 1)
+                output = os.environ.get('ATTENTION_READING_FIX_EVIDENCE_DIR')
+                if output:
+                    for width in (420, 1440):
+                        page.set_viewport_size(dict(width=width, height=1000))
+                        page.screenshot(path=str(Path(output) / f'a-pending-{width}.png'))
+                open_panel(page, 'view-filters')
+                page.locator('#view-record').select_option(current['records'][1]['record_id']); view(0, 0, 1)
+                page.locator('#view-record').select_option('*')
+                page.locator('#view-paper').select_option(json.dumps('材料甲', ensure_ascii=False)); view(1, 1, 1)
+                page.locator('#view-paper').select_option('*')
+                page.locator('#view-boiler').select_option('true'); view(0, 0)
+                page.get_by_role('button', name='清除筛选').click(); view(1, 1)
+                # Only the removed A item remains: pending comes from the
+                # summary's unassigned range, not a current A item column.
+                opinion = saved_opinion()
+                opinion['facets'][0]['a_links'] = [link for link in opinion['facets'][0]['a_links'] if link['a_item_id'] == 'b']
+                apply(); page.reload(); view(1, 1)
+                # Withdrawn destinations stay excluded by the existing summary.
+                opinion = saved_opinion()
+                for link in opinion['facets'][0]['a_links'] + opinion['facets'][0]['outside']:
+                    link['status'] = 'withdrawn'
+                apply(); page.reload(); view(0, 0)
+                browser.close()
+
     def test_candidate_snapshot_can_collapse_without_hiding_unstaged_changes(self):
         with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
             pack = Path(tmp) / 'pack'

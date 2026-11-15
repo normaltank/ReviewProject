@@ -57,7 +57,9 @@ function refresh(){
  const facets=new Set(cs.map(c=>c.facet_id));
  const relations=base.relation_details.filter(r=>r.endpoints.length&&r.endpoints.every(e=>facets.has(e.facet_id)));
  current={ids,cs,relations};
- $('view-version').textContent='已保存修订 '+base.revision+' · 当前范围 '+ids.length+' 条记录（分母） · 待核 '+cs.filter(c=>c.status==='needs_review').length+' 个方面';
+ const aPending=cs.filter(c=>c.a_items.some(a=>a.kind==='needs_review')||c.a_unassigned.includes('needs_review')).length;
+ const outsidePending=cs.filter(c=>c.outside.includes('needs_review')).length;
+ $('view-version').textContent='已保存修订 '+base.revision+' · 当前范围 '+ids.length+' 条记录（分母） · B方面待核：'+cs.filter(c=>c.status==='needs_review').length+' 个 · A对应待核：'+aPending+' 个方面 · 清单外待核：'+outsidePending+' 个方面（可重叠）';
  const hits=unique(cs.map(c=>c.record_id));$('view-hits').textContent='命中 '+hits.length+'/'+ids.length+' · '+(hits.map(recordLabel).join('、')||'无命中记录');
  $('view-summary').replaceChildren();overview();
  node('p','各项允许重叠，父主题/A部分按记录取并集。工作解释、部分、相关、未定及待核分别保留；待核不合称明确覆盖。数字描述本批表达，不代表群体重要性、论文质量或A权重。未提及不表示不关注。',$('view-summary'));
