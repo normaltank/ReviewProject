@@ -79,6 +79,39 @@ class FormatRepair(unittest.TestCase):
         self.assertEqual(len(sent),3)
         self.assertIn('schema_validation',run['calls'][0])
 
+    def test_json_decoder_diagnostic_is_audited_and_sent_to_only_repair(self):
+        # Extra closing brace is on line2/column1 at Python codepoint3.
+        invalid='{}\n}'
+        run,sent=self.execute([reply(invalid),reply(B),reply({'function':'实质评价'})])
+        diagnostic={'kind':'json_decode','message':'Extra data','line':2,'column':1,'position':3}
+        self.assertEqual(run['calls'][0]['format_diagnostic'],diagnostic)
+        repair_text=sent[1]['messages'][-1]['content']
+        self.assertIn(json.dumps(diagnostic,ensure_ascii=False,separators=(',',':')),repair_text)
+        self.assertEqual(sent[1]['messages'][2],{'role':'assistant','content':invalid})
+        self.assertEqual(sent[0]['messages'][:2],sent[1]['messages'][:2])
+        self.assertEqual(sent[0]['max_tokens'],sent[1]['max_tokens'])
+        self.assertEqual(run['calls'][1]['request_hash'],digest(encoded(sent[1])))
+        self.assertEqual(run['request_count'],3)
+        self.assertEqual(run['format_repair_count'],1)
+        self.assertEqual(run['status'],'partial')
+
+    def test_schema_repair_diagnostic_has_safe_paths_not_raw_validation_values(self):
+        invalid=copy.deepcopy(B);invalid['opinions']='PRIVATE_VALIDATION_VALUE'
+        run,sent=self.execute([reply(invalid),reply(B),reply({'function':'实质评价'})])
+        diagnostic=run['calls'][0]['format_diagnostic']
+        self.assertEqual(diagnostic['kind'],'json_schema')
+        self.assertEqual(diagnostic['validator'],'type')
+        self.assertEqual(diagnostic['data_path'],['opinions'])
+        self.assertEqual(diagnostic['schema_path'],['properties','opinions','type'])
+        self.assertIn('PRIVATE_VALIDATION_VALUE',run['calls'][0]['schema_validation']['message'])
+        repair_instruction=sent[1]['messages'][-1]['content']
+        self.assertIn(json.dumps(diagnostic,ensure_ascii=False,separators=(',',':')),repair_instruction)
+        self.assertNotIn('PRIVATE_VALIDATION_VALUE',repair_instruction)
+        for forbidden in ('A_REFERENCE_SENTINEL','DO_NOT_SEND_PATH','DO_NOT_SEND_METADATA','FAKE-KEY'):
+            self.assertNotIn(forbidden,repair_instruction)
+        self.assertIn('PRIVATE_VALIDATION_VALUE',sent[1]['messages'][2]['content'])
+        self.assertEqual(run['calls'][0]['status'],'failed')
+
     def test_second_bad_output_stops_and_reports_source_without_third_attempt(self):
         run,sent=self.execute([reply('{'),reply('{')])
         self.assertEqual(len(sent),2)
