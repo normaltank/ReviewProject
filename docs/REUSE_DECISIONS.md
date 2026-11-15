@@ -2,6 +2,8 @@
 
 当前业务依据为[B关注内容、联系与分布](specs/b-attention-distribution.md)。本页从既有本地试用提取工程维护决定；完整历史、真实错漏及授权证据留在[本地工程资料](LOCAL_MATERIALS.md#engineering-evidence)。当前积压整理和main交付状态见[STATE](STATE.md)，不把选型、工程接入、语义准确率和用户收益混为一项完成。
 
+用户后续确认的费用约束：新关注流程只保留已授权的DeepSeek Flash模型服务，不新增收费API或软件订阅。Gemini Decisions、MAXQDA退出实施候选；LLooM、LLMCode保留方法参考身份，原包不作为运行依赖。当前收拢名单、固定版本维护证据和记录级DS试验边界见[工具与方法选择](research/attention-tools.md)。下文早期检索记录不重新授予其接入身份。
+
 ## 继续采用的底座
 
 - **原件与结构化输入**：保留python-docx薄适配及标准库CSV/JSON，冻结字节、原分字符串、解析状态和Unicode证据区间。特殊表型或权限歧义按契约拒收并回原件判断，继续使用合成输入做仓库回归。
@@ -47,6 +49,6 @@
 
 用户要求同时改善软件结果页和交付说明，并跨领域找能解决根本问题的工具/论文。本次先把阅读层收拢：已有B解释先行，原话、A对照、统计和运行诊断点击展开；必要待核、未完成、来源和草稿状态直接显示。操作见[阅读说明](ATTENTION_READING.md)，实际交付状态见[Issue32](https://github.com/normaltank/ReviewProject/issues/32)。本轮不新增模型推理或切换后端。
 
-路线复查已实际读取主源：[LLooM原论文](https://hci.stanford.edu/publications/2024/Lam_LLooM_CHI24.pdf)提供可编辑概念与例子下钻，适合研究跨记录归纳；[Gemini Decisions官方发布](https://blog.google/innovation-and-ai/technology/developers-tools/gemini-decisions-api/)及[Google Codelab](https://codelabs.developers.google.com/codelabs/discriminative-models)支持有限选项判断，适合表达分类对照；[GLiNER2论文](https://arxiv.org/abs/2507.18546)和[2.5多语模型](https://huggingface.co/fastino/gliner2.5-multi-v1)、[NuExtract3](https://huggingface.co/numind/NuExtract3)是不同于通用小模型的专用本机候选。它们的公开任务、模型卡与本项目中文语义保真/实际省时分别评价，未获本项目实测优势。
+路线复查已实际读取主源：[LLooM原论文](https://hci.stanford.edu/publications/2024/Lam_LLooM_CHI24.pdf)的概念定义与例子下钻用于方法参考，原包能力另按固定源码核对。[Gemini Decisions官方发布](https://blog.google/innovation-and-ai/technology/developers-tools/gemini-decisions-api/)及[Google Codelab](https://codelabs.developers.google.com/codelabs/discriminative-models)保留为有限判断的历史研究，按用户费用决定不再试接。[GLiNER2论文](https://arxiv.org/abs/2507.18546)和[2.5多语模型](https://huggingface.co/fastino/gliner2.5-multi-v1)仅在简单分类出现实际瓶颈时再作本机对照；[NuExtract3](https://huggingface.co/numind/NuExtract3)的文档抽取当前不是新增依赖。公开任务与本项目中文保真/实际省时分别评价，不能把模型卡当本项目优势证据。
 
-[QualCoder](https://qualcoder.org/doc/en/)与[MAXQDA AI Report](https://www.maxqda.com/help/ai-assist/ai-report)作为现成工作台/报告路线对照。不能把编码次数当记录覆盖；父组并集、原文区间、指定Flash适配和导出引用须同任务验证。比较也应包含同一Flash更简单的先B后A批量流程，不将当前调用粒度或内部字段当不可变需求。若轻量组合能以更低总负担完成理解、回查、纠正与换批，应缩减自建。上述是选型依据和待测路线，不是已接入或已验证能力；相关新API与模型尚未运行。
+[QualCoder](https://qualcoder.org/doc/en/)保留为免费人工工作台对照，不迁移现有身份/版本/保存历史；[MAXQDA AI Report](https://www.maxqda.com/help/ai-assist/ai-report)只借鉴阅读与引用设计。不能把编码次数当记录覆盖；父组并集、原文区间和导出引用须同任务验证。本轮已完成同一Flash记录级合并流程的冻结对照：请求减少但费用无优势、语义首评变差，实验不进入main，保留原默认。名单及证据见[工具选择](research/attention-tools.md)，交付终态见[Issue34](https://github.com/normaltank/ReviewProject/issues/34)；不把未采用原型转成下一轮必做任务。
