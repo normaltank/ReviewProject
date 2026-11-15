@@ -74,6 +74,7 @@ SCOPED_A_SCHEMA=obj({'a_text':S,'comparisons':{'type':'object','additionalProper
     'b_text':S,'kind':enum(*A_RELATIONS),'reason':S})}})
 FUNCTION_PROMPT='''只分类所选来源组在context中的表达作用，不评价论文专业正确性，不把邻近句子的作用搬到所选来源。
 focus是辅助理解的分析标签，selected组原话才是本次分类的权威范围，context是包含指代、条件和情态的完整语境；不能用同句另一内容的作用替换所选来源。
+谈论对象或状态尚不明，不等于所选评语自身的表达作用未定；明确限制或否定某种处理的焦点应按它自身的表达判断，不能只因语境中有未知就改判含义未定。否定也不固定对应某一功能，真正的含义歧义和其他表达作用仍须按原话保留。
 完整类别定义：
 '''+definition_table(FUNCTION_DEFINITIONS)+'''
 仅选择最贴近selected原话作用的一项。只返回JSON，function使用上表完整类别名。'''
