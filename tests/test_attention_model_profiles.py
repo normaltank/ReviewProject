@@ -70,6 +70,7 @@ class ModelProfiles(unittest.TestCase):
             root=tk.Tk()
             try:
                 window=AttentionCandidateWindow(root,controller)
+                window.provider.set('local');window.change_provider()
                 self.assertIn(NINE, window.model_selector['values'])
                 window.model_selector.current(list(window.model_selector['values']).index(NINE))
                 self.assertEqual(window.model.get(),NINE)
@@ -214,4 +215,3 @@ Write-Output 'PROFILE_LIFECYCLE_OK'
             result = subprocess.run([shutil.which('powershell.exe'),'-NoProfile','-File',str(harness)],capture_output=True,text=True,timeout=30)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             self.assertIn('PROFILE_LIFECYCLE_OK',result.stdout)
-

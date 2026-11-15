@@ -7,6 +7,12 @@ from .core import ReviewError, require
 from .store import Workspace, encoded
 
 
+API_HINTS = {
+    'E_ATTENTION_API_MODEL': 'Use --provider deepseek --model deepseek-flash (4.1 Flash / 1017). Pro is disabled.',
+    'E_DEEPSEEK_CREDENTIAL_MISSING': 'Set DEEPSEEK_API_KEY or explicitly save an API key in the desktop model settings.',
+    'E_DEEPSEEK_CREDENTIAL_STORE': 'Re-save the API key as the current Windows user or set DEEPSEEK_API_KEY.'}
+
+
 class SafeParser(argparse.ArgumentParser):
     def error(self, message):
         raise ReviewError("E_ARGUMENTS")
@@ -34,10 +40,11 @@ def main(argv=None):
                 source = item.add_mutually_exclusive_group(required=True)
                 source.add_argument('--replay')
                 source.add_argument('--local', action='store_true')
+                source.add_argument('--provider', choices=('local','deepseek'))
                 item.add_argument('--record', action='append')
-                item.add_argument('--endpoint', default='http://127.0.0.1:8766/v1')
-                item.add_argument('--model', default='reviewproject-qwen3-4b-q4km')
-                item.add_argument('--max-output-tokens', type=int, default=4096)
+                item.add_argument('--endpoint')
+                item.add_argument('--model')
+                item.add_argument('--max-output-tokens', type=int)
                 item.add_argument('--context-chars', type=int, default=24000)
             if command == 'attention-accept':
                 item.add_argument('--actor', required=True)
@@ -102,8 +109,12 @@ def main(argv=None):
                         responses = [c['response'] for c in replay['calls'] if 'response' in c] if isinstance(replay,dict) and 'calls' in replay else replay
                         require(isinstance(responses,list),'E_ATTENTION_RESPONSE')
                         provider = ReplayProvider(responses)
+                    elif args.provider=='deepseek':
+                        from .attention_api_provider import DeepSeekProvider, API_ENDPOINT, API_MODELS, API_DEFAULT_TOKENS
+                        provider = DeepSeekProvider(args.endpoint or API_ENDPOINT,args.model or API_MODELS[0],args.max_output_tokens if args.max_output_tokens is not None else API_DEFAULT_TOKENS)
                     else:
-                        provider = LocalProvider(args.endpoint,args.model,args.max_output_tokens)
+                        from .local_model_profiles import DEFAULT_MODEL
+                        provider = LocalProvider(args.endpoint or 'http://127.0.0.1:8766/v1',args.model or DEFAULT_MODEL,args.max_output_tokens if args.max_output_tokens is not None else 4096)
                     run = generate(workspace,args.run_id,provider,args.record,args.context_chars)
                 elif args.command == 'attention-preview':
                     run = preview(workspace,args.run_id)
@@ -111,6 +122,8 @@ def main(argv=None):
                     result = accept(workspace,args.run_id,actor=args.actor,reason=args.reason)
                     print('OK attention-accept revision=' + str(result['revision']) + ' material=' + result['material_status'])
                     return 0
+                for error in run.get('errors',[]):
+                    if error['code'] in API_HINTS: print(API_HINTS[error['code']],file=sys.stderr)
                 print('CANDIDATES status=' + run['status'] + ' mode=' + run['mode'] + ' opinions=' + str(len(run['patch']['edits'])) + ' requests=' + str(run.get('request_count',0)))
                 return 2 if run['status'] in {'partial','failed','running'} else 0
             elif args.command == 'attention-build':
@@ -220,6 +233,7 @@ def main(argv=None):
     except Exception as error:
         code = str(error) if isinstance(error, ReviewError) else "E_INTERNAL"
         print(code, file=sys.stderr)
+        if code in API_HINTS: print(API_HINTS[code],file=sys.stderr)
         return 2
     finally:
         if workspace is not None:

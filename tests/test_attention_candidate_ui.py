@@ -193,6 +193,7 @@ assert not errors, errors
             controller=Controller();controller.open_attention(path)
             root=tk.Tk();self.addCleanup(root.destroy)
             window=AttentionCandidateWindow(root,controller)
+            window.provider.set('local');window.change_provider()
             self.addCleanup(window.window.destroy)
             runtime=Path(tmp)/'runtime';runtime.mkdir();run_id='d'*32
             window.resource.set(tmp);window.runtime.set(str(runtime))
