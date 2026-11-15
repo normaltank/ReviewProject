@@ -39,8 +39,38 @@ def _path(workspace, run_id):
     return checked_local(checked_local(workspace.path/'candidate-runs')/run_id)
 
 def _save(path, run):
+    calls=run.get('calls',[])
+    run['request_count']=sum(bool(c.get('attempted')) for c in calls)
+    run['format_repair_count']=sum(c.get('purpose')=='format_repair' and bool(c.get('attempted')) for c in calls)
+    run['capacity_request_count']=sum(len(c.get('capacity',{}).get('calls',[])) for c in calls)
     bounded(run)
     atomic(checked_local(path/'run.json'), encoded(run))
+
+
+def request_audit(run):
+    """Read persisted client attempts, without inferring server receipt or usage."""
+    calls=run.get('calls',[])
+    running=run.get('status')=='running'
+    if running and any('attempted' not in call for call in calls):
+        count=None
+    elif calls and all('attempted' in call for call in calls):
+        count=sum(bool(call['attempted']) for call in calls)
+    elif type(run.get('request_count')) is int:
+        count=run['request_count']
+    else:
+        count=None if running else sum(bool(call.get('attempted')) for call in calls)
+    pending=sum(bool(call.get('attempted')) and 'response' not in call and
+                call.get('status') in {'pending','in_flight'} for call in calls)
+    repairs=[call for call in calls if call.get('purpose')=='format_repair']
+    if repairs and all('attempted' in call for call in repairs):
+        repair_count=sum(bool(call['attempted']) for call in repairs)
+    elif repairs:
+        repair_count=None
+    else:
+        repair_count=run.get('format_repair_count',0)
+    return {'count':count,'format_repair_count':repair_count,
+            'pending_response':pending,'unfinished':running or bool(pending)}
+
 
 def _binding(state):
     return digest(encoded({k:state[k] for k in ('analysis_id','revision','input_fingerprint','records','a_reference','bindings')}))
@@ -104,7 +134,7 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars, *,
         request.update(copy.deepcopy(provider.config.get('stage_profiles',{}).get(stage,{})))
     call={'stage':stage,'schema_hash':digest(encoded(schema)),'at':now(),'status':'pending','usage':None,'phase':'prepare',
           'call_id':'call-'+str(len(run['calls'])+1),'purpose':'format_repair' if repair_parent else 'analysis',
-          'parent_call_id':repair_parent}
+          'parent_call_id':repair_parent,'attempted':False}
     run['calls'].append(call)
     draft=None
     try:
@@ -128,7 +158,10 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars, *,
             prompt_tokens=provider.count_prompt(request,budget)
         budget['total_tokens_bound']=prompt_tokens+output+256
         require(budget['total_tokens_bound']<=limit,'E_ATTENTION_CAPACITY')
-        call['attempted']=True
+        call.update(attempted=True,status='in_flight',attempt_started_at=now())
+        # Persist intent before crossing the provider boundary. This proves a
+        # client attempt only, never server receipt, a result or billing.
+        _save(path,run)
         response=provider.complete(copy.deepcopy(request))
         call['response']=response
         call['response_hash']=digest(encoded(response))
@@ -442,9 +475,6 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     if patch['edits']:
         _validate(state,patch)
     run['status']=('partial' if patch['edits'] else 'failed') if run['errors'] or run['rejected'] or run['unprocessed'] else ('complete' if patch['edits'] else 'zero_candidates')
-    run['format_repair_count']=sum(c.get('purpose')=='format_repair' and bool(c.get('attempted')) for c in run['calls'])
-    run['request_count']=sum(bool(c.get('attempted')) for c in run['calls'])
-    run['capacity_request_count']=sum(len(c.get('capacity',{}).get('calls',[])) for c in run['calls'])
     run['patch_hash']=digest(encoded(patch))
     _save(path,run)
     return copy.deepcopy(run)

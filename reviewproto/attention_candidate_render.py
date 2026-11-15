@@ -7,6 +7,7 @@ from .attention_model import apply_objects
 from .attention_positions import project_positions
 from .attention_render import render
 from .attention_summary import summarize
+from .attention_candidates import request_audit
 
 
 def render_candidate_preview(run):
@@ -36,6 +37,12 @@ def render_candidate_preview(run):
                ' · ' + ('工程回放（非实际推理）' if run['mode'] == 'replay' else 'DeepSeek API联网推理' if run['mode']=='remote_api' else '实际本机推理') +
                ' · ' + ('绑定有效' if run.get('validity') == 'current' else '输入或修订已变，须重新生成') + '</p>')
     out.append('<p>处理状态不表示语义正确或人工确认。跨记录主题仍须人工整理。</p>')
+    audit=request_audit(run)
+    out.append('<p>已记录的提供方尝试数：'+(str(audit['count']) if audit['count'] is not None else '未知')+'。尝试数不代表服务器已收到请求、完成响应或计费成功。</p>')
+    if audit['unfinished']:
+        out.append('<p>运行尚未结束，可能仍在执行或已经中断。已开始而未保存响应的尝试：'+str(audit['pending_response'])+'；结果与用量未知，不代表服务器已收到或已计费。不会自动继续或重试，请核对原运行记录。</p>')
+        if audit['count'] is None:
+            out.append('<p>旧运行缺少完整尝试标记，次数未知，不能按0处理。</p>')
     out.append('<h2>处理范围与未完成项</h2><ul>')
     for item in run.get('coverage', []):
         out.append('<li>' + esc(item['record_id']) + ' · 全部分区：' +
@@ -52,7 +59,8 @@ def render_candidate_preview(run):
                str(len(run.get('rejected', []))) + ' 项。完整运行记录保存在本包候选历史中。</p>')
     repair_count=sum(c.get('purpose')=='format_repair' for c in run.get('calls',[]))
     if repair_count:
-        out.append('<p>发生格式修复 '+str(repair_count)+' 次（实际请求 '+str(run.get('format_repair_count',0))+' 次）；首次失败、原始草稿与各次用量均保留。修复不等于语义通过，运行保持部分或失败状态。</p>')
+        attempts=audit['format_repair_count']
+        out.append('<p>发生格式修复 '+str(repair_count)+' 次（实际请求 '+(str(attempts) if attempts is not None else '未知')+' 次）；首次失败、原始草稿与各次用量均保留。修复不等于语义通过，运行保持部分或失败状态。</p>')
     failures = {
         'E_ATTENTION_JSON_FORMAT': '模型草稿不是有效JSON，原始输出保留；符合条件时最多一次格式修复。请查看修复记录及未形成候选的来源。',
         'E_ATTENTION_SCHEMA_FORMAT': '模型JSON不符合原字段结构，原始输出和校验详情保留；符合条件时最多一次格式修复，逐字与语义核对仍独立执行。',
