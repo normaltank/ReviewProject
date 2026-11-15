@@ -6,6 +6,8 @@ All artifacts inherit the trusted analysis directory's source permissions.
 import copy
 import json
 import re
+import os
+import time
 from itertools import islice
 from .core import ReviewError, require, digest
 from .store import encoded, atomic, now
@@ -45,7 +47,20 @@ def _save(path, run):
     run['format_repair_count']=sum(c.get('purpose')=='format_repair' and bool(c.get('attempted')) for c in calls)
     run['capacity_request_count']=sum(len(c.get('capacity',{}).get('calls',[])) for c in calls)
     bounded(run)
-    atomic(checked_local(path/'run.json'), encoded(run))
+    data=encoded(run)
+    for attempt in range(3):
+        try:
+            atomic(checked_local(path/'run.json'),data)
+            return
+        except OSError as cause:
+            if (os.name=='nt' and isinstance(cause,PermissionError) and
+                    getattr(cause,'winerror',None) in {5,32,33} and attempt<2):
+                time.sleep(.05)
+                continue
+            error=ReviewError('E_ATTENTION_AUDIT_WRITE')
+            error.audit_write={'operation':'candidate_audit_write','error_type':type(cause).__name__,
+                'winerror':getattr(cause,'winerror',None),'errno':cause.errno,'attempts':attempt+1}
+            raise error from None
 
 
 def request_audit(run):
@@ -246,6 +261,7 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars, *,
             call['preparation_input']=request
             call['preparation_input_hash']=digest(encoded(request))
         call['error']=str(exc) if isinstance(exc,ReviewError) else 'E_ATTENTION_PROVIDER'
+        if hasattr(exc,'audit_write'): call['audit_write_error']=copy.deepcopy(exc.audit_write)
         run['errors'].append({'stage':stage,'code':call['error'],'call_id':call['call_id']})
         usage=call['usage']
         can_repair=(provider.mode=='remote_api' and provider.config.get('provider')=='deepseek-api/1' and repair_parent is None and call['phase']=='validation' and

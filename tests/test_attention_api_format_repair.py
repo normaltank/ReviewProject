@@ -45,7 +45,7 @@ class FormatRepair(unittest.TestCase):
                 opener.return_value.open.side_effect=open_fake
                 run=generate(ws,'format',provider or DeepSeekProvider(credential_loader=lambda:'FAKE-KEY'),context_chars=24000)
             for name,before in formal.items(): self.assertEqual((ws.path/name).read_bytes(),before,name)
-            saved=json.loads((ws.path/'candidate-runs/format/run.json').read_text())
+            saved=json.loads((ws.path/'candidate-runs/format/run.json').read_text(encoding='utf-8'))
             self.assertEqual(saved,run)
             self.assertNotIn('FAKE-KEY',json.dumps(run))
             return run,sent

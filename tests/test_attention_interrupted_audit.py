@@ -18,7 +18,7 @@ from reviewproto.attention import AttentionWorkspace
 from reviewproto.attention_candidates import generate,ReplayProvider
 class Interrupted(ReplayProvider):
     def complete(self,request):
-        (Path(sys.argv[1])/'fake-dispatched').write_text('synthetic provider entered; no HTTP')
+        (Path(sys.argv[1])/'fake-dispatched').write_text('synthetic provider entered; no HTTP',encoding='utf-8')
         os._exit(23)
 from reviewproto.attention_api_provider import DeepSeekProvider
 class InterruptedRepair(DeepSeekProvider):
@@ -30,7 +30,7 @@ class InterruptedRepair(DeepSeekProvider):
         if self.calls==1:
             return {'choices':[{'message':{'content':'{'},'finish_reason':'stop'}],
                     'usage':{'prompt_tokens':1,'completion_tokens':2,'total_tokens':3}}
-        (Path(sys.argv[1])/'fake-dispatched').write_text('synthetic repair provider entered; no HTTP')
+        (Path(sys.argv[1])/'fake-dispatched').write_text('synthetic repair provider entered; no HTTP',encoding='utf-8')
         os._exit(23)
 ws=AttentionWorkspace(Path(sys.argv[1])/'pack')
 ws.build({'schema':'attention-input/1','records':[{'anchor':'synthetic','visibility':'author_visible','text':'Synthetic comment.'}],
@@ -45,7 +45,7 @@ class InterruptedAudit(unittest.TestCase):
         self.assertEqual(child.returncode,23,child.stderr)
         self.assertTrue((Path(tmp)/'fake-dispatched').is_file())
         target=Path(tmp)/'pack/candidate-runs/interrupt/run.json'
-        return target,json.loads(target.read_text())
+        return target,json.loads(target.read_text(encoding='utf-8'))
 
     def test_provider_entry_is_persisted_before_abrupt_exit_and_preview_is_unknown(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -63,10 +63,10 @@ class InterruptedAudit(unittest.TestCase):
             self.assertIn('requests=1',stream.getvalue())
             self.assertIn('result_and_usage=unknown',stream.getvalue())
             from reviewproto.attention_candidate_ui import CandidateSession
-            page=CandidateSession(Path(tmp)/'pack').preview('interrupt').read_text()
+            page=CandidateSession(Path(tmp)/'pack').preview('interrupt').read_text(encoding='utf-8')
             self.assertIn('结果与用量未知',page)
             self.assertIn('不代表服务器已收到',page)
-            self.assertEqual(json.loads(target.read_text()),run)
+            self.assertEqual(json.loads(target.read_text(encoding='utf-8')),run)
 
     def test_legacy_unfinished_missing_markers_is_unknown_never_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -124,10 +124,10 @@ class InterruptedAudit(unittest.TestCase):
             self.assertIn('FORMAT_REPAIR requests=unknown',stream.getvalue())
             self.assertIn('CANDIDATES status=running',stream.getvalue())
             self.assertIn('requests=unknown',stream.getvalue())
-            page=CandidateSession(Path(tmp)/'pack').preview('interrupt').read_text()
+            page=CandidateSession(Path(tmp)/'pack').preview('interrupt').read_text(encoding='utf-8')
             self.assertIn('实际请求 未知 次',page)
             self.assertNotIn('实际请求 0 次',page)
-            self.assertEqual(json.loads(target.read_text()),run)
+            self.assertEqual(json.loads(target.read_text(encoding='utf-8')),run)
 
     def test_missing_repair_total_is_derived_when_attempt_markers_exist(self):
         from reviewproto.attention_candidate_render import render_candidate_preview
@@ -151,4 +151,4 @@ class InterruptedAudit(unittest.TestCase):
             run=generate(ws,'prepare',Broken([]))
             self.assertEqual(run['request_count'],0)
             self.assertFalse(run['calls'][0].get('attempted'))
-            self.assertEqual(json.loads((ws.path/'candidate-runs/prepare/run.json').read_text())['request_count'],0)
+            self.assertEqual(json.loads((ws.path/'candidate-runs/prepare/run.json').read_text(encoding='utf-8'))['request_count'],0)
