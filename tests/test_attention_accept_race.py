@@ -70,6 +70,11 @@ def gate(state,patch):
         if time.monotonic()>deadline: raise RuntimeError('test deadline')
         time.sleep(.01)
 c._validate=gate
+(path/('startup-ready-'+actor)).write_text('ready',encoding='utf-8')
+deadline=time.monotonic()+75
+while not (path/'start').exists():
+    if time.monotonic()>deadline: raise RuntimeError('test startup deadline: '+actor)
+    time.sleep(.01)
 ws=AttentionWorkspace(path)
 try:
     result={'revision':c.accept(ws,'race',actor=actor,reason='reason-'+actor)['revision']}
@@ -79,16 +84,39 @@ finally:ws.close()
 '''
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'pack';self.build(path)
-            children=[subprocess.Popen([sys.executable,'-B','-c',script,str(path),actor],stdout=subprocess.PIPE,stderr=subprocess.PIPE) for actor in ('A','B')]
-            try:
-                deadline=time.monotonic()+10
-                while not all((path/('ready-'+actor)).exists() for actor in ('A','B')):
-                    if time.monotonic()>deadline:self.fail('children did not prevalidate')
+            children={}
+            def fail_children(message):
+                diagnostics=[]
+                for actor,child in children.items():
+                    exit_before_cleanup=child.poll()
+                    if exit_before_cleanup is None:child.kill()
+                    out,err=child.communicate(timeout=5)
+                    diagnostics.append({'actor':actor,'exit_before_cleanup':exit_before_cleanup,
+                        'exit_after_cleanup':child.returncode,
+                        'stdout':out.decode('utf-8',errors='replace'),
+                        'stderr':err.decode('utf-8',errors='replace')})
+                self.fail(message+': '+repr(diagnostics))
+            def wait_ready(prefix,timeout,message):
+                deadline=time.monotonic()+timeout
+                while not all((path/(prefix+actor)).exists() for actor in children):
+                    if any(child.poll() is not None for child in children.values()):
+                        fail_children(message+' (child exited)')
+                    if time.monotonic()>deadline:fail_children(message+' (deadline)')
                     time.sleep(.01)
+            try:
+                for actor in ('A','B'):
+                    children[actor]=subprocess.Popen([sys.executable,'-B','-c',script,str(path),actor],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                # Interpreter/import startup is separate from the race window.
+                wait_ready('startup-ready-',60,'children did not finish startup')
+                (path/'start').write_text('start',encoding='utf-8')
+                wait_ready('ready-',10,'children did not prevalidate')
                 (path/'go').write_text('go',encoding='utf-8')
-                for child in children:
-                    _,err=child.communicate(timeout=15)
-                    self.assertEqual(child.returncode,0,err.decode('utf-8',errors='replace'))
+                for actor,child in children.items():
+                    try:out,err=child.communicate(timeout=15)
+                    except subprocess.TimeoutExpired:fail_children('accept did not finish: '+actor)
+                    self.assertEqual(child.returncode,0,
+                        {'actor':actor,'exit':child.returncode,'stdout':out.decode('utf-8',errors='replace'),
+                         'stderr':err.decode('utf-8',errors='replace')})
                 outcomes=[json.loads((path/('result-'+actor+'.json')).read_text(encoding='utf-8')) for actor in ('A','B')]
                 # Concurrent projection writes may need existing explicit output
                 # recovery after DB commit; receipt/history must still agree.
@@ -101,8 +129,9 @@ finally:ws.close()
                     self.assertEqual(c.accept(ws,'race',actor='recover',reason='explicit projection recovery')['revision'],1)
                     self.assertEqual((path/'candidate-runs/race/acceptance.json').read_bytes(),receipt_bytes)
             finally:
-                for child in children:
-                    if child.poll() is None:child.kill();child.communicate(timeout=5)
+                for child in children.values():
+                    if child.poll() is None:child.kill()
+                    child.communicate(timeout=5)
 
     def test_published_receipt_recovers_after_apply_failure_and_preserves_first_actor(self):
         with tempfile.TemporaryDirectory() as tmp:
