@@ -1,6 +1,6 @@
-# 旧工程维护入口
+# 已退役工程的历史说明
 
-本页为去标识化概要，供维护现有代码、接口和回归使用，不替代[当前业务规格](../specs/b-attention-distribution.md)或[正式计划](../plans/b-attention-distribution-construction.md)。完整旧规格与真实报告保持在原可信主工作区、原工作分支 `codex/opinion-review-flow`，不因本次导航取得公开权限。版本交付状态见[STATE](../STATE.md)。
+本页为已退役工程的去标识化历史概要。旧审核命令、写入器、编辑资源和专用试验已按[改革规格](../specs/project-reform.md)删除；下文命令只适用于历史版本，不能作为当前操作说明。本页不替代[当前业务规格](../specs/b-attention-distribution.md)或[正式计划](../plans/b-attention-distribution-construction.md)。完整旧规格与真实报告保持在原可信主工作区、原工作分支 `codex/opinion-review-flow`，不因本次导航取得公开权限。版本交付状态见[STATE](../STATE.md)。
 
 ## 旧条款审核路径
 
