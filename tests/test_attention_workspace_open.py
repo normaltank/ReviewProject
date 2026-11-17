@@ -52,19 +52,22 @@ class WorkspaceOpenTests(unittest.TestCase):
             expected = self.build(path)
             protection = path/'.gitignore'
             protection.write_bytes(b'# incorrect protection\n')
+            target = protection.resolve()
             replace = os.replace
             def denied(source, destination):
-                if Path(destination) == protection:
+                if Path(destination).resolve() == target:
                     raise PermissionError('synthetic protection repair denied')
                 return replace(source, destination)
             failure = None
             with patch('os.replace', side_effect=denied):
                 try:
-                    AttentionWorkspace(path)
+                    unexpected = AttentionWorkspace(path)
                 except PermissionError as error:
                     # Keep the exception/traceback alive: cleanup must not depend
                     # on SQLite's connection cycle being garbage-collected.
                     failure = error
+                else:
+                    unexpected.close()
             self.assertIsInstance(failure, PermissionError)
             self.assertEqual(str(failure), 'synthetic protection repair denied')
             self.assertEqual(protection.read_bytes(), b'# incorrect protection\n')
