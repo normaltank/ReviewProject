@@ -37,6 +37,7 @@ class RelationConnectors(unittest.TestCase):
         self.assertEqual(relation['status'],'needs_review')
         self.assertEqual(relation['evidence'][0]['quote'],original)
         self.assertEqual(len(relation['endpoints']),2)
+        self.assertEqual([e['role'] for e in relation['endpoints']],['第一项','第二项'])
         unsupported=self.run_relation(original,'理由支持')
         self.assertEqual(unsupported['patch']['relations'],[])
         self.assertIn('E_ATTENTION_RELATION_CONNECTION',str(unsupported['rejected']))
