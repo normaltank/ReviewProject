@@ -29,8 +29,6 @@ class DesktopControllerTests(unittest.TestCase):
                 powershell_executable()
 
 
-
-
     @unittest.skipUnless(os.name == 'nt' and shutil.which('powershell.exe'), 'Windows PowerShell needed')
     def test_stop_script_rejects_replaced_run_under_mutex_without_touching_process_or_state(self):
         repo = Path(__file__).resolve().parents[1]
@@ -157,5 +155,3 @@ sys.exit(7)
                     time.sleep(0.02)
                 self.assertFalse(worker.is_alive(), 'synthetic run_process did not clean up')
                 self.assertTrue(finished.is_file(), 'synthetic grandchild did not clean up')
-
-

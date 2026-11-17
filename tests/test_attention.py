@@ -1,3 +1,4 @@
+from contextlib import closing
 from attention_browser import open_panel
 import tempfile
 import unittest
@@ -202,8 +203,9 @@ class AttentionAcceptance(unittest.TestCase):
                 page.locator('#download').click()
             patchfile = self.root / 'draft.json'; download.value.save_as(patchfile)
             patch = json.loads(patchfile.read_text(encoding='utf-8'))
-            self.assertEqual(patch['edits'][0]['evidence'][0]['start'], 4)
-            self.assertIn('尚未保存到分析', page.locator('#message').inner_text())
+            self.assertEqual(patch['schema'], 'attention-patch/2')
+            self.assertEqual(patch['edits'][0]['facets'][0]['evidence'][0]['start'], 4)
+            self.assertIn('不会保存到分析包', page.locator('#message').inner_text())
             cli('attention-apply', patchfile); cli('attention-recover')
             page.reload()
             open_panel(page, 'attention-editor')
