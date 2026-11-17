@@ -53,13 +53,13 @@ class CandidateWorkflow(unittest.TestCase):
                 self.assertFalse(window.busy, window.status.get())
                 self.assertTrue(window.preview_button.winfo_ismapped())
                 self.assertTrue(window.accept_button.winfo_ismapped())
-                with patch.object(window, '_open_file') as opened:
+                with patch.object(controller, 'open_attention_report') as opened:
                     window.accept_button.invoke()
                     deadline = time.monotonic() + 10
                     while window.busy and time.monotonic() < deadline:
                         root.update(); time.sleep(.02)
                     self.assertFalse(window.busy, window.status.get())
-                    opened.assert_called_once_with(path / 'attention.html')
+                    opened.assert_called_once_with(path)
                 with closing(AttentionWorkspace(path)) as ws:
                     saved = ws.state()
                 self.assertEqual(saved['revision'], 1)
@@ -488,7 +488,8 @@ assert not errors, errors
                 with page.expect_download() as download:
                     page.locator('#download').click()
                 draft = Path(tmp) / 'draft.json'; download.value.save_as(draft)
-                self.assertEqual(controller.apply_attention(draft)['revision'], 2)
+                with closing(AttentionWorkspace(path)) as ws:
+                    self.assertEqual(ws.apply(input_path=draft)['revision'], 2)
                 self.assertEqual(controller.recover_attention()['revision'], 2)
                 page.goto((path / 'attention.html').as_uri())
                 open_panel(page, 'view-a-positions')

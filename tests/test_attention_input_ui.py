@@ -127,7 +127,7 @@ class AttentionInputTk(unittest.TestCase):
                             yield child
                             yield from descendants(child)
                     visible = [w for w in descendants(root) if w.winfo_class() == 'TButton' and w.winfo_ismapped()]
-                    self.assertEqual(len(visible), 3)
+                    self.assertEqual({w.cget('text') for w in visible}, {'新建分析', '打开已有分析'})
                     button = next(w for w in visible if w.cget('text') == '新建分析')
                     button.invoke(); root.update()
                     titles = [w.title() for w in root.winfo_children() if isinstance(w, tk.Toplevel)]
@@ -141,14 +141,13 @@ class AttentionInputTk(unittest.TestCase):
                         root.update()
                         visible = [w for w in descendants(root) if w.winfo_class() == 'TButton' and w.winfo_ismapped()]
                         self.assertTrue(any(w.cget('text') == '分析评语' for w in visible), entry.status.get())
-                        self.assertTrue(any(w.cget('text') == '查看结果' for w in visible))
+                        self.assertTrue(any(w.cget('text') == '查看并修改结果' for w in visible))
                         self.assertFalse(any(w.cget('text') == '显式启动本项目已安装模型' for w in visible))
-                        controls = list(descendants(root))
-                        more = next(w for w in controls if w.winfo_class() == 'TButton' and
-                                    w.cget('text') == '保存修改与更换关注清单…')
-                        more.invoke(); root.update()
-                        self.assertTrue(any(w.winfo_class() == 'TButton' and w.winfo_ismapped() and
-                                            w.cget('text') == '保存下载的修改并查看' for w in descendants(root)))
+                        change_a = next(w for w in visible if w.cget('text') == '修改A参照（可选）')
+                        change_a.invoke(); root.update()
+                        self.assertTrue(input_windows[-1].a_only)
+                        self.assertFalse(any(w.winfo_class() == 'TButton' and
+                            w.cget('text') == '保存下载的修改并查看' for w in descendants(root)))
                     observations.append(True)
                 finally:
                     for callback in root.tk.call('after', 'info'):
