@@ -31,6 +31,8 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
 
+2026-11-17 已收拢侧边“比较当前工作与 RAG”的研究与隔离补丁，执行顺序见[当前总施工计划](plans/attention-followthrough-20261117.md)，可读进度见[总清单](../PROJECT_TODO.md)。先独立接收模型内容重复字段的小修复，再推进 #38 的语义范围问题和新 A/B 完整路径验收。DocETL/LOTUS/Haystack 已有隔离接口验证不重复做；归并预览尚未接入产品，当前不增加生产依赖。具体证据与候选身份见[工具状态](research/attention-tools.md#side-results-20261117)和[本地入口](LOCAL_MATERIALS.md#side-research-20261117)。
+
 本轮延续focused路径，[Issue36](https://github.com/normaltank/ReviewProject/issues/36)与[PR37](https://github.com/normaltank/ReviewProject/pull/37)补齐原A对照请求遗漏的已有部分名称，具体边界见[A语境规格](specs/b-attention-a-context.md)。名称只辅助理解，不新增要求或排除跨部分的实际交集；未分组与无A保持。`1130139`完整检查444项零失败/错误/跳过，固定两轴审查无发现。新冻结5B三组A输入的独立盲首评两版均3通过、2部分；基线40次API，修订臂回放同一B后仅22次实际A调用，合计62次、用量已知，按本次时段估算约0.0326美元而非账单。没有证明语义提升；共同的确定排除/必要条件附加解释问题见[后续核对](https://github.com/normaltank/ReviewProject/issues/38)，不改写首评或混入本轮输入修复。最终文档、CI、main与本地入口状态以工作项为准。
 
 CI曾在旧跨进程测试等待子进程预校验处超时，同产品/测试版本后续CI也通过；这些终态均保留。验收集中返修仅将解释器/导入就绪等待与原10秒预校验窗口分开，增加子进程退出诊断并保持全部唯一收据/历史断言；同一子进程导入前延迟12秒的受控红测已转绿。该测试修改不改变已验证的生产B/A路径，不追加模型调用；最终完整工程检查及CI仍须对应最终版本。

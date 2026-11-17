@@ -177,6 +177,19 @@ def _schema_diagnostic(errors, truncated):
     return dict(kind='json_schema',**issues[0],errors=issues,error_limit=SCHEMA_DIAGNOSTIC_LIMIT,truncated=truncated)
 
 
+class _DuplicateJSONField(ValueError):
+    pass
+
+
+def _unique_json_object(pairs):
+    result={}
+    for key,value in pairs:
+        if key in result:
+            raise _DuplicateJSONField(key)
+        result[key]=value
+    return result
+
+
 def _call(path, run, stage, prompt, schema, payload, provider, context_chars, *, repair_parent=None, repair_draft=None, repair_diagnostic=None):
     base_prompt=prompt
     prompt=semantic.model_prompt(stage,prompt,schema)
@@ -234,7 +247,11 @@ def _call(path, run, stage, prompt, schema, payload, provider, context_chars, *,
         if provider.mode=='remote_api':
             call['phase']='validation'
             draft=content if isinstance(content,str) else json.dumps(content,ensure_ascii=False)
-            try: result=json.loads(draft)
+            try: result=json.loads(draft,object_pairs_hook=_unique_json_object)
+            except _DuplicateJSONField as error:
+                call['format_diagnostic']={'kind':'duplicate_key','field':str(error)[:80],
+                    'message':'Repeated object field; neither value is selected as authoritative.'}
+                raise ReviewError('E_ATTENTION_JSON_FORMAT') from None
             except json.JSONDecodeError as error:
                 call['format_diagnostic']={'kind':'json_decode','message':error.msg,
                     'line':error.lineno,'column':error.colno,'position':error.pos}
