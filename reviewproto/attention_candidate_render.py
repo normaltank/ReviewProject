@@ -199,6 +199,7 @@ def render_candidate_preview(run):
     page = page.replace('<script>' + editor + '</script>', '')
     page = page.replace("node('button','查看原话并修改',", "if(document.getElementById('attention-editor'))node('button','查看原话并修改',")
     page = page.replace('<p id="page-draft" role="status"></p>', '')
+    page = page.replace('<a href="#attention-editor">材料</a>', '')
     page = page.replace('</style><body>', '</style><body>' + ''.join(out) +
                         '<p><a href="../../attention.html">查看当前已保存结果（编辑请从桌面打开）</a></p>' +
                         '<details id="candidate-saved"><summary>生成时的只读保存结果 · 修订 ' + str(saved['revision']) +
