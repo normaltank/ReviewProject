@@ -135,3 +135,30 @@ class SessionTests(unittest.TestCase):
                 browser.close()
             with closing(AttentionWorkspace(path)) as ws:
                 self.assertEqual(ws.state()['revision'],0)
+
+    def test_one_save_collects_facet_theme_membership_a_and_relation_together(self):
+        from playwright.sync_api import sync_playwright, expect
+        from attention_browser import open_editor_tools
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'analysis'
+            with closing(AttentionWorkspace(path)) as ws:
+                state=ws.build({'schema':'attention-input/1','records':[{'anchor':'S','visibility':'visibility_unknown','text':'证据不足。','scores':[]}],'a_reference':{'version':'none','items':[]}})
+                r=state['records'][0];ev=dict(source_id=r['source_id'],section_id='S',start=0,end=5,quote='证据不足。')
+                ws.apply(dict(schema='attention-patch/2',analysis_id=state['analysis_id'],base_revision=0,actor='合成',reason='初始化',edits=[dict(opinion_id='op',record_id=r['record_id'],interpretation='旧解释',status='needs_review',facets=[dict(facet_id='f',interpretation='旧解释',status='needs_review',evidence=[ev])])]))
+            with AttentionSession(path) as session,sync_playwright() as p:
+                browser=p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY','C:/Program Files/Google/Chrome/Application/chrome.exe'),headless=True)
+                page=browser.new_page();page.goto(session.url);open_editor_tools(page);page.locator('#opinion').select_option('op')
+                page.locator('#interpretation').fill('同次保存的解释')
+                page.locator('#a-kind').select_option('undetermined');page.locator('#a-scope').fill('证据范围');page.locator('#a-reason').fill('暂不推断A条目')
+                page.locator('#theme-label').fill('证据');page.locator('#theme-definition').fill('证据支持范围');page.locator('#member-reason').fill('明说证据不足')
+                page.locator('#relation-role').fill('同一方面内的说明');page.locator('#endpoint-add').click()
+                for key,value in [('type','reason'),('direction','未定方向'),('scope','仅本方面'),('reading','局部证据判断')]:page.locator('#relation-'+key).fill(value)
+                page.locator('#save').click();expect(page.locator('#revision')).to_contain_text('已保存修订 2');browser.close()
+            with closing(AttentionWorkspace(path)) as ws:
+                saved=ws.state();f=saved['opinions'][0]['facets'][0]
+                self.assertEqual(f['interpretation'],'同次保存的解释')
+                self.assertEqual(f['a_links'][0]['scope'],'证据范围')
+                self.assertEqual(saved['themes'][0]['label'],'证据')
+                self.assertEqual(f['themes'][0]['reason'],'明说证据不足')
+                self.assertEqual(saved['relations'][0]['reading'],'局部证据判断')
