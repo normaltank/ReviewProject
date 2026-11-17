@@ -23,7 +23,7 @@
 
 ### S1 · 重复字段小修复与工程交付
 
-工作项：[Issue #40](https://github.com/normaltank/ReviewProject/issues/40)。补丁已在本任务分支接收并通过定向回归，完整检查、审查和主线交付仍须记录终态。
+工作项：[Issue #40](https://github.com/normaltank/ReviewProject/issues/40)与[PR #42](https://github.com/normaltank/ReviewProject/pull/42)。补丁已接收，公开边界先红后绿；451 项完整检查零失败/错误/跳过，固定 `b52478d…dd6e4cc` 两轴审查无未解决发现。本次后续文档状态更新不改运行代码；远端 CI、主线交付与稳定入口更新以工作项实际终态为准。
 
 依赖 S0。仅接收模型内容 JSON 的重复字段拒收，含嵌套与转义后同名字段；不改其他导入 JSON 或网络响应协议。可修复前提继续使用已知用量、正常结束等既有条件，至多一次同范围格式修复；再次失败保留来源未处理，不任取一个值。
 
