@@ -105,10 +105,12 @@ def collect_licenses(target):
 
 def audit_bundle(bundle, work):
     """Accept only analyzed runtime outputs and explicit release additions."""
-    toc = (work / "pyinstaller" / "ReviewProject" / "Analysis-00.toc").read_text(encoding="utf-8")
-    for forbidden in ("'tkinter", "'_tkinter", "'reviewproto.desktop'", "'reviewproto.native_ui'"):
-        if forbidden in toc:
-            raise RuntimeError("Retired UI reached module graph: " + forbidden)
+    analysis = ast.literal_eval((work / "pyinstaller" / "ReviewProject" / "Analysis-00.toc").read_text(encoding="utf-8"))
+    # Index 5 contains the exclusion configuration, not collected modules.
+    modules = {name for name, source, kind in analysis[14]}
+    for forbidden in EXCLUDED:
+        if any(name == forbidden or name.startswith(forbidden + ".") for name in modules):
+            raise RuntimeError("Excluded module reached module graph: " + forbidden)
     collected = ast.literal_eval((work / "pyinstaller" / "ReviewProject" / "COLLECT-00.toc").read_text(encoding="utf-8"))
     runtime = {name.replace("\\", "/") for name, source, kind in collected[0]}
     for path in bundle.rglob("*"):
