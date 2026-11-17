@@ -31,7 +31,7 @@ function notice(text='修改尚未保存到分析包。', group='facet') {
  if(dirty)write('draft',el('draft').textContent+'；仍有其他表单未暂存。');el('download').disabled=false;write('message',text);
 }
 function auditReady() {
- if(!el('actor').value.trim()||!el('reason').value.trim()){write('message','请填写修改者和修改理由，再暂存修改。');return false;}return state.material_status==='current';
+ if(!el('actor').value.trim()||!el('reason').value.trim()){write('message','请填写修改者和修改理由，再暂存修改。');return false;}if(state.material_status!=='current'){write('message','来源待核，不能保存修改；请保留草稿并核对来源。');return false;}return true;
 }
 function cleanOpinion(op) {
  const out={opinion_id:op.opinion_id,record_id:op.record_id,interpretation:op.interpretation,status:op.status,facets:clone(op.facets),replaces:clone(op.replaces||[])};
@@ -181,6 +181,7 @@ el('relation-stage').onclick=()=>{
  relationEdits.set(r.relation_id,r);rich=true;refreshRelations(r.relation_id);notice(undefined,'relation');
 };
 function collectForms() {
+ if(!dirtyGroups.size)return true;
  // Staging a facet refreshes related controls; retain every other form first.
  const ids=['a-link','a-kind','a-item','a-scope','a-reason','a-status','member-reason'];
  const held=Object.fromEntries(ids.map(id=>[id,el(id).value]));

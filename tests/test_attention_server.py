@@ -115,3 +115,23 @@ class SessionTests(unittest.TestCase):
             finally:controller.close()
             from urllib.error import URLError
             with self.assertRaises(URLError):urlopen(first.url,timeout=1)
+
+    def test_changed_source_rejects_save_without_discarding_page_draft(self):
+        from playwright.sync_api import sync_playwright, expect
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'analysis';source=Path(tmp)/'input.json'
+            source.write_text(json.dumps({'schema':'attention-input/1','records':[{'anchor':'S','visibility':'visibility_unknown','text':'证据不足。','scores':[]}],'a_reference':{'version':'none','items':[]}}),encoding='utf-8')
+            with closing(AttentionWorkspace(path)) as ws:ws.build(input_path=source)
+            with AttentionSession(path) as session,sync_playwright() as p:
+                browser=p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY','C:/Program Files/Google/Chrome/Application/chrome.exe'),headless=True)
+                page=browser.new_page();page.goto(session.url);page.locator('#attention-editor > summary').click()
+                page.locator('#passage').select_option('0:5');page.locator('#interpretation').fill('保留来源失效前的草稿')
+                source.write_text('{}',encoding='utf-8')
+                page.locator('#save').click()
+                expect(page.locator('#message')).to_contain_text('E_ATTENTION_REVALIDATION')
+                expect(page.locator('#interpretation')).to_have_value('保留来源失效前的草稿')
+                self.assertTrue(page.locator('#download').is_enabled())
+                browser.close()
+            with closing(AttentionWorkspace(path)) as ws:
+                self.assertEqual(ws.state()['revision'],0)
