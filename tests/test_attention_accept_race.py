@@ -52,7 +52,7 @@ class AcceptRace(unittest.TestCase):
                 self.assertEqual(history[0]['patch'],receipt)
                 self.assertEqual(history[0]['fingerprint'],digest((path/'candidate-runs/race/acceptance.json').read_bytes()))
                 self.assertEqual(c.accept(ws,'race',actor='repeat',reason='different')['revision'],1)
-            from reviewproto.attention_candidate_ui import CandidateSession
+            from reviewproto.attention_candidate_service import CandidateSession
             self.assertIn('已在修订 1 保存',CandidateSession(path).preview('race').read_text(encoding='utf-8'))
 
     def test_cross_process_prevalidated_accepts_apply_one_winner(self):

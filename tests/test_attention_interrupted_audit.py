@@ -62,7 +62,7 @@ class InterruptedAudit(unittest.TestCase):
             self.assertEqual(code,2)
             self.assertIn('requests=1',stream.getvalue())
             self.assertIn('result_and_usage=unknown',stream.getvalue())
-            from reviewproto.attention_candidate_ui import CandidateSession
+            from reviewproto.attention_candidate_service import CandidateSession
             page=CandidateSession(Path(tmp)/'pack').preview('interrupt').read_text(encoding='utf-8')
             self.assertIn('结果与用量未知',page)
             self.assertIn('不代表服务器已收到',page)
@@ -108,7 +108,7 @@ class InterruptedAudit(unittest.TestCase):
             self.assertEqual(len(run['errors']),1)
 
     def test_legacy_repair_missing_totals_and_attempt_marker_previews_unknown(self):
-        from reviewproto.attention_candidate_ui import CandidateSession
+        from reviewproto.attention_candidate_service import CandidateSession
         with tempfile.TemporaryDirectory() as tmp:
             target,run=self.interrupted(tmp,repair=True)
             for key in ('request_count','format_repair_count','capacity_request_count'):

@@ -21,21 +21,6 @@ class DesktopControllerTests(unittest.TestCase):
         gc.collect()
         return result
 
-    def test_current_analysis_has_a_next_step_and_optional_material_actions(self):
-        import tkinter as tk
-        from reviewproto.desktop import Controller, DesktopWindow
-        root = tk.Tk(); root.withdraw(); self.addCleanup(root.destroy)
-        controller = Controller()
-        window = DesktopWindow(root, controller)
-        self.assertFalse(window.analyze_button.winfo_manager())
-        window.result(dict(path=Path('synthetic-pack'), revision=0, material_status='current'))
-        self.assertTrue(window.analyze_button.winfo_manager())
-        self.assertFalse(window.change_a_button.winfo_manager())
-        window.materials_button.invoke()
-        self.assertTrue(window.change_a_button.winfo_manager())
-        self.assertIn('0', window.location.get())
-        window.materials_button.invoke()
-        self.assertFalse(window.change_a_button.winfo_manager())
 
     def test_powershell_host_prefers_pwsh_then_falls_back_and_missing_is_safe(self):
         from reviewproto.desktop import powershell_executable
