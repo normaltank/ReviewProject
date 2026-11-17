@@ -315,11 +315,15 @@ def _scoped_a_mapping(path,run,selected,reference,provider,context_chars):
     record=next(record for record in run['snapshot']['records'] if record['record_id']==selected[0]['record_id'])
     context={'sections':[{'id':'s'+str(i+1),'text':section['text']} for i,section in enumerate(record['sections'])]}
     decisions={};links=[];outside=[]
+    parts={part['id']:part['label'] for part in reference.get('parts',[])}
     for item in reference['items']:
+        a_item={'text':item['text']}
+        if item.get('part_id') in parts:
+            a_item['part_label']=parts[item['part_id']]
         response=_call(path,run,'a_mapping',semantic.SCOPED_A_PROMPT,semantic.scoped_a_schema(item,scopes),
             # Keep the active frozen B scopes last in the model-visible task.
             # Full context disambiguates references without becoming scope.
-            {'context':context,'a_item':{'text':item['text']},'facet':frozen,
+            {'context':context,'a_item':a_item,'facet':frozen,
              'scopes':[{'id':alias,'text':scope,'focus':groups[alias]['focus'],
               'quotes':[ev['quote'] for ev in groups[alias]['evidence']]} for alias,scope in scopes.items()]},provider,context_chars)
         if response is None: continue
