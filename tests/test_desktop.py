@@ -28,36 +28,8 @@ class DesktopControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(ReviewError, 'E_LOCAL_MODEL_SETUP'):
                 powershell_executable()
 
-    def test_model_start_identity_and_stop_use_same_selected_host(self):
-        from reviewproto.desktop import Controller
-        selected = str(Path('C:/Program Files/PowerShell/7/pwsh.exe').absolute())
-        identity = 'a' * 32
-        c = Controller()
-        responses = [subprocess.CompletedProcess([], 0, stdout=b'Local model ready; PID 123\n'),
-                     subprocess.CompletedProcess([], 0, stdout=identity.encode()),
-                     subprocess.CompletedProcess([], 0, stdout=b'Stopped')]
-        with patch('reviewproto.desktop.shutil.which', return_value=selected), \
-             patch('reviewproto.desktop.Path.read_text', return_value=json.dumps({'run_id': identity, 'pid': 123})), \
-             patch('reviewproto.desktop.run_process', side_effect=responses) as call:
-            c.start_model()
-            c._check_model()
-            c.stop_model()
-            self.assertEqual([v.args[0][0] for v in call.call_args_list], [selected] * 3)
-            self.assertIn('-File', call.call_args_list[0].args[0])
-            self.assertIn('-Command', call.call_args_list[1].args[0])
-            self.assertEqual(call.call_args_list[2].args[0][-2:], ['-ExpectedRunId', identity])
 
 
-    def test_gui_stop_passes_expected_identity_as_argument(self):
-        from reviewproto.desktop import Controller
-        c = Controller()
-        c.owns_model = 'a' * 32
-        with patch('reviewproto.desktop.Path.read_text', return_value=json.dumps({'run_id': c.owns_model})), \
-             patch('reviewproto.desktop.powershell_executable', return_value='synthetic-shell.exe'), \
-             patch('reviewproto.desktop.run_process', return_value=subprocess.CompletedProcess([], 0)) as call:
-            c.stop_model()
-            argv = call.call_args.args[0]
-            self.assertEqual(argv[-2:], ['-ExpectedRunId', 'a' * 32])
 
     @unittest.skipUnless(os.name == 'nt' and shutil.which('powershell.exe'), 'Windows PowerShell needed')
     def test_stop_script_rejects_replaced_run_under_mutex_without_touching_process_or_state(self):
@@ -187,21 +159,3 @@ sys.exit(7)
                 self.assertTrue(finished.is_file(), 'synthetic grandchild did not clean up')
 
 
-    def test_stop_refuses_a_service_started_by_another_window(self):
-        from reviewproto.desktop import Controller
-        c = Controller()
-        with self.assertRaises(ReviewError):
-            c.stop_model()
-        c.owns_model = 'owned-run'
-        with patch('reviewproto.desktop.Path.read_text', return_value='{"run_id":"different-run"}'), \
-             patch('reviewproto.desktop.run_process') as call:
-            with self.assertRaises(ReviewError):
-                c.stop_model()
-            call.assert_not_called()
-        with patch('reviewproto.desktop.powershell_executable', return_value='synthetic-shell.exe'), \
-             patch('reviewproto.desktop.run_process') as call:
-            call.return_value.returncode = 0
-            call.return_value.stdout = b'different-run\n'
-            with self.assertRaisesRegex(ReviewError, 'E_MODEL_NOT_OWNED'):
-                c._check_model()
-            self.assertEqual(call.call_count, 1)

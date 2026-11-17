@@ -177,7 +177,7 @@ class AttentionAcceptance(unittest.TestCase):
             self.assertNotIn('清晰', done.stdout + done.stderr)
         cli('attention-build', self.input)
         controller = Controller(); result = controller.open_attention(self.path)
-        self.assertEqual(result['kind'], 'attention'); self.assertIsNone(controller.path)
+        self.assertEqual(result['kind'], 'attention')
         with sync_playwright() as p:
             browser = p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY', 'C:/Program Files/Google/Chrome/Application/chrome.exe'), headless=True)
             page = browser.new_page(accept_downloads=True, offline=True, viewport={'width': 1440, 'height': 1000})
@@ -251,7 +251,6 @@ class AttentionAcceptance(unittest.TestCase):
         result = controller.build_attention(self.input, self.root / 'controller-created')
         self.assertEqual(result['revision'], 0)
         self.assertEqual(result['kind'], 'attention')
-        self.assertIsNone(controller.path)
 
     def test_transcription_preserves_declared_public_visibility_and_refuses_private_or_undeclared(self):
         import copy

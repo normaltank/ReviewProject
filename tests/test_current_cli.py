@@ -43,3 +43,55 @@ class CurrentCLI(unittest.TestCase):
                     self.assertEqual(output.getvalue(), '')
                     self.assertEqual(list(root.iterdir()), [source])
                     self.assertEqual(source.read_bytes(), b'PRIVATE_RAW_ORIGINAL')
+
+    def test_build_apply_replay_and_recover_preserve_raw_evidence_and_original_patch_audit(self):
+        from reviewproto.core import digest
+        from reviewproto.local_io import encoded
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            analysis = root / 'analysis'
+            source = root / 'input.json'
+            source.write_text(json.dumps({'schema': 'attention-input/1', 'records': [
+                {'anchor': 'B', 'visibility': 'author_visible', 'text': '清晰😀。清晰😀。',
+                 'scores': [{'label': '原分', 'raw_value': ' 4.0 / 5 '}]}],
+                'a_reference': {'version': 'no-a', 'items': []}}, ensure_ascii=False), encoding='utf-8')
+            original = source.read_bytes()
+            def cli(command, input_path=None):
+                args = [command, '--workspace', str(analysis)]
+                if input_path: args.append(str(input_path))
+                output, errors = io.StringIO(), io.StringIO()
+                with redirect_stdout(output), redirect_stderr(errors):
+                    code = main(args)
+                self.assertEqual(code, 0, errors.getvalue())
+                self.assertNotIn('清晰', output.getvalue() + errors.getvalue())
+                self.assertNotIn('4.0', output.getvalue() + errors.getvalue())
+            cli('attention-build', source)
+            with closing(AttentionWorkspace(analysis)) as workspace:
+                state = workspace.state()
+            record = state['records'][0]
+            evidence = [{'source_id': record['source_id'], 'section_id': 'B',
+                         'start': 4, 'end': 7, 'quote': '清晰😀'}]
+            patch = {'schema': 'attention-patch/1', 'analysis_id': state['analysis_id'],
+                     'base_revision': 0, 'actor': '合成编辑', 'reason': '历史草稿仍可回放',
+                     'edits': [{'opinion_id': 'O', 'facet_id': 'F', 'record_id': record['record_id'],
+                                'evidence': evidence, 'interpretation': '对表达的肯定', 'status': 'working'}]}
+            legacy = root / 'legacy.json'; legacy.write_bytes(encoded(patch))
+            cli('attention-apply', legacy); cli('attention-apply', legacy)
+            current = {'schema': 'attention-patch/2', 'analysis_id': state['analysis_id'],
+                       'base_revision': 1, 'actor': '合成复核', 'reason': '补充方面限定',
+                       'edits': [{'opinion_id': 'O', 'record_id': record['record_id'],
+                                  'interpretation': '保留原分与原话的肯定', 'status': 'working',
+                                  'facets': [{'facet_id': 'F', 'evidence': evidence, 'interpretation': '表达清晰',
+                                              'status': 'working', 'qualifiers': {'degree': '清晰'}}]}]}
+            draft = root / 'current.json'; draft.write_bytes(encoded(current))
+            cli('attention-apply', draft); cli('attention-recover'); cli('attention-apply', legacy)
+            with closing(AttentionWorkspace(analysis)) as workspace:
+                saved = workspace.state()
+            self.assertEqual(saved['revision'], 2)
+            self.assertEqual(saved['records'][0]['text'], '清晰😀。清晰😀。')
+            self.assertEqual(saved['records'][0]['scores'][0]['raw_value'], ' 4.0 / 5 ')
+            self.assertEqual(saved['opinions'][0]['facets'][0]['evidence'], evidence)
+            self.assertEqual(saved['opinions'][0]['facets'][0]['qualifiers']['degree'], '清晰')
+            self.assertEqual([h['patch'] for h in saved['history']], [patch, current])
+            self.assertEqual([h['fingerprint'] for h in saved['history']], [digest(encoded(patch)), digest(encoded(current))])
+            self.assertEqual(source.read_bytes(), original)

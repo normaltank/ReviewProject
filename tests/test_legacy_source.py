@@ -173,6 +173,64 @@ class LegacySourceReading(unittest.TestCase):
                 AttentionInput.workspace_options(path)
             self.assertEqual(original.stat().st_size, before)
 
+    def test_unsupported_native_original_cannot_hide_in_cache_or_erase_human_history(self):
+        from reviewproto.core import ReviewError, digest
+        from native_source_fixture import fixture, native_variant
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / 'source'
+            history = [{'actor': '合成编辑', 'reason': '旧人工记录', 'value': 'SAVED_HUMAN_VALUE'}]
+            state = create_legacy_workspace(source, data=fixture(), kind='native_docx',
+                                            revision=3, state_updates={'decisions': history})
+            unsupported = native_variant('oMath', 'comment')
+            source_id = digest(unsupported)
+            state['source'].update(source_id=source_id, sha256=source_id)
+            for section in state['sections']: section['source_id'] = source_id
+            state['versions']['parser'] = 'verified-two-cell-v1'
+            replace_state(source, state)
+            (source / 'source.docx').write_bytes(unsupported)
+            before = {p.relative_to(source): p.read_bytes() for p in source.rglob('*') if p.is_file()}
+            with self.assertRaisesRegex(ReviewError, 'E_UNSUPPORTED_FEATURE'):
+                AttentionInput.workspace_options(source)
+            self.assertEqual({p.relative_to(source): p.read_bytes() for p in source.rglob('*') if p.is_file()}, before)
+
+    def test_structured_json_and_csv_originals_keep_raw_scores_unicode_and_fixed_locations(self):
+        import csv
+        import io
+        from reviewproto.core import SCORE_NAMES, ReviewError
+        rows = [['期刊名称', 'synthetic journal', '稿件ID', 'SYNTHETIC-ID', '投稿日期', 'synthetic date'],
+                ['稿件标题', 'synthetic title', '', '', '', ''],
+                [SCORE_NAMES[0], '4', SCORE_NAMES[1], '4', SCORE_NAMES[2], '4'],
+                [SCORE_NAMES[3], ' 3.0 ', '', '', '', ''],
+                ['评审意见', '样本规模不足。\n另一段😀', '', '', '', ''],
+                ['其他意见（作者不可见）', 'PRIVATE_NEVER_COPY', '', '', '', '']]
+        stream = io.StringIO(newline=''); csv.writer(stream).writerows(rows)
+        structured = {'scores': [{'label': '自定义原分', 'raw_value': ' 甲 4.0 '}],
+                      'sections': [{'section_id': 'ordinary', 'label': '评审意见', 'text': '结构化合成评论😀'}]}
+        cases = [('structured_csv', stream.getvalue().encode('utf-8-sig'), 'section-1', 'source.csv',
+                  ['4', '4', '4', ' 3.0 '], '样本规模不足。\n另一段😀', {'row': 4, 'cell': 1}),
+                 ('structured_json', json.dumps(structured, ensure_ascii=False).encode(), 'ordinary', 'source.json',
+                  [' 甲 4.0 '], '结构化合成评论😀', {'pointer': '/sections/0/text'})]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for kind, content, section, filename, scores, text, locator in cases:
+                with self.subTest(kind=kind):
+                    source = root / kind
+                    create_legacy_workspace(source, data=content, kind=kind)
+                    draft = AttentionInput(); draft.add_workspace(source, section)
+                    before = {p.relative_to(source): p.read_bytes() for p in source.rglob('*') if p.is_file()}
+                    build_prepared(draft, root / (kind + '-analysis'))
+                    with closing(AttentionWorkspace(root / (kind + '-analysis'))) as workspace:
+                        state = workspace.state()
+                        record = state['records'][0]
+                        self.assertEqual([s['raw_value'] for s in record['scores']], scores)
+                        self.assertEqual(record['text'], text)
+                        self.assertEqual(record['sections'][0]['locator'], locator)
+                        self.assertNotIn('PRIVATE_NEVER_COPY', json.dumps(state))
+                        self.assertEqual({p.relative_to(source): p.read_bytes() for p in source.rglob('*') if p.is_file()}, before)
+                        (source / filename).write_bytes(content + b' ')
+                        self.assertEqual(workspace.state()['material_status'], 'needs_revalidation')
+                        self.assertEqual(workspace.state()['records'], state['records'])
+
 
 def replace_state(path, state):
     import sqlite3

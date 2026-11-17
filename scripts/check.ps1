@@ -17,9 +17,19 @@ print(f"Python: {sys.version}", flush=True)
 print(f"Interpreter: {sys.executable}", flush=True)
 if os.name != 'nt' or not shutil.which('pwsh') or not shutil.which('powershell.exe'):
     sys.exit('CHECK FAILED: Windows, PowerShell 7 (pwsh), and Windows PowerShell are required.')
-binary = os.environ.get('REVIEW_BROWSER_BINARY', '')
-if not binary or not Path(binary).is_file():
-    sys.exit('CHECK FAILED: set REVIEW_BROWSER_BINARY to an existing Chromium/Chrome executable; UI checks must not skip.')
+if 'REVIEW_BROWSER_BINARY' in os.environ:
+    binary = os.environ['REVIEW_BROWSER_BINARY']
+    if not binary or not Path(binary).is_file():
+        sys.exit('CHECK FAILED: explicit REVIEW_BROWSER_BINARY must point to an existing Chromium/Chrome/Edge executable.')
+else:
+    candidates = [Path(base) / relative
+                  for variable in ('ProgramW6432', 'ProgramFiles', 'ProgramFiles(x86)', 'LOCALAPPDATA')
+                  if (base := os.environ.get(variable))
+                  for relative in ('Google/Chrome/Application/chrome.exe', 'Microsoft/Edge/Application/msedge.exe')]
+    binary = next((str(path) for path in candidates if path.is_file()), '')
+    if not binary:
+        sys.exit('CHECK FAILED: no installed Chrome/Edge found; set REVIEW_BROWSER_BINARY. UI checks must not skip.')
+    os.environ['REVIEW_BROWSER_BINARY'] = binary
 print(f"Browser: {binary}", flush=True)
 try:
     from playwright.sync_api import sync_playwright
