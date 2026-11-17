@@ -285,7 +285,9 @@ function editALink(remove=false){
  if(!el('a-scope').value.trim()||!el('a-reason').value.trim()||!evidence||(!['outside','undetermined'].includes(kind)&&!item)){write('message','请填写范围、理由、原话证据，并为明确/部分/相关对应选择A条目。');return;}
  const link={scope:el('a-scope').value,reason:el('a-reason').value,evidence:clone([evidence]),status:el('a-status').value};
  if(kind!=='outside')Object.assign(link,{a_item_id:item||null,version:state.a_reference.version,kind});
- if(field)facet[field].splice(Number(index),1);facet[kind==='outside'?'outside':'a_links'].push(link);
+ const destination=kind==='outside'?'outside':'a_links';
+ if(field===destination)facet[field][Number(index)]=link;
+ else {if(field)facet[field].splice(Number(index),1);facet[destination].push(link);}
  }
  edits.set(op.opinion_id,result);rich=true;refreshALinks();notice('已保留对应修改，点击保存修改。','a');
 }
@@ -311,7 +313,16 @@ document.addEventListener('attention-edit-facet', event=>{
 for(const [id,choose] of [['record',chooseRecord],['section',chooseSection],['opinion',chooseOpinion],['facet',chooseFacet],['theme',chooseTheme],['relation',chooseRelation],['a-link',chooseALink]]){
  const node=el(id);let previous=node.value;
  node.addEventListener('focus',()=>{previous=node.value;});
- node.onchange=()=>{const next=node.value;node.value=previous;if(!collectForms())return;node.value=next;choose();previous=node.value;};
+ node.onchange=()=>{
+  let next=node.value;node.value=previous;
+  // Converting a link removes it from its old list. Keep the requested later
+  // item selected even though its index changes while collecting the form.
+  const [field,index]=previous.split(':'),[nextField,nextIndex]=next.split(':');
+  const moved=id==='a-link'&&dirtyGroups.has('a')&&field&&field!==(el('a-kind').value==='outside'?'outside':'a_links');
+  if(!collectForms())return;
+  if(moved&&nextField===field&&Number(nextIndex)>Number(index))next=field+':'+(Number(nextIndex)-1);
+  node.value=next;choose();previous=node.value;
+ };
 }
 for(const [id,group] of [['passage','facet'],['capture','facet'],['evidence-add','facet'],['endpoint-add','relation'],['endpoint-remove','relation'],['relation-evidence','relation']]){
  el(id).addEventListener(id==='passage'?'change':'click',()=>{dirtyGroups.add(group);dirty=true;write('draft','有尚未保存的修改。');});

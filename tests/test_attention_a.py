@@ -114,7 +114,9 @@ class AttentionA(unittest.TestCase):
             open_panel(page, 'editor-audit')
             page.locator('#actor').fill('浏览器编辑');page.locator('#reason').fill('纠正关联范围')
             page.locator('#a-link').select_option('a_links:0');page.locator('#a-scope').fill('纠正后的范围');page.locator('#a-save').click();save()
-            self.assertEqual(self.ws.state()['opinions'][0]['facets'][0]['a_links'][-1]['scope'],'纠正后的范围')
+            links=self.ws.state()['opinions'][0]['facets'][0]['a_links']
+            self.assertEqual(next(l for l in links if l['kind']=='explicit')['scope'],'纠正后的范围')
+            self.assertEqual({l['scope'] for l in links if l['kind']!='explicit'},{'合成范围partial','合成范围related','合成范围undetermined'})
             open_panel(page, 'editor-audit')
             page.locator('#actor').fill('浏览器编辑');page.locator('#reason').fill('清空最后一条也保存')
             while page.locator('#a-link option').count()>1:

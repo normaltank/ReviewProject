@@ -9,6 +9,51 @@ from reviewproto.attention import AttentionWorkspace
 from reviewproto.attention_server import AttentionSession
 
 class SessionTests(unittest.TestCase):
+    def test_chrome_a_navigation_edits_each_selected_link_once_then_reopens(self):
+        from playwright.sync_api import sync_playwright, expect
+        from attention_browser import open_editor_tools
+        import os
+        with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
+            browser=p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY','C:/Program Files/Google/Chrome/Application/chrome.exe'),headless=True)
+            # Cover updates within each list and conversions out of either list.
+            for initial_kind,edited_kind in [('outside','outside'),('partial','related'),('outside','explicit'),('undetermined','outside')]:
+                with self.subTest(initial_kind=initial_kind,edited_kind=edited_kind):
+                    path=Path(tmp)/(initial_kind+'-'+edited_kind)
+                    with closing(AttentionWorkspace(path)) as ws:
+                        state=ws.build({'schema':'attention-input/1','records':[{'anchor':'S','visibility':'author_visible','text':'证据不足。','scores':[]}],'a_reference':{'version':'v1','items':[{'id':'a','text':'可以说明证据','locator':'synthetic:1'}]}})
+                        r=state['records'][0];ev=dict(source_id=r['source_id'],section_id='S',start=0,end=5,quote='证据不足。')
+                        links=[dict(scope=scope,reason='分别保留两个范围',evidence=[ev],status='working') for scope in ['FIRST','SECOND']]
+                        field='outside' if initial_kind=='outside' else 'a_links'
+                        if field=='a_links':
+                            for link in links:link.update(a_item_id='a',version='v1',kind=initial_kind)
+                        ws.apply(dict(schema='attention-patch/2',analysis_id=state['analysis_id'],base_revision=0,actor='合成',reason='初始化两个关联',edits=[dict(opinion_id='op',record_id=r['record_id'],interpretation='证据范围',status='working',facets=[dict(facet_id='f',interpretation='证据范围',status='working',evidence=[ev],**{field:links})])]))
+                    with AttentionSession(path) as session:
+                        page=browser.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+                        page.goto(session.url);open_editor_tools(page);page.locator('#opinion').select_option('op')
+                        page.locator('#a-link').select_option(field+':0')
+                        page.locator('#a-scope').fill('FIRST-EDITED')
+                        page.locator('#a-kind').select_option(edited_kind)
+                        if edited_kind!='outside':page.locator('#a-item').select_option('a')
+                        # Do not stage first: selecting the second item must collect it
+                        # while still opening the item the user actually selected.
+                        page.locator('#a-link').select_option(field+':1')
+                        expect(page.locator('#a-scope')).to_have_value('SECOND')
+                        expect(page.locator('#a-kind')).to_have_value(initial_kind)
+                        page.locator('#a-scope').fill('SECOND-EDITED')
+                        page.locator('#save').click();expect(page.locator('#revision')).to_contain_text('已保存修订 2')
+                        page.reload();open_editor_tools(page);page.locator('#opinion').select_option('op')
+                        for scope,kind in [('FIRST-EDITED',edited_kind),('SECOND-EDITED',initial_kind)]:
+                            value=page.locator('#a-link option').filter(has_text=' · '+scope+' · ').get_attribute('value')
+                            page.locator('#a-link').select_option(value)
+                            expect(page.locator('#a-scope')).to_have_value(scope)
+                            expect(page.locator('#a-kind')).to_have_value(kind)
+                        self.assertFalse(errors,errors);page.close()
+                    with closing(AttentionWorkspace(path)) as ws:
+                        saved=ws.state();self.assertEqual(saved['revision'],2)
+                        facet=saved['opinions'][0]['facets'][0]
+                        self.assertEqual(sorted(link['scope'] for key in ['a_links','outside'] for link in facet[key]),['FIRST-EDITED','SECOND-EDITED'])
+            browser.close()
+
     def test_session_save_retry_conflict_and_static_export(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'analysis'
