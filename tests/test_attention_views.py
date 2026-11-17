@@ -9,6 +9,63 @@ from reviewproto.attention_render import render
 from test_attention_summary import oracle_state
 
 class AttentionViews(unittest.TestCase):
+    def test_disposition_links_show_pending_after_source_a_or_facet_invalidation(self):
+        import json
+        from reviewproto.attention import AttentionWorkspace
+        from reviewproto.attention_summary import summarize
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True)
+            for case in ('source', 'a', 'facet'):
+                with self.subTest(case=case):
+                    root = Path(folder) / case
+                    root.mkdir()
+                    source = root / 'input.json'
+                    reference = dict(version='a1', items=[dict(id='A1', text='合成A参照', locator='合成位置')])
+                    source.write_text(json.dumps(dict(schema='attention-input/1', records=[dict(anchor='合成',
+                        text='合成原话。', visibility='author_visible')], a_reference=reference)), encoding='utf-8')
+                    pack = root / 'pack'
+                    with closing(AttentionWorkspace(pack)) as ws:
+                        state = ws.build(input_path=source)
+                        r = state['records'][0]
+                        ev = dict(source_id=r['source_id'], section_id=r['anchor'], start=0, end=5, quote='合成原话。')
+                        facet = dict(facet_id='f', kind='disposition', interpretation='合成处置', evidence=[ev], status='confirmed',
+                            a_links=[dict(a_item_id='A1', version='a1', kind='explicit', scope='处置关联范围',
+                                reason='合成依据', evidence=[ev], status='confirmed')],
+                            outside=[dict(scope='处置清单外范围', reason='合成依据', evidence=[ev], status='confirmed')])
+                        opinion = dict(opinion_id='o', record_id=r['record_id'], interpretation='合成处置', status='confirmed', facets=[facet])
+                        patch = dict(schema='attention-patch/2', analysis_id=state['analysis_id'], base_revision=state['revision'],
+                            actor='合成', reason='核对处置关联', edits=[opinion])
+                        ws.apply(patch)
+                        ws.recover()
+                        page.goto((pack / 'attention.html').as_uri())
+                        entries = page.locator('#focus-reading .focus-a p')
+                        self.assertIn('已核对分析', entries.filter(has_text='处置关联范围').inner_text())
+                        self.assertIn('已核对分析', entries.filter(has_text='处置清单外范围').inner_text())
+                        if case == 'source':
+                            source.write_text(source.read_text(encoding='utf-8')+' ', encoding='utf-8')
+                        elif case == 'a':
+                            a_source = root / 'a.json'
+                            a_source.write_text(json.dumps(dict(schema='attention-a-input/1', a_reference=reference)), encoding='utf-8')
+                            ws.import_a(a_source, actor='合成', reason='显式绑定A来源')
+                            a_source.write_text(a_source.read_text(encoding='utf-8')+' ', encoding='utf-8')
+                        else:
+                            facet['status'] = 'needs_review'
+                            patch['base_revision'] = ws.state()['revision']
+                            ws.apply(patch)
+                        state = ws.recover()
+                    if case in ('source', 'a'):
+                        self.assertEqual(state['b_material_status' if case == 'source' else 'a_material_status'], 'needs_revalidation')
+                    summary = summarize(state)
+                    self.assertEqual(summary['content']['records']['count'], 0)
+                    self.assertEqual(summary['disposition']['records']['count'], 1)
+                    self.assertEqual(summary['a_items']['A1']['explicit']['count'], 0)
+                    self.assertEqual(summary['outside'], {})
+                    page.reload()
+                    self.assertIn('待核对', entries.filter(has_text='处置关联范围').inner_text())
+                    self.assertIn('待核对', entries.filter(has_text='处置清单外范围').inner_text())
+            browser.close()
+
     def test_focus_reading_preserves_each_a_link_and_outside_effective_status(self):
         import copy
         state = oracle_state()

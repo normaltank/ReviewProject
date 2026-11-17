@@ -1,4 +1,4 @@
-/* Offline saved-result views. A classification comes exclusively from summarize(). */
+/* Offline saved-result views. Content classification comes from summarize(). */
 (() => {
 'use strict';
 const base=JSON.parse(document.getElementById('attention-summary-data').textContent);
@@ -111,14 +111,20 @@ function focusReading(){
  });
  const a=node('section',null,center,{class:'focus-a'});node('h3','与参考方向 A 的对应关系',a);
  for(const c of cs){const f=base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id).facet;
+  const associationPending=c.status==='needs_review'||[base.a_material_status||base.material_status,base.b_material_status].includes('needs_revalidation');
   let itemIndex=0,unassignedIndex=0;
-  const mappings=(f.a_links||[]).filter(l=>!['withdrawn','superseded'].includes(l.status)).map(l=>({link:l,kind:base.a_reference.items.some(a=>a.id===l.a_item_id)?c.a_items[itemIndex++]?.kind:c.a_unassigned[unassignedIndex++]}));
+  const mappings=(f.a_links||[]).filter(l=>!['withdrawn','superseded'].includes(l.status)).map(l=>{
+   const known=base.a_reference.items.some(a=>a.id===l.a_item_id),savedKind=known?c.a_items[itemIndex++]?.kind:c.a_unassigned[unassignedIndex++];
+   // Disposition associations have no content-coverage bucket; retain their
+   // saved source, facet and link review boundaries without adding coverage.
+   return {link:l,kind:savedKind??(associationPending||l.status==='needs_review'||l.version!==base.a_version||(!known&&l.a_item_id!=null)?'needs_review':l.kind)};
+  });
   const title=mappings.length?mappings.map(({link:l,kind})=>name(kind||l.kind)+'：'+aTitle(l.a_item_id,l.version,true)).join('；'):aReading(c);
   node(mappings.length?'h4':'p',(f.qualifiers?.object||'关注点 '+(cs.indexOf(c)+1))+' · '+title,a);
   for(const {link:l,kind} of mappings)explain(a,'A关联 · '+name(kind||l.kind)+' / '+name(kind==='needs_review'?'needs_review':l.status),l.scope+' · '+(l.reason||'未说明'));
   const outsidePositions=positions.placements.filter(p=>p.facet_id===c.facet_id&&p.proposed_kind==null&&['outside','stale'].includes(p.region_id));
   (f.outside||[]).filter(l=>!['withdrawn','superseded'].includes(l.status)).forEach((l,i)=>{
-   explain(a,'清单外范围 · '+name(outsidePositions[i]?.review_status||l.status),l.scope);explain(a,'依据',l.reason);
+   explain(a,'清单外范围 · '+name(outsidePositions[i]?.review_status||(associationPending?'needs_review':l.status)),l.scope);explain(a,'依据',l.reason);
   });
  }
  if(!cs.length)node('p',(base.a_reference.items||[]).length?'尚未标注 A 对应':'尚未导入 A，可先整理 B。',a);
