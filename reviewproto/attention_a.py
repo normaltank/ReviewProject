@@ -2,9 +2,7 @@
 import copy
 from pathlib import Path
 from .core import require, digest
-from .batch import checked_local
-from .store import read_input
-from .framework import load_json
+from .local_io import checked_local, read_input, load_json
 
 
 def validate_reference(ref):

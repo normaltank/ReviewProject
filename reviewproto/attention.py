@@ -6,9 +6,8 @@ import sqlite3
 import uuid
 from pathlib import Path
 from .core import ReviewError, digest, require
-from .store import atomic, encoded, now, PRIVATE_IGNORE, read_input
-from .framework import load_json
-from .batch import bounded, checked_local, read_json, source_state
+from .local_io import atomic, encoded, now, PRIVATE_IGNORE, read_input, load_json, bounded, checked_local, read_json
+from .legacy_source import read_source_workspace
 
 SCHEMA = 'attention/1'
 
@@ -23,7 +22,7 @@ def _records(payload, base):
     for item in payload['records']:
         if item.get('kind') == 'workspace':
             path = checked_local(base / item['workspace'])
-            source = source_state(path)
+            source = read_source_workspace(path)
             selected = [s for s in source['sections'] if s['section_id'] == item['section_id']]
             require(len(selected) == 1, 'E_ATTENTION_SECTION')
             section = selected[0]
@@ -106,7 +105,7 @@ class AttentionWorkspace:
                 if binding['kind'] == 'file':
                     unchanged = digest(checked_local(binding['path']).read_bytes()) == binding['fingerprint']
                 else:
-                    source = source_state(binding['path'])
+                    source = read_source_workspace(binding['path'])
                     unchanged = source['revision'] == binding['revision'] and source['source']['source_id'] == binding['source_id']
             except Exception:
                 unchanged = False

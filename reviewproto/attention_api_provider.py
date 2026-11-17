@@ -5,7 +5,7 @@ import urllib.error
 import urllib.request
 
 from .core import require, ReviewError
-from .store import encoded
+from .local_io import encoded
 from .attention_provider import NoRedirect
 
 API_ENDPOINT = 'https://api.deepseek.com'
