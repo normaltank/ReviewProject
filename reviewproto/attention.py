@@ -70,16 +70,23 @@ class AttentionWorkspace:
         for name in ('attention.sqlite3', 'attention.sqlite3-wal', 'attention.sqlite3-shm', 'attention.html', 'attention-state.json', '.gitignore'):
             checked_local(self.path / name)
         self.db = sqlite3.connect(self.path / 'attention.sqlite3')
-        app = self.db.execute('PRAGMA application_id').fetchone()[0]
-        require(app == self.APPLICATION_ID or app == 0 and not self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table'").fetchone(), 'E_ATTENTION_DATABASE')
-        # Even assigning the same application_id updates SQLite header bytes.
-        # Existing recognized databases must remain byte-stable on read paths.
-        if app == 0:
-            self.db.execute('PRAGMA application_id=' + str(self.APPLICATION_ID))
-        self.db.execute('CREATE TABLE IF NOT EXISTS state(id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
-        self.db.execute('CREATE TABLE IF NOT EXISTS history(revision INTEGER PRIMARY KEY, fingerprint TEXT UNIQUE, payload TEXT NOT NULL)')
-        self.db.commit()
-        atomic(self.path / '.gitignore', PRIVATE_IGNORE)
+        try:
+            app = self.db.execute('PRAGMA application_id').fetchone()[0]
+            require(app == self.APPLICATION_ID or app == 0 and not self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table'").fetchone(), 'E_ATTENTION_DATABASE')
+            # Even assigning the same application_id updates SQLite header bytes.
+            # Existing recognized databases must remain byte-stable on read paths.
+            if app == 0:
+                self.db.execute('PRAGMA application_id=' + str(self.APPLICATION_ID))
+            self.db.execute('CREATE TABLE IF NOT EXISTS state(id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
+            self.db.execute('CREATE TABLE IF NOT EXISTS history(revision INTEGER PRIMARY KEY, fingerprint TEXT UNIQUE, payload TEXT NOT NULL)')
+            self.db.commit()
+            protection = self.path / '.gitignore'
+            # Readers/concurrent opens must not require replacing correct metadata.
+            if not protection.exists() or protection.read_bytes() != PRIVATE_IGNORE:
+                atomic(protection, PRIVATE_IGNORE)
+        except BaseException:
+            self.db.close()
+            raise
 
     def close(self):
         self.db.close()
