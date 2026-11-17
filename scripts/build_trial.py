@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from contextlib import contextmanager
 import hashlib
 import importlib.metadata as metadata
 import json
@@ -15,6 +16,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +42,27 @@ def sha(path):
 
 def write_json(path, payload):
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+@contextmanager
+def trial_config(key_file):
+    """Private input is never copied into source, command arguments or logs."""
+    if key_file is None:
+        yield None
+        return
+    try:
+        key = key_file.read_text(encoding="utf-8-sig").strip()
+    except (OSError, UnicodeError):
+        raise SystemExit("Cannot read private trial credential file") from None
+    if not key or not key.isascii() or any(c.isspace() for c in key):
+        raise SystemExit("Invalid private trial credential format")
+    with tempfile.TemporaryDirectory(prefix="ReviewProject-trial-staging-") as temporary:
+        staging = Path(temporary).resolve()
+        if staging.is_relative_to(ROOT):
+            raise SystemExit("Private trial staging must be outside the source tree")
+        config = staging / "trial-config.json"
+        write_json(config, {"deepseek_api_key": key})
+        yield config
 
 
 def collect_licenses(target):
@@ -109,6 +132,8 @@ def audit_bundle(bundle, work):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "work" / "trial-builds")
+    parser.add_argument("--trial-key-file", type=Path,
+                        help="Explicit private credential file for an authorized private trial ZIP")
     args = parser.parse_args(argv)
     if sys.platform != "win32" or platform.architecture()[0] != "64bit":
         raise SystemExit("Build on 64-bit Windows with 64-bit CPython")
@@ -135,14 +160,18 @@ def main(argv=None):
     for module in EXCLUDED:
         command.extend(["--exclude-module", module])
     command.append(str(entry))
-    with (work / "build.log").open("w", encoding="utf-8") as log:
-        subprocess.run(command, cwd=ROOT, check=True, stdout=log, stderr=subprocess.STDOUT)
+    with trial_config(args.trial_key_file) as config:
+        if config is not None:
+            command[-1:-1] = ["--add-data", str(config) + ":reviewproto"]
+        with (work / "build.log").open("w", encoding="utf-8") as log:
+            subprocess.run(command, cwd=ROOT, check=True, stdout=log, stderr=subprocess.STDOUT)
     bundle = work / "dist" / "ReviewProject"
     shutil.copy2(ROOT / "packaging" / "README_TRIAL.txt", bundle / "README_TRIAL.txt")
     versions = collect_licenses(bundle / "licenses")
     write_json(bundle / "BUILD_INFO.json", {
         "commit": commit, "python": platform.python_version(), "architecture": "Windows-x64",
         "packages": versions, "resource_allowlist": list(RESOURCES), "excluded_modules": list(EXCLUDED),
+        "embedded_trial_credential": args.trial_key_file is not None,
         "examples": "Explicit synthetic example is created by the Web workbench; no user data is copied.",
     })
     audit_bundle(bundle, work)
