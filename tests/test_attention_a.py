@@ -1,3 +1,4 @@
+from contextlib import closing
 from attention_browser import open_panel, open_editor_tools
 import copy
 import tempfile
@@ -95,7 +96,11 @@ class AttentionA(unittest.TestCase):
             patchfile=self.root/'download.json'
             def save():
                 with page.expect_download() as d:page.locator('#download').focus();page.keyboard.press('Enter')
-                d.value.save_as(patchfile);controller.apply_attention(patchfile);controller.recover_attention();page.reload()
+                d.value.save_as(patchfile)
+                with closing(AttentionWorkspace(controller.attention_path)) as workspace:
+                    applied = workspace.apply(input_path=patchfile)
+                controller.recover_attention()
+                page.reload()
                 open_editor_tools(page)
                 open_panel(page, 'reading-history')
                 page.locator('#opinion').select_option('o')

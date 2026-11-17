@@ -1,3 +1,4 @@
+from contextlib import closing
 from attention_browser import open_panel, open_editor_tools
 import os
 import tempfile
@@ -255,7 +256,9 @@ class AttentionViews(unittest.TestCase):
                     self.assertEqual(page.locator('#view-hits').text_content(), '')
                     for selector in ['#revision','#view-matrix','#view-graph']:
                         self.assertIn('已保存修订 0',page.locator(selector).inner_text())
-                    controller.apply_attention(patch);controller.recover_attention()
+                    with closing(AttentionWorkspace(controller.attention_path)) as workspace:
+                        applied = workspace.apply(input_path=patch)
+                    controller.recover_attention()
                     page.reload()
                     open_panel(page, 'view-statistics')
                     open_panel(page, 'view-filters')

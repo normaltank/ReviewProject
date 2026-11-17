@@ -18,7 +18,7 @@ class APITransport(unittest.TestCase):
     def test_prepared_json_wire_is_exactly_the_audited_request(self):
         from reviewproto.attention_api_provider import DeepSeekProvider
         from reviewproto.core import digest
-        from reviewproto.store import encoded
+        from reviewproto.local_io import encoded
         with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
             ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':'感谢说明。'}],
                       'a_reference':{'version':'none','items':[]}})

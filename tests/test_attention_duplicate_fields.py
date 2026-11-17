@@ -3,7 +3,7 @@ import json
 import unittest
 import test_attention_api_format_repair as fixture
 from reviewproto.core import digest
-from reviewproto.store import encoded
+from reviewproto.local_io import encoded
 
 def duplicate(value):
     op=value['opinions'][0]

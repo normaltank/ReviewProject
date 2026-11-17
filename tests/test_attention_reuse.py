@@ -112,7 +112,10 @@ class AttentionReuse(unittest.TestCase):
         file = self.folder / (name + '.json'); download.value.save_as(file)
         self.assertEqual(self.state(), before, 'Download must not change saved state')
         self.assertIn('已保存修订 ' + str(before['revision']), page.get_by_role('region', name='当前关注概览').inner_text())
-        self.controller.apply_attention(file); self.controller.recover_attention(); page.reload()
+        with closing(AttentionWorkspace(self.controller.attention_path)) as workspace:
+            applied = workspace.apply(input_path=file)
+        self.controller.recover_attention()
+        page.reload()
         open_panel(page, 'view-statistics')
         open_panel(page, 'view-filters')
         open_panel(page, 'view-extra-views')
@@ -176,7 +179,9 @@ class AttentionReuse(unittest.TestCase):
                 self.assertIn('来源失效', page.get_by_role('region', name='当前关注概览').inner_text())
                 self.assertIn(S1[0][2], page.locator('#source').text_content())
                 before = self.state()
-                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION'): self.controller.apply_attention(draft)
+                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION'):
+                    with closing(AttentionWorkspace(self.controller.attention_path)) as workspace:
+                        applied = workspace.apply(input_path=draft)
                 self.assertEqual(self.state()['revision'], before['revision'])
                 self.web_shots(page, 's1-stale')
                 source.write_bytes(original); self.controller.recover_attention(); page.reload()

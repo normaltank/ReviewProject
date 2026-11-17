@@ -104,7 +104,8 @@ class AttentionAcceptance(unittest.TestCase):
         patch_path.write_text(json.dumps(patch), encoding='utf-8')
         html = self.path / 'attention.html'; html.unlink(); html.mkdir()
         with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_OUTPUT_RECOVER') as failure:
-            controller.apply_attention(patch_path)
+            with closing(AttentionWorkspace(controller.attention_path)) as workspace:
+                applied = workspace.apply(input_path=patch_path)
         self.assertIn('恢复关注页', safe_message(failure.exception))
         self.assertEqual(ws.state()['revision'], 1)
         html.rmdir(); ws.recover(); ws.apply(patch)
@@ -125,11 +126,11 @@ class AttentionAcceptance(unittest.TestCase):
 
     def test_workspace_selection_is_read_only_private_free_and_groups_sections(self):
         import json
-        from reviewproto.store import Workspace
+        from legacy_source_fixture import create_legacy_workspace
         from reviewproto.core import ReviewError, digest
         source_input = self.root / 'source.json'
         source_input.write_text(json.dumps({'scores': [{'label': '分数', 'raw_value': ' 4 '}], 'sections': [{'section_id': 's1', 'label': '评审意见', 'text': '清晰😀。清晰😀。'}, {'section_id': 's2', 'label': '评审意见', 'text': '第二普通分区'}, {'section_id': 'private', 'label': '其他意见（作者不可见）', 'text': 'PRIVATE_NEVER_COPY'}]}), encoding='utf-8')
-        src = Workspace(self.root / 'source'); src.run(source_input, 'synthetic', 'json'); src.close()
+        create_legacy_workspace(self.root / 'source', data=source_input.read_bytes())
         database = self.root / 'source/review.sqlite3'; before = database.read_bytes()
         self.payload['records'] = [{'kind': 'workspace', 'workspace': 'source', 'section_id': sid} for sid in ('s1', 's2')]
         ws = AttentionWorkspace(self.path); self.addCleanup(ws.close)
@@ -165,7 +166,7 @@ class AttentionAcceptance(unittest.TestCase):
         import json, os, subprocess, sys
         from playwright.sync_api import sync_playwright
         from reviewproto.desktop import Controller
-        from reviewproto.store import encoded
+        from reviewproto.local_io import encoded
         evidence_dir = Path(os.environ.get('ATTENTION_EVIDENCE_DIR', self.root / 'screens'))
         evidence_dir.mkdir(parents=True, exist_ok=True)
         def cli(command, source=None):
@@ -218,7 +219,9 @@ class AttentionAcceptance(unittest.TestCase):
             with page.expect_download() as download:
                 page.locator('#download').click()
             download.value.save_as(patchfile)
-            self.assertEqual(controller.apply_attention(patchfile)['revision'], 2)
+            with closing(AttentionWorkspace(controller.attention_path)) as workspace:
+                applied = workspace.apply(input_path=patchfile)
+            self.assertEqual(applied['revision'], 2)
             controller.recover_attention(); page.reload()
             open_panel(page, 'attention-editor')
             open_panel(page, 'reading-history')
