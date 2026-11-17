@@ -295,10 +295,15 @@ el('a-item').onchange=showAItem;el('a-kind').onchange=showAItem;
 el('a-save').onclick=()=>editALink();el('a-remove').onclick=()=>editALink(true);
 for(const id of ['a-kind','a-item','a-scope','a-reason','a-status'])el(id).addEventListener('input',()=>{dirtyGroups.add('a');dirty=true;el('download').disabled=false;write('draft','关联表单有未暂存的更改。');});
 // Saved position navigation never overwrites unstaged form changes.
-document.addEventListener('attention-edit-facet', event=>{
+function editSavedPosition(event){
  const target=event.detail;
  window.AttentionReading.reveal(el('attention-editor'));
  if(!collectForms())return;
+ if(event.type==='attention-edit-record'){
+  if(!state.records.some(r=>r.record_id===target.record_id)){write('message','该记录已不可编辑，请恢复并重开页面核对。');return;}
+  el('record').value=target.record_id;chooseRecord();
+  write('message','已定位评语原话；补录后点击保存修改。');el('source').scrollIntoView({block:'center'});el('source').focus();return;
+ }
  const op=allOpinions().find(o=>o.opinion_id===target.opinion_id&&o.record_id===target.record_id&&active(o));
  const f=op?.facets.find(f=>f.facet_id===target.facet_id&&!['withdrawn','superseded'].includes(f.status));
  if(!f||!state.records.some(r=>r.record_id===target.record_id)){write('message','该保存对象已不可编辑，请恢复并重开页面核对。');return;}
@@ -307,7 +312,9 @@ document.addEventListener('attention-edit-facet', event=>{
  if(sec&&record().sections.some(s=>s.section_id===sec)){el('section').value=sec;chooseSection();}
  el('opinion').value=op.opinion_id;chooseOpinion();el('facet').value=f.facet_id;chooseFacet();
  write('message','已定位保存方面；修改后点击保存修改。');el('source').scrollIntoView({block:'center'});el('source').focus();
-});
+}
+document.addEventListener('attention-edit-facet',editSavedPosition);
+document.addEventListener('attention-edit-record',editSavedPosition);
 
 // Every context switch follows the same collect-or-block rule.
 for(const [id,choose] of [['record',chooseRecord],['section',chooseSection],['opinion',chooseOpinion],['facet',chooseFacet],['theme',chooseTheme],['relation',chooseRelation],['a-link',chooseALink]]){

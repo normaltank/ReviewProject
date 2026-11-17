@@ -118,7 +118,7 @@ function focusReading(){
  if(!cs.length)node('p',(base.a_reference.items||[]).length?'尚未标注 A 对应':'尚未导入 A，可先整理 B。',a);
  const actions=node('div',null,center,{class:'focus-actions'});
  if($('attention-editor')){const edit=node('button','修改解释',actions,{type:'button',class:'focus-primary'});
- edit.onclick=()=>cs.length?document.dispatchEvent(new CustomEvent('attention-edit-facet',{detail:cs.find(c=>c.facet_id===selectedFacet)||cs[0]})):window.AttentionReading.reveal($('attention-editor'));}
+ edit.onclick=()=>document.dispatchEvent(new CustomEvent(cs.length?'attention-edit-facet':'attention-edit-record',{detail:cs.length?(cs.find(c=>c.facet_id===selectedFacet)||cs[0]):{record_id:selectedRecord}}));}
  node('span','已保存修订 '+base.revision,actions,{class:'focus-secondary'});
  node('button','查看原话',actions,{type:'button'}).onclick=()=>showSource(cs[0]);
  const ref=node('details',null,center,{class:'focus-reference'});node('summary','参考方向 A（'+base.a_reference.items.length+' 项）',ref);

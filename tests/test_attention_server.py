@@ -9,6 +9,102 @@ from reviewproto.attention import AttentionWorkspace
 from reviewproto.attention_server import AttentionSession
 
 class SessionTests(unittest.TestCase):
+    def test_chrome_focus_empty_record_collects_or_blocks_existing_facet_draft(self):
+        from playwright.sync_api import sync_playwright, expect
+        from attention_browser import open_panel
+        import os
+        with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
+            path = Path(tmp) / 'analysis'
+            with closing(AttentionWorkspace(path)) as ws:
+                state = ws.build(dict(schema='attention-input/1', records=[dict(anchor='Review '+str(i),
+                    text='Synthetic '+str(i)+'.', visibility='author_visible') for i in (1, 2)],
+                    a_reference=dict(version='none', items=[])))
+                r = state['records'][0]
+                ev = dict(source_id=r['source_id'], section_id='Review 1', start=0, end=12, quote='Synthetic 1.')
+                ws.apply(dict(schema='attention-patch/2', analysis_id=state['analysis_id'], base_revision=0,
+                    actor='合成', reason='预置第一条方面', edits=[dict(opinion_id='o1', record_id=r['record_id'],
+                    interpretation='第一条原解释', status='working', facets=[dict(facet_id='f1',
+                    interpretation='第一条原解释', evidence=[ev], status='working')])]))
+            browser = p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY',
+                'C:/Program Files/Google/Chrome/Application/chrome.exe'), headless=True)
+            with AttentionSession(path) as session:
+                page = browser.new_page()
+                page.goto(session.url)
+                page.get_by_role('button', name='修改解释', exact=True).click()
+                page.locator('#interpretation').fill('')
+                page.locator('#focus-list button').nth(1).click()
+                page.get_by_role('button', name='修改解释', exact=True).click()
+                expect(page.locator('#record option:checked')).to_have_text('记录 1 · Review 1')
+                expect(page.locator('#interpretation')).to_have_value('')
+                expect(page.locator('#message')).to_contain_text('请选择原话证据，并填写解释')
+                expect(page.locator('#page-draft')).to_contain_text('尚未保存')
+                page.locator('#interpretation').fill('第一条保留的完整草稿')
+                page.get_by_role('button', name='修改解释', exact=True).click()
+                expect(page.locator('#record option:checked')).to_have_text('记录 2 · Review 2')
+                expect(page.locator('#source')).to_have_text('Synthetic 2.')
+                expect(page.locator('#interpretation')).to_have_value('')
+                expect(page.locator('#page-draft')).to_contain_text('尚未保存')
+                open_panel(page, 'editor-source-position')
+                page.locator('#passage').select_option('0:12')
+                page.locator('#interpretation').fill('第二条补录解释')
+                page.locator('#save').click()
+                expect(page.locator('#revision')).to_contain_text('已保存修订 2')
+                page.reload()
+                for index, interpretation in [(0, '第一条保留的完整草稿'), (1, '第二条补录解释')]:
+                    page.locator('#focus-list button').nth(index).click()
+                    expect(page.locator('#focus-reading')).to_contain_text(interpretation)
+                    page.get_by_role('button', name='修改解释', exact=True).click()
+                    expect(page.locator('#interpretation')).to_have_value(interpretation)
+                    expect(page.locator('#source')).to_have_text('Synthetic '+str(index+1)+'.')
+            with closing(AttentionWorkspace(path)) as ws:
+                saved = ws.state()
+                self.assertEqual(saved['revision'], 2)
+                self.assertEqual(len(saved['opinions']), 2)
+                for op in saved['opinions']:
+                    index = next(i for i, r in enumerate(saved['records']) if r['record_id'] == op['record_id'])
+                    self.assertEqual(op['facets'][0]['evidence'][0]['quote'], 'Synthetic '+str(index+1)+'.')
+            browser.close()
+
+    def test_chrome_focus_edit_empty_record_saves_only_selected_record(self):
+        from playwright.sync_api import sync_playwright, expect
+        from attention_browser import open_panel
+        import os
+        with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
+            path = Path(tmp) / 'analysis'
+            with closing(AttentionWorkspace(path)) as ws:
+                ws.build(dict(schema='attention-input/1', records=[dict(anchor='Review '+str(i),
+                    text='Synthetic '+str(i)+'.', visibility='author_visible') for i in (1, 2)],
+                    a_reference=dict(version='none', items=[])))
+            browser = p.chromium.launch(executable_path=os.environ.get('REVIEW_BROWSER_BINARY',
+                'C:/Program Files/Google/Chrome/Application/chrome.exe'), headless=True)
+            with AttentionSession(path) as session:
+                page = browser.new_page()
+                page.goto(session.url)
+                page.locator('#focus-list button').nth(1).click()
+                page.get_by_role('button', name='修改解释', exact=True).click()
+                expect(page.locator('#record option:checked')).to_have_text('记录 2 · Review 2')
+                expect(page.locator('#source')).to_have_text('Synthetic 2.')
+                open_panel(page, 'editor-source-position')
+                page.locator('#passage').select_option('0:12')
+                page.locator('#interpretation').fill('第二条补录解释')
+                page.locator('#save').click()
+                expect(page.locator('#revision')).to_contain_text('已保存修订 1')
+                page.reload()
+                page.locator('#focus-list button').nth(0).click()
+                expect(page.locator('#focus-reading')).to_contain_text('尚无命中解释')
+                page.locator('#focus-list button').nth(1).click()
+                expect(page.locator('#focus-reading')).to_contain_text('第二条补录解释')
+                page.get_by_role('button', name='修改解释', exact=True).click()
+                expect(page.locator('#source')).to_have_text('Synthetic 2.')
+                expect(page.locator('#interpretation')).to_have_value('第二条补录解释')
+            with closing(AttentionWorkspace(path)) as ws:
+                saved = ws.state()
+                self.assertEqual(saved['revision'], 1)
+                self.assertEqual(len(saved['opinions']), 1)
+                self.assertEqual(saved['opinions'][0]['record_id'], saved['records'][1]['record_id'])
+                self.assertEqual(saved['opinions'][0]['facets'][0]['evidence'][0]['quote'], 'Synthetic 2.')
+            browser.close()
+
     def test_chrome_a_navigation_edits_each_selected_link_once_then_reopens(self):
         from playwright.sync_api import sync_playwright, expect
         from attention_browser import open_editor_tools
