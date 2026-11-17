@@ -4,7 +4,7 @@ let current=null,jobs=[],browsePath='',draft={records:[],parts:[],items:[]};
 const node=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
 const notice=(text,error=false)=>{$('notice').textContent=text;$('notice').className=error?'error':'';};
 async function api(route,data={}){const r=await fetch('/api/'+route,{method:'POST',headers:{'Content-Type':'application/json','X-Attention-Token':token},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error);return v;}
-const errors={E_DEEPSEEK_CREDENTIAL_MISSING:'尚未配置DeepSeek，请展开分析设置保存自己的密钥；也可先人工阅读。',E_WORKBENCH_BUSY:'分析任务仍在运行。请等待任务完成后再关闭或重新分析。',E_ATTENTION_EMPTY:'没有可建立的B原话，或所选目录不是已有分析。',E_ATTENTION_NOT_DEDICATED:'目录已有内容。请填写新的空目录，已有内容已保护。',E_ATTENTION_REVALIDATION:'来源、A或保存修订已变化。请刷新核对并重新生成，旧候选仍保留。'};
+const errors={E_DEEPSEEK_TRIAL_CONFIG:'本机试用配置文件无效，请重新解压完整试用包，或在分析设置中保存自己的密钥。',E_DEEPSEEK_CREDENTIAL_MISSING:'尚未配置DeepSeek，请展开分析设置保存自己的密钥；也可先人工阅读。',E_WORKBENCH_BUSY:'分析任务仍在运行。请等待任务完成后再关闭或重新分析。',E_ATTENTION_EMPTY:'没有可建立的B原话，或所选目录不是已有分析。',E_ATTENTION_NOT_DEDICATED:'目录已有内容。请填写新的空目录，已有内容已保护。',E_ATTENTION_REVALIDATION:'来源、A或保存修订已变化。请刷新核对并重新生成，旧候选仍保留。'};
 function action(id,fn){$(id).onclick=async()=>{const b=$(id);b.disabled=true;try{await fn();}catch(e){notice(errors[e.message]||'操作未完成（'+e.message+'）。输入草稿仍在，请核对后重试。',true);}finally{b.disabled=false;}};}
 function show(name){for(const id of ['home','input','project'])$(id).hidden=id!==name;}
 function field(parent,label,value='',tag='input'){const l=node('label',label),e=node(tag);e.value=value;l.append(e);parent.append(l);return e;}
@@ -28,7 +28,8 @@ function renderDraft(){
 }
 function reference(){return {version:$('a-version').value,parts:draft.parts,items:draft.items.map(x=>{const r={...x};if(!draft.parts.length)delete r.part_id;return r;})};}
 function inputPayload(){return {path:$('destination').value,records:draft.records,a_reference:draft.items.length?reference():undefined};}
-async function home(){const h=await api('home');jobs=h.jobs; $('recent').replaceChildren();for(const path of h.recent)button($('recent'),path,()=>load(path).catch(e=>notice(e.message,true)));
+function configurationStatus(c){$('configuration-status').textContent=c.error?(errors[c.error]||'本机分析配置无法读取，请检查分析设置。'):c.configured?(c.source==='trial'?'试用配置已就绪。选择原话后可直接开始分析。':'个人分析配置已就绪。选择原话后可开始分析。'):'尚未配置分析服务，可在分析设置中保存密钥，也可先人工阅读。';}
+async function home(){const h=await api('home');jobs=h.jobs; configurationStatus(h.configuration); $('recent').replaceChildren();for(const path of h.recent)button($('recent'),path,()=>load(path).catch(e=>notice(e.message,true)));
  if(h.draft){draft={records:h.draft.records||[],parts:h.draft.a_reference?.parts||[],items:h.draft.a_reference?.items||[]};$('destination').value=h.draft.path||'';$('a-version').value=h.draft.a_reference?.version||'A-v1';renderDraft();}
  if(!$('destination').value)$('destination').value=h.data_dir+'/analysis-'+Date.now();notice('工作台已就绪。材料与结果保留在本机。');}
 async function load(path){await display(await api('open',{path}));}
@@ -41,7 +42,7 @@ action('show-home',async()=>{show('home');await home();});action('show-input',as
 action('add-part',async()=>{draft.parts.push({id:'part-'+crypto.randomUUID(),label:''});renderDraft();});action('add-a',async()=>{draft.items.push({id:'item-'+crypto.randomUUID(),text:'',locator:'',part_id:draft.parts[0]?.id});renderDraft();});
 action('save-draft',async()=>{await api('draft',inputPayload());notice('输入草稿已保存在本机。尚未建立分析。');});action('create',async()=>{await api('draft',inputPayload());await display(await api('create',inputPayload()));});action('open',()=>load($('open-path').value));
 action('sample',async()=>{await display(await api('sample'));notice('已打开人工编写的纯合成示例。示例非模型结果、非专业金标，可直接读图并练习纠正保存。');});
-action('save-key',async()=>{try{await api('credential',{key:$('api-key').value});notice('密钥已保存到本机凭据层。');}finally{$('api-key').value='';}});
+action('save-key',async()=>{try{await api('credential',{key:$('api-key').value});configurationStatus({configured:true,source:'personal'});notice('密钥已保存到本机凭据层。');}finally{$('api-key').value='';}});
 action('generate',async()=>{const records=Array.from($('scope').querySelectorAll('input:checked')).map(e=>e.value);if(!records.length){notice('请至少选择一条B原话。',true);return;}const job=await api('generate',{id:current.id,records});jobs.push(job);drawJobs();notice('分析已启动。切换项目不会改变此任务的保存目标。');});
 action('all-records',async()=>{$('scope').querySelectorAll('input').forEach(c=>c.checked=true);});action('no-records',async()=>{$('scope').querySelectorAll('input').forEach(c=>c.checked=false);});action('load-runs',runs);action('refresh',async()=>display(await api('state',{id:current.id})));action('import-a',async()=>display(await api('import-a',{id:current.id,a_reference:reference()})));
 async function browse(path){const b=await api('browse',{path});browsePath=b.path;$('browse-path').textContent=b.path;$('browser').hidden=false;$('directories').replaceChildren();for(const p of b.directories)button($('directories'),p,()=>browse(p).catch(e=>notice(e.message,true)));$('parent').onclick=()=>browse(b.parent);}

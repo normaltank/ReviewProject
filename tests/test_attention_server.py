@@ -1,3 +1,4 @@
+from attention_browser import select_reading_record
 import json
 import tempfile
 import unittest
@@ -32,7 +33,7 @@ class SessionTests(unittest.TestCase):
                 page.goto(session.url)
                 page.get_by_role('button', name='修改解释', exact=True).click()
                 page.locator('#interpretation').fill('')
-                page.locator('#focus-list button').nth(1).click()
+                select_reading_record(page, 1)
                 page.get_by_role('button', name='修改解释', exact=True).click()
                 expect(page.locator('#record option:checked')).to_have_text('记录 1 · Review 1')
                 expect(page.locator('#interpretation')).to_have_value('')
@@ -51,7 +52,7 @@ class SessionTests(unittest.TestCase):
                 expect(page.locator('#revision')).to_contain_text('已保存修订 2')
                 page.reload()
                 for index, interpretation in [(0, '第一条保留的完整草稿'), (1, '第二条补录解释')]:
-                    page.locator('#focus-list button').nth(index).click()
+                    select_reading_record(page, index)
                     expect(page.locator('#focus-reading')).to_contain_text(interpretation)
                     page.get_by_role('button', name='修改解释', exact=True).click()
                     expect(page.locator('#interpretation')).to_have_value(interpretation)
@@ -80,7 +81,7 @@ class SessionTests(unittest.TestCase):
             with AttentionSession(path) as session:
                 page = browser.new_page()
                 page.goto(session.url)
-                page.locator('#focus-list button').nth(1).click()
+                select_reading_record(page, 1)
                 page.get_by_role('button', name='修改解释', exact=True).click()
                 expect(page.locator('#record option:checked')).to_have_text('记录 2 · Review 2')
                 expect(page.locator('#source')).to_have_text('Synthetic 2.')
@@ -90,9 +91,9 @@ class SessionTests(unittest.TestCase):
                 page.locator('#save').click()
                 expect(page.locator('#revision')).to_contain_text('已保存修订 1')
                 page.reload()
-                page.locator('#focus-list button').nth(0).click()
+                select_reading_record(page, 0)
                 expect(page.locator('#focus-reading')).to_contain_text('尚无命中解释')
-                page.locator('#focus-list button').nth(1).click()
+                select_reading_record(page, 1)
                 expect(page.locator('#focus-reading')).to_contain_text('第二条补录解释')
                 page.get_by_role('button', name='修改解释', exact=True).click()
                 expect(page.locator('#source')).to_have_text('Synthetic 2.')

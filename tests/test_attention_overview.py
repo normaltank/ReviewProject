@@ -62,7 +62,7 @@ class AttentionOverview(unittest.TestCase):
                     self.assertIn('已保存修订 1', overview.inner_text())
                     self.assertIn('1 个观点 / 1 个方面', overview.inner_text())
                     self.assertIn(f'1/{count}', overview.inner_text())
-                    target = overview.get_by_role('link', name='fresh-0', exact=True).first
+                    target = overview.get_by_role('link', name='新材料0：若有证据，可以收束。', exact=True).first
                     href = target.get_attribute('href')
                     target.click()
                     self.assertIn('收束范围的工作解释', page.locator('#view-detail').inner_text())
