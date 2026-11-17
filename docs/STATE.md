@@ -1,4 +1,4 @@
-# 交接状态 2026-11-15
+# 交接状态 2026-11-17
 
 <a id="当前目标与a参照"></a>
 <a id="已确认的业务边界"></a>
@@ -28,6 +28,8 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="下一步"></a>
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
+
+本轮延续focused路径，[Issue36](https://github.com/normaltank/ReviewProject/issues/36)与[PR37](https://github.com/normaltank/ReviewProject/pull/37)补齐原A对照请求遗漏的已有部分名称，具体边界见[A语境规格](specs/b-attention-a-context.md)。名称只辅助理解，不新增要求或排除跨部分的实际交集；未分组与无A保持。`1130139`完整检查444项零失败/错误/跳过，固定两轴审查无发现。新冻结5B三组A输入的独立盲首评两版均3通过、2部分；基线40次API，修订臂回放同一B后仅22次实际A调用，合计62次、用量已知，按本次时段估算约0.0326美元而非账单。没有证明语义提升；共同的确定排除/必要条件附加解释问题见[后续核对](https://github.com/normaltank/ReviewProject/issues/38)，不改写首评或混入本轮输入修复。最终文档、CI、main与本地入口状态以工作项为准。
 
 最新费用与工具决定见[当前名单](research/attention-tools.md)：只保留已授权DS Flash费用，Gemini Decisions/MAXQDA退出实施，LLooM/LLMCode保留方法参考。[Issue34](https://github.com/normaltank/ReviewProject/issues/34)的记录级DS对照已形成不采用结论：少请求未带来费用/质量优势，原型留在隔离分支，不进入main运行路径。main仅收拢名单和依据，具体交付/CI终态见工作项。现有默认仍有待核边界，不能称任意新输入的正确率保证。结果阅读层由[PR33](https://github.com/normaltank/ReviewProject/pull/33)交付，操作见[阅读说明](ATTENTION_READING.md)。
 
