@@ -9,6 +9,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+from reviewproto.attention import AttentionWorkspace
 from reviewproto.attention_candidate_ui import CandidateSession
 from reviewproto.attention_candidates import ReplayProvider
 from reviewproto.desktop import Controller
@@ -248,7 +249,7 @@ class AttentionReading(unittest.TestCase):
             self.assertIn('尚未保存', page.locator('#page-draft').inner_text())
             page.get_by_role('button', name='查看原话并修改').first.click()
             self.assertEqual(page.locator('#interpretation').input_value(), '如有记录才补充图例')
-            self.assertIn('请先暂存修改', page.locator('#message').inner_text())
+            self.assertIn('已定位保存方面', page.locator('#message').inner_text())
             page.locator('#stage').click()
             self.assertIn('尚未保存的修改', page.locator('#page-draft').inner_text())
             before = (pack / 'attention-state.json').read_bytes()
@@ -259,7 +260,8 @@ class AttentionReading(unittest.TestCase):
             self.assertIn('尚未保存的修改', page.locator('#page-draft').inner_text())
             self.assertIn('已保存修订 1', page.locator('#revision').inner_text())
             self.assertIn('标明图例', page.locator('#view-detail').inner_text())
-            self.assertEqual(controller.apply_attention(patch)['revision'], 2)
+            with closing(AttentionWorkspace(pack)) as ws:
+                self.assertEqual(ws.apply(input_path=patch)['revision'], 2)
             self.assertEqual(controller.recover_attention()['revision'], 2)
             page.goto((pack / 'attention.html').as_uri() + '#view-facet-' + fid)
             page.reload()

@@ -40,8 +40,8 @@ class CandidateSession:
             current = ws.state()
             if current['material_status'] != 'current':
                 run['validity'] = 'needs_revalidation'
-            from .batch import read_json, checked_local
-            from .store import encoded
+            from .local_io import read_json, checked_local
+            from .local_io import encoded
             from .core import digest
             receipt = checked_local(self.path / 'candidate-runs' / run_id / 'acceptance.json')
             if receipt.is_file():
@@ -49,7 +49,7 @@ class CandidateSession:
                 applied = next((h for h in current['history'] if h['fingerprint'] == fingerprint), None)
                 run['accepted_revision'] = applied['revision'] if applied else None
         target = self.path / 'candidate-runs' / run_id / 'preview.html'
-        from .store import atomic
+        from .local_io import atomic
         atomic(target, render_candidate_preview(run).encode('utf-8'))
         return target
 

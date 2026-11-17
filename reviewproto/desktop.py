@@ -1,39 +1,14 @@
 """Small local launcher; Tk and model dependencies are loaded only on demand."""
 from contextlib import closing
 from pathlib import Path
-import os
-import json
-import queue
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
-import threading
-import uuid
 
 from .core import ReviewError, require
 
 ROOT = Path(__file__).resolve().parents[1]
-# Fixed read-only identity probe. No source text or user path is shell code.
-MODEL_IDENTITY = r"""
-$ErrorActionPreference = 'Stop'
-try {
-  $s = Get-Content -LiteralPath 'work/local-model/server-state.json' -Raw | ConvertFrom-Json
-  $exe = Join-Path (Get-Location).Path '.tools/local-llm/llama-b12110-vulkan/llama-server.exe'
-  if ($s.owner -ne 'ReviewProject/scripts/local-model/v1' -or $s.repo_root -ne (Get-Location).Path -or $s.executable -ne $exe) { exit 2 }
-  $p = Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$s.pid)
-  $proc = Get-Process -Id $s.pid
-  if (-not $p -or $p.ExecutablePath -ne $exe -or -not $p.CommandLine.EndsWith($s.arguments, [StringComparison]::Ordinal) -or
-      $proc.StartTime.ToUniversalTime().Ticks -ne $s.process_start_ticks_utc -or
-      -not $p.CommandLine.Contains('--tags reviewproject-local-run-' + $s.run_id)) { exit 2 }
-  $listeners = @(Get-NetTCPConnection -LocalPort 8766 -State Listen)
-  if ($listeners.Count -eq 0 -or @($listeners | Where-Object { $_.OwningProcess -ne $s.pid -or $_.LocalAddress -ne '127.0.0.1' }).Count -gt 0) { exit 2 }
-  Write-Output $s.run_id
-} catch { exit 2 }
-"""
-
-
 def safe_message(error):
     code = str(error) if isinstance(error, ReviewError) and re.fullmatch(r'E_[A-Z0-9_]+', str(error)) else 'E_INTERNAL'
     if code == 'E_ATTENTION_CONFLICT':
@@ -46,15 +21,9 @@ def safe_message(error):
         return code + '：目标已有文件或分析，已保护原内容。请另选空目录或建立独立新子目录。'
     if code.startswith('E_ATTENTION_'):
         return code + '：关注分析操作未完成。请保留所选文件，使用“恢复关注页”核对当前修订。'
-    if code in {'E_REVISION_CONFLICT', 'E_PATCH_REVISION'}:
-        return code + '：补丁修订已过期。请重新打开报告，重新导出修改；不会自动改写修订号。'
-    if code == 'E_OUTPUT_FAILED':
-        return code + '：修改已提交，但报告输出失败。请使用“恢复报告”，再重新打开核对；不要改写补丁修订号。'
     if code.startswith('E_LOCAL_MODEL') or code == 'E_MODEL_NOT_OWNED':
         return code + '：请核对本机已安装模型与项目服务状态。不会下载或接管其他实例；启动失败的实例请由原启动窗口或项目脚本核对停止。'
-    if code.startswith('E_BATCH_'):
-        return code + '：审核包操作未完成。请恢复审核包并重开核对；观点拆分或补录后用“重选观点并刷新包”。旧建议需重新分析，旧决定需复核。'
-    return code + '：操作未完成；保存可能已提交。请保留所选文件，使用“恢复报告”核对当前修订后重试。'
+    return code + '：操作未完成，请保留当前材料并重新打开分析核对。'
 
 
 def run_process(argv):

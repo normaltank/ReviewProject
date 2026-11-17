@@ -303,7 +303,7 @@ document.addEventListener('attention-edit-facet', event=>{
  const sec=f.evidence?.[0]?.section_id;
  if(sec&&record().sections.some(s=>s.section_id===sec)){el('section').value=sec;chooseSection();}
  el('opinion').value=op.opinion_id;chooseOpinion();el('facet').value=f.facet_id;chooseFacet();
- write('message','已定位保存方面；修改后仍需暂存修改、应用并重开。');el('source').scrollIntoView({block:'center'});el('source').focus();
+ write('message','已定位保存方面；修改后点击保存修改。');el('source').scrollIntoView({block:'center'});el('source').focus();
 });
 
 // Every context switch follows the same collect-or-block rule.
