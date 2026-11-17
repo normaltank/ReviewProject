@@ -402,7 +402,27 @@ assert not errors, errors
                 page.locator('#view-boiler').select_option('*')
                 output = os.environ.get('ATTENTION_CANDIDATE_EVIDENCE_DIR')
                 for width in (1440, 420):
-                    page.set_viewport_size({'width': width, 'height': 1000})
+                    viewport = {'width': width, 'height': 1000}
+                    if page.viewport_size != viewport:
+                        # Resize redraws the graph synchronously; wait for its
+                        # native event and next frame before resolving a node.
+                        page.evaluate('''expected => {
+                            window.__attentionResizeReady = new Promise((resolve, reject) => {
+                                const timer = setTimeout(() => reject(new Error('Candidate resize did not complete')), 10000);
+                                window.addEventListener('resize', () => requestAnimationFrame(() => {
+                                    clearTimeout(timer);
+                                    const graph = document.getElementById('candidate-position-overlay');
+                                    if (innerWidth !== expected.width || innerHeight !== expected.height || !graph?.isConnected ||
+                                        ['item:one', 'item:two'].some(id => graph.querySelectorAll('[data-candidate-region="' + id + '"]').length !== 1)) {
+                                        reject(new Error('Candidate graph is incomplete after resize'));
+                                        return;
+                                    }
+                                    resolve();
+                                }), {once: true});
+                            });
+                        }''', viewport)
+                        page.set_viewport_size(viewport)
+                        page.evaluate('() => window.__attentionResizeReady')
                     overlay.scroll_into_view_if_needed()
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                     if output:
