@@ -134,7 +134,7 @@ class AttentionSummary(unittest.TestCase):
         self.assertEqual(actual['directions']['肯定']['record_ids'], ['r1'])
         c = actual['contributions'][0]
         self.assertEqual(c['theme_ids'], ['ROOT', 'T1'])
-        self.assertEqual(c['a_items'], [{'id': 'A1', 'kind': 'needs_review'}, {'id': 'A2', 'kind': 'explicit'}])
+        self.assertEqual(c['a_items'], [{'id': 'A1', 'kind': 'needs_review', 'version': 'synthetic-A'}, {'id': 'A2', 'kind': 'explicit', 'version': 'synthetic-A'}])
         self.assertEqual(c['a_parts'], [{'id': 'P1', 'kind': 'needs_review'}, {'id': 'P1', 'kind': 'explicit'}])
         self.assertEqual(c['record_id'], 'r1')
         self.assertEqual(c['facet_id'], 'f1')
