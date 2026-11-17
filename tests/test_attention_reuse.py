@@ -231,7 +231,7 @@ class AttentionReuse(unittest.TestCase):
                 self.theme(page, '条件说明')
                 page.locator('#a-item').select_option(initial['a_reference']['items'][0]['id']); page.locator('#a-scope').fill('研究对象')
                 page.locator('#a-reason').fill('对象表述对应首条关注'); page.locator('#a-save').click()
-                self.assertIn('关联已加入未应用草稿', page.locator('#message').inner_text())
+                self.assertIn('点击保存修改', page.locator('#message').inner_text())
                 second_op, second_f = self.opinion(page, '不能补材料时可缩小主张', 2)
                 page.locator('#conditions').fill('如果不能补充材料'); page.locator('#actions').fill('可以缩小主张')
                 page.locator('#stage').click()
