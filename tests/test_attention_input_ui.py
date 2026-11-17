@@ -23,13 +23,12 @@ class AttentionInputTk(unittest.TestCase):
         window.window.geometry('760x640')
         original = ' 若不能增加样本，请保留结论范围。\n原始换行 '
         window.quote.insert('1.0', original)
+        self.assertEqual(window.save_b_button.cget('text'), '加入本批')
         def descendants(widget):
             for child in widget.winfo_children():
                 yield child
                 yield from descendants(child)
-        button = next(w for w in descendants(window.window) if w.winfo_class() == 'TButton'
-                      and w.cget('text') == '原分（如有）…')
-        button.invoke(); root.update()
+        window.b_editor.select(window.b_details_tab); root.update()
         field = next(w for w in descendants(window.window) if w.winfo_class() == 'TEntry'
                      and str(w.cget('textvariable')) == str(window.score_value))
         # FocusIn is the same native event raised when keyboard traversal reaches
@@ -42,6 +41,11 @@ class AttentionInputTk(unittest.TestCase):
         window.add_score_button.invoke(); window.save_b_button.invoke()
         self.assertEqual(window.draft.records[0]['scores'], [{'label': '自由原分', 'raw_value': ' 4 / 5 '}])
         self.assertEqual(window.draft.records[0]['text'], original)
+        window.b_editor.select(window.b_quote_tab)
+        window.b_list.selection_set(0); window.load_b(); root.update()
+        self.assertEqual(window.save_b_button.cget('text'), '保存这条修改')
+        self.assertIn('若不能增加样本', window.b_list.get(0))
+        self.assertTrue(window.save_b_button.winfo_ismapped())
 
     def test_a_target_stays_visible_after_saving_reviewing_and_current_package_changes(self):
         import tkinter as tk

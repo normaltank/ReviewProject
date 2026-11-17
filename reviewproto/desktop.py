@@ -143,8 +143,8 @@ class DesktopWindow:
         self.candidate_windows = []
         theme(root)
         root.title('ReviewProject · 评语分析')
-        root.geometry('920x650'); root.minsize(700, 540)
-        self.status = tk.StringVar(value='从一批评语开始。原话先保存，分析后再核对。')
+        root.geometry('860x560'); root.minsize(700, 500)
+        self.status = tk.StringVar(value='新建一批材料，或打开已有分析继续阅读。')
         self.location = tk.StringVar(value='尚未打开分析')
         frame = ttk.Frame(root, padding=28); frame.pack(fill='both', expand=True)
         header = ttk.Frame(frame); header.pack(fill='x')
@@ -164,9 +164,6 @@ class DesktopWindow:
         wrapped(self.details, textvariable=self.location).pack(fill='x', pady=(0, 12))
         self.change_a_button = ttk.Button(self.details, text='修改A参照（可选）', command=self.change_a)
         self.recover_button = ttk.Button(self.details, text='恢复关注页', command=lambda: self.perform(controller.recover_attention))
-        spacer = ttk.Frame(frame); spacer.pack(fill='both', expand=True)
-        ttk.Separator(frame).pack(fill='x', pady=(18, 12))
-        wrapped(frame, text='原话、原分和分析保存在本机。A关注方向可稍后添加。').pack(fill='x')
         root.protocol('WM_DELETE_WINDOW', self.close)
 
     def result(self, value):

@@ -68,15 +68,13 @@ class AttentionReuse(unittest.TestCase):
 
     def tk_shot(self, w, name, tab):
         if not self.evidence: return
-        from PIL import ImageGrab
+        from scripts.window_capture import capture_window
         w.tabs.select(tab)
         w.preview.yview_moveto(0)
         for width, height in [(980, 780), (760, 640)]:
-            w.window.geometry(f'{width}x{height}+40+40'); w.window.attributes('-topmost', True); w.window.lift(); self.root.update()
+            w.window.geometry(f'{width}x{height}+40+40'); self.root.update()
             time.sleep(0.2); self.root.update()
-            x, y = w.window.winfo_rootx(), w.window.winfo_rooty()
-            ImageGrab.grab(bbox=(x, y, x + width, y + height)).save(self.evidence / f'{name}-{width}.png')
-        w.window.attributes('-topmost', False)
+            capture_window(w.window, self.evidence / f'{name}-{width}.png')
 
     def page(self, browser):
         page = browser.new_page(offline=True, accept_downloads=True, viewport={'width':1440, 'height':1000})

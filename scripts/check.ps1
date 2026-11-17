@@ -54,7 +54,7 @@ if result.testsRun == 0 or result.skipped or not result.wasSuccessful():
 Push-Location -LiteralPath $repoRoot
 try {
     # Stream output and preserve the selected interpreter's actual exit status.
-    $check | & $Python -
+    $check | & $Python (Join-Path $PSScriptRoot 'private_desktop.py') $Python -
     $checkExitCode = $LASTEXITCODE
 } finally {
     Pop-Location

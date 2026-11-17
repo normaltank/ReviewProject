@@ -20,16 +20,16 @@ def theme(window):
     style.configure('.', background=BACKGROUND, foreground=TEXT, font=('Microsoft YaHei UI', 10))
     style.configure('TFrame', background=BACKGROUND)
     style.configure('TLabel', padding=0)
-    style.configure('Title.TLabel', font=('Microsoft YaHei UI', 21, 'bold'))
-    style.configure('Heading.TLabel', font=('Microsoft YaHei UI', 13, 'bold'))
+    style.configure('Title.TLabel', font=('Microsoft YaHei UI', 15, 'bold'))
+    style.configure('Heading.TLabel', font=('Microsoft YaHei UI', 11, 'bold'))
     style.configure('Muted.TLabel', foreground=MUTED)
     style.configure('Status.TLabel', foreground=AMBER)
     style.configure('TButton', background=SURFACE, bordercolor=LINE, lightcolor=LINE,
                     darkcolor=LINE, padding=(12, 8), focusthickness=2, focuscolor=TEXT)
     style.map('TButton', background=[('active', '#303438')], foreground=[('disabled', '#777c80')])
-    style.configure('Primary.TButton', background=TEXT, foreground=BACKGROUND, bordercolor=TEXT)
-    style.map('Primary.TButton', background=[('disabled', '#565b60'), ('active', '#d8d9d6')],
-              foreground=[('disabled', '#b7b9ba'), ('active', BACKGROUND)])
+    style.configure('Primary.TButton', background='#30373a', foreground=TEXT, bordercolor='#929b9f')
+    style.map('Primary.TButton', background=[('disabled', SURFACE), ('active', '#424c51')],
+              foreground=[('disabled', '#b7b9ba'), ('active', TEXT)])
     style.configure('TEntry', fieldbackground=SURFACE, insertcolor=TEXT, bordercolor=LINE, padding=6)
     style.configure('TCombobox', fieldbackground=SURFACE, background=SURFACE, arrowcolor=TEXT, padding=5)
     style.map('TCombobox', fieldbackground=[('readonly', SURFACE)], foreground=[('readonly', TEXT)])

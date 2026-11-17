@@ -169,7 +169,7 @@ class AttentionCandidateWindow:
         self.window.geometry('920x760'); self.window.minsize(760, 640)
         heading = ttk.Frame(self.window, padding=(24, 20, 24, 0)); heading.pack(fill='x')
         ttk.Label(heading, text='分析本批评语', style='Title.TLabel').pack(anchor='w')
-        self.status = tk.StringVar(value='选好评语，开始分析。看过结果后再决定是否保存。')
+        self.status = tk.StringVar(value='选择本次分析范围')
         self.actor = tk.StringVar(value='本机使用者')
         self.reason = tk.StringVar(value='保存本次分析，保留待核状态。')
         self.provider = tk.StringVar(value='deepseek')
@@ -201,7 +201,6 @@ class AttentionCandidateWindow:
         def select_all():
             self.record_list.selection_set(0, 'end'); self.selection_changed()
         ttk.Button(toolbar, text='全选评语', command=select_all).pack(side='right')
-        wrapped(records, text='选择本次要分析的评语。可用 Ctrl / Shift 多选；选中后在下方核对原话。').pack(fill='x', pady=(0, 12))
         record_frame = ttk.Frame(records); record_frame.pack(fill='both', expand=True)
         self.record_list = tk.Listbox(record_frame, selectmode='extended', exportselection=False, height=6)
         list_style(self.record_list)
@@ -210,8 +209,7 @@ class AttentionCandidateWindow:
         scrollbar.pack(side='right', fill='y'); self.record_list.pack(fill='both', expand=True)
         self.record_ids = [r['record_id'] for r in self.session.snapshot['records']]
         for number, record in enumerate(self.session.snapshot['records'], 1):
-            name = '评语 ' + str(number) if record['anchor'].startswith('手工录入-') else record['anchor']
-            self.record_list.insert('end', name + '  ·  ' + record['text'][:80].replace('\n', ' '))
+            self.record_list.insert('end', record['text'][:100].replace('\n', ' '))
         self.record_list.selection_set(0, 'end')
         original_label = ttk.Label(records, text='原话 · 当前选中评语', style='Muted.TLabel')
         original_frame = ttk.Frame(records); original_frame.pack(side='bottom', fill='x')
@@ -275,7 +273,7 @@ class AttentionCandidateWindow:
         self.open_button = ttk.Button(history, text='查看已保存结果', command=self.open_saved); self.open_button.pack(anchor='w')
         self.generate_button = ttk.Button(footer, text='开始分析', style='Primary.TButton', command=self.generate)
         self.preview_button = ttk.Button(footer, text='查看结果', style='Primary.TButton', command=self.open_preview)
-        self.accept_button = ttk.Button(footer, text='保存分析', command=self.accept)
+        self.accept_button = ttk.Button(footer, text='接收并保存分析', command=self.accept)
         self.options_button = ttk.Button(footer, text='模型与历史…', command=self.toggle_options); self.options_button.pack(side='right')
         self.records_tab, self.settings_tab, self.history_tab = records, model_container, history
         self.options_open = False
@@ -317,10 +315,12 @@ class AttentionCandidateWindow:
         self.start_button.configure(state='disabled' if self.busy or api or self.service.owned else 'normal')
         for widget in (self.key_entry,self.save_key_button,self.check_key_button):
             widget.configure(state='normal' if api and not self.busy else 'disabled')
-        self.processing_note.set('通过 DeepSeek 分析所选评语和本次关注清单。' if api else '通过本机模型分析所选材料。')
+        self.processing_note.set(('DeepSeek API · 所选原话及A将发送到服务' if api else '本机模型 · 所选原话及A')
+                                 if not self.run_id else ('已保存 · 可继续阅读与修改' if self.run_id == self.accepted_run_id else '待保存 · 查看后可显式接收'))
         for button in (self.generate_button, self.preview_button, self.accept_button):
             button.pack_forget()
         if self.run_id:
+            self.preview_button.configure(text='打开已保存结果' if self.run_id == self.accepted_run_id else '查看待保存结果')
             self.preview_button.configure(command=self.open_saved if self.run_id == self.accepted_run_id else self.open_preview)
             self.preview_button.pack(side='left')
             if self.run_id != self.accepted_run_id:

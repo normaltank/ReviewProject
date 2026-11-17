@@ -71,6 +71,7 @@ class CandidateWorkflow(unittest.TestCase):
                 self.assertFalse(window.busy, window.status.get())
                 self.assertTrue(window.preview_button.winfo_ismapped())
                 self.assertTrue(window.accept_button.winfo_ismapped())
+                self.assertEqual(window.preview_button.cget('text'), '查看待保存结果')
                 with patch.object(controller, 'open_attention_report') as opened:
                     window.accept_button.invoke()
                     deadline = time.monotonic() + 10
@@ -78,6 +79,8 @@ class CandidateWorkflow(unittest.TestCase):
                         root.update(); time.sleep(.02)
                     self.assertFalse(window.busy, window.status.get())
                     opened.assert_called_once_with(path)
+                self.assertEqual(window.preview_button.cget('text'), '打开已保存结果')
+                self.assertFalse(window.accept_button.winfo_ismapped())
                 with closing(AttentionWorkspace(path)) as ws:
                     saved = ws.state()
                 self.assertEqual(saved['revision'], 1)
@@ -363,6 +366,8 @@ assert not errors, errors
             from unittest.mock import patch
             opener = patch.object(window, '_open_file')
             opener.start(); self.addCleanup(opener.stop)
+            report_opener = patch.object(controller, 'open_attention_report')
+            report_opener.start(); self.addCleanup(report_opener.stop)
             self.addCleanup(lambda: window.window.destroy() if window.window.winfo_exists() else None)
             window.generate_button.invoke()
             self.assertTrue(started.wait(3))
@@ -385,12 +390,13 @@ assert not errors, errors
                     self.assertLessEqual(button.winfo_rootx() + button.winfo_width(), window.window.winfo_rootx() + width)
                     self.assertLessEqual(button.winfo_rooty() + button.winfo_height(), window.window.winfo_rooty() + height)
                 if evidence:
-                    from PIL import ImageGrab
+                    from scripts.window_capture import capture_window
                     Path(evidence).mkdir(parents=True, exist_ok=True)
-                    for tab in range(3):
+                    window.toggle_options()
+                    for tab in (window.records_tab, window.settings_tab, window.history_tab):
                         window.tabs.select(tab); root.update()
-                        x, y = window.window.winfo_rootx(), window.window.winfo_rooty()
-                        ImageGrab.grab(bbox=(x, y, x + width, y + height)).save(str(Path(evidence) / f'tk-candidates-{tab}-{width}.png'))
+                        capture_window(window.window, Path(evidence) / f'tk-candidates-{window.tabs.index(tab)}-{width}.png')
+                    window.toggle_options()
             window.actor.set('editor'); window.reason.set('inspect')
             window.accept_button.invoke(); root.update()
             self.assertIn('目标已切换', window.status.get())
