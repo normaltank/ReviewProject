@@ -25,6 +25,8 @@
 <a id="续接点与远端记录"></a>
 ## 验收与继续位置
 
+体验重做已沿[父#53](https://github.com/normaltank/ReviewProject/issues/53)继续，规格见[体验规格](specs/attention-experience.md)和[汇总需求](specs/attention-summary-visualization.md)。#54/#55的网页与本机功能已集成到任务分支，草稿[PR56](https://github.com/normaltank/ReviewProject/pull/56)堆叠在PR52之上；未合并main。网页首屏视觉校验第三次74%且硬门槛未过，后续视觉验收待处理；不能把定向功能通过写成效果图复现通过。最终汇总仍有三个候选，用户将补充建议后再定，不提前实施布局。
+
 本轮需以最终集成提交完成`scripts/check.ps1`、实际浏览器保存重开及独立Standards/Spec审查；结果记录在#47及交付PR。当前规格和文件内容不自动证明检查或远端交付已经完成。基础检查、CI、真实语义与用户体验分别报告。
 
 [#38](https://github.com/normaltank/ReviewProject/issues/38)语义范围和[#44](https://github.com/normaltank/ReviewProject/issues/44)关系保全仍按原工作项处理。此次改革不新增付费模型请求，不用工程通过冒称语义问题已解决。方法采用决定见[工具记录](research/attention-tools.md#method-first-20261117)，已有局部试验不重复施工。
