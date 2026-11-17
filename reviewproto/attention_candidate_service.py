@@ -143,5 +143,3 @@ class CandidateModelService:
                                  '-ResourceRoot', resource, '-RuntimeDir', runtime, '-ExpectedRunId', run_id])
         require(result.returncode == 0, 'E_LOCAL_MODEL_STOP')
         self.owned = None
-
-
