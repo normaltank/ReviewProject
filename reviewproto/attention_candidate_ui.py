@@ -156,6 +156,7 @@ class AttentionCandidateWindow:
         import tkinter as tk
         from tkinter import ttk
         from .desktop import ROOT
+        from .native_ui import theme, wrapped, text_style, list_style, ScrollBody
         self.controller, self.provider_factory, self.on_result = controller, provider_factory, on_result
         self.session = CandidateSession(controller.attention_path)
         self.target_path = self.session.path
@@ -163,8 +164,11 @@ class AttentionCandidateWindow:
         self.results, self.busy, self.run_id = queue.Queue(), False, None
         self.accepted_run_id = None
         self.window = tk.Toplevel(parent)
+        theme(self.window)
         self.window.title('分析评语')
-        self.window.geometry('760x570'); self.window.minsize(640, 480)
+        self.window.geometry('920x760'); self.window.minsize(760, 640)
+        heading = ttk.Frame(self.window, padding=(24, 20, 24, 0)); heading.pack(fill='x')
+        ttk.Label(heading, text='分析本批评语', style='Title.TLabel').pack(anchor='w')
         self.status = tk.StringVar(value='选好评语，开始分析。看过结果后再决定是否保存。')
         self.actor = tk.StringVar(value='本机使用者')
         self.reason = tk.StringVar(value='保存本次分析，保留待核状态。')
@@ -179,32 +183,50 @@ class AttentionCandidateWindow:
         snapshot = self.session.snapshot
         target_label = ttk.Label(self.window, text='本次材料：' + str(len(snapshot['records'])) + ' 条评语 · ' +
             str(len(snapshot['a_reference']['items'])) + ' 项关注清单', wraplength=850)
-        target_label.pack(fill='x', padx=14, pady=10)
+        target_label.pack(fill='x', padx=24, pady=(12, 20))
         target_label.bind('<Configure>', lambda e: target_label.configure(wraplength=max(200, e.width)))
         footer = ttk.Frame(self.window, padding=14); footer.pack(side='bottom', fill='x')
+        ttk.Separator(footer).pack(fill='x', pady=(0, 14))
+        self.progress = ttk.Progressbar(footer, mode='indeterminate', takefocus=False)
         message = ttk.Label(footer, textvariable=self.status, wraplength=850)
+        self.status_label = message
         message.pack(fill='x', pady=(0, 8)); message.bind('<Configure>', lambda e: message.configure(wraplength=max(200, e.width)))
         self.processing_note = tk.StringVar()
-        ttk.Label(footer, textvariable=self.processing_note, wraplength=700).pack(fill='x', pady=(0, 10))
+        wrapped(footer, textvariable=self.processing_note).pack(fill='x', pady=(0, 10))
         self.tabs = ttk.Notebook(self.window); self.tabs.pack(fill='both', expand=True, padx=14)
-        records = ttk.Frame(self.tabs, padding=10); self.tabs.add(records, text='选择评语')
-        self.record_list = tk.Listbox(records, selectmode='extended', exportselection=False, height=10)
-        scrollbar = ttk.Scrollbar(records, command=self.record_list.yview)
+        records = ttk.Frame(self.tabs, padding=14); self.tabs.add(records, text='分析范围')
+        toolbar = ttk.Frame(records); toolbar.pack(fill='x', pady=(0, 10))
+        self.scope = tk.StringVar()
+        ttk.Label(toolbar, textvariable=self.scope, style='Heading.TLabel').pack(side='left')
+        def select_all():
+            self.record_list.selection_set(0, 'end'); self.selection_changed()
+        ttk.Button(toolbar, text='全选评语', command=select_all).pack(side='right')
+        wrapped(records, text='选择本次要分析的评语。可用 Ctrl / Shift 多选；选中后在下方核对原话。').pack(fill='x', pady=(0, 12))
+        record_frame = ttk.Frame(records); record_frame.pack(fill='both', expand=True)
+        self.record_list = tk.Listbox(record_frame, selectmode='extended', exportselection=False, height=6)
+        list_style(self.record_list)
+        scrollbar = ttk.Scrollbar(record_frame, command=self.record_list.yview)
         self.record_list.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right', fill='y'); self.record_list.pack(fill='both', expand=True)
         self.record_ids = [r['record_id'] for r in self.session.snapshot['records']]
-        for r in self.session.snapshot['records']:
-            self.record_list.insert('end', r['anchor'] + ' · ' + r['text'][:80])
+        for number, record in enumerate(self.session.snapshot['records'], 1):
+            name = '评语 ' + str(number) if record['anchor'].startswith('手工录入-') else record['anchor']
+            self.record_list.insert('end', name + '  ·  ' + record['text'][:80].replace('\n', ' '))
         self.record_list.selection_set(0, 'end')
+        original_label = ttk.Label(records, text='原话 · 当前选中评语', style='Muted.TLabel')
+        original_frame = ttk.Frame(records); original_frame.pack(side='bottom', fill='x')
+        original_label.pack(side='bottom', anchor='w', pady=(16, 8))
+        self.original = tk.Text(original_frame, height=4, wrap='word', state='disabled', takefocus=True)
+        text_style(self.original)
+        original_scroll = ttk.Scrollbar(original_frame, command=self.original.yview)
+        self.original.configure(yscrollcommand=original_scroll.set)
+        original_scroll.pack(side='right', fill='y'); self.original.pack(fill='x')
+        # Reserve the readable original before giving the checklist spare height.
+        record_frame.pack_forget(); record_frame.pack(fill='both', expand=True)
+        self.record_list.bind('<<ListboxSelect>>', lambda event: self.selection_changed())
         model_container = ttk.Frame(self.tabs); self.tabs.add(model_container, text='分析设置')
-        canvas = tk.Canvas(model_container, highlightthickness=0)
-        model_scroll = ttk.Scrollbar(model_container, command=canvas.yview)
-        canvas.configure(yscrollcommand=model_scroll.set)
-        model_scroll.pack(side='right', fill='y'); canvas.pack(fill='both', expand=True)
-        model_tab = ttk.Frame(canvas, padding=10)
-        model_body = canvas.create_window((0, 0), window=model_tab, anchor='nw')
-        model_tab.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
-        canvas.bind('<Configure>', lambda e: canvas.itemconfigure(model_body, width=e.width))
+        settings = ScrollBody(model_container, padding=14); settings.pack(fill='both', expand=True)
+        model_tab = settings.body
         model_note = ttk.Label(model_tab, text='DeepSeek API将联网发送所选普通评语及本次A，原话可能含身份；原分和本地路径不发送。点击生成即按所选提供方处理。也可选择已安装本机模型；仅本窗口启动的实例可由本窗口停止。', wraplength=750)
         model_note.pack(fill='x', pady=5)
         model_note.bind('<Configure>', lambda e: model_note.configure(wraplength=max(200, e.width)))
@@ -219,46 +241,61 @@ class AttentionCandidateWindow:
         ttk.Label(model_tab, text='模型名称（本机模型需事先安装）').pack(anchor='w')
         self.model_selector = ttk.Combobox(model_tab, textvariable=self.model, state='readonly', values=API_MODELS)
         self.model_selector.pack(fill='x', pady=(0,6))
-        ttk.Label(model_tab,text='DeepSeek API密钥（输入后显式保存，仅当前Windows用户可解密）').pack(anchor='w')
-        self.key_entry=ttk.Entry(model_tab,textvariable=self.api_key,show='*'); self.key_entry.pack(fill='x')
-        credential_row=ttk.Frame(model_tab); credential_row.pack(fill='x')
+        self.api_settings = ttk.Frame(model_tab); self.api_settings.pack(fill='x')
+        ttk.Label(self.api_settings,text='DeepSeek API密钥（输入后显式保存，仅当前Windows用户可解密）').pack(anchor='w')
+        self.key_entry=ttk.Entry(self.api_settings,textvariable=self.api_key,show='*'); self.key_entry.pack(fill='x')
+        credential_row=ttk.Frame(self.api_settings); credential_row.pack(fill='x')
         self.save_key_button=ttk.Button(credential_row,text='保存API密钥',command=self.save_api_key); self.save_key_button.pack(side='left')
         self.check_key_button=ttk.Button(credential_row,text='检查API配置',command=self.check_api_key); self.check_key_button.pack(side='left',padx=8)
-        ttk.Label(model_tab,textvariable=self.credential_status,wraplength=700).pack(fill='x',pady=(0,6))
+        wrapped(self.api_settings, textvariable=self.credential_status).pack(fill='x', pady=(8, 12))
         row = ttk.Frame(model_tab); row.pack(fill='x')
         for label, value in [('输入字符上限（整段超限会明确列出）', self.context_chars), ('最大输出长度（API含思考token）', self.max_tokens)]:
             col = ttk.Frame(row); col.pack(side='left', fill='x', expand=True, padx=(0, 10)); entry(col, label, value)
-        entry(model_tab, '已安装资源根目录（含 .tools/local-llm）', self.resource)
+        self.local_settings = ttk.Frame(model_tab)
+        entry(self.local_settings, '已安装资源根目录（含 .tools/local-llm）', self.resource)
         from tkinter import filedialog
         def choose_resource():
             path = filedialog.askdirectory(parent=self.window, title='选择已有模型资源根目录')
             if path: self.resource.set(path)
-        ttk.Button(model_tab, text='选择已安装资源目录', command=choose_resource).pack(anchor='w')
-        entry(model_tab, '本次独立运行目录（新的空目录）', self.runtime)
+        ttk.Button(self.local_settings, text='选择已安装资源目录', command=choose_resource).pack(anchor='w')
+        entry(self.local_settings, '本次独立运行目录（新的空目录）', self.runtime)
         def choose_runtime():
             path = filedialog.askdirectory(parent=self.window, title='选择父目录，将建立独立运行子目录')
             if path: self.runtime.set(str(Path(path) / ('local-model-' + uuid.uuid4().hex[:12])))
-        ttk.Button(model_tab, text='选择运行目录的父目录', command=choose_runtime).pack(anchor='w')
-        service_row = ttk.Frame(model_tab); service_row.pack(fill='x', pady=8)
+        ttk.Button(self.local_settings, text='选择运行目录的父目录', command=choose_runtime).pack(anchor='w')
+        service_row = ttk.Frame(self.local_settings); service_row.pack(fill='x', pady=8)
         self.start_button = ttk.Button(service_row, text='启动已安装模型', command=self.start_service); self.start_button.pack(side='left')
         self.stop_button = ttk.Button(service_row, text='停止本窗口启动的模型', command=self.stop_service); self.stop_button.pack(side='left', padx=8)
         history = ttk.Frame(self.tabs, padding=10); self.tabs.add(history, text='以往结果')
-        ttk.Label(history, text='保存位置：' + str(self.target_path), wraplength=700).pack(anchor='w', pady=8)
+        wrapped(history, text='固定保存位置：' + str(self.target_path)).pack(fill='x', pady=8)
         self.history = ttk.Combobox(history, state='readonly', values=self.session.runs()); self.history.pack(fill='x', pady=8)
         self.history.bind('<<ComboboxSelected>>', lambda e: self.select_run())
         entry(history, '操作人', self.actor); entry(history, '保存备注', self.reason)
         self.restart_button = ttk.Button(history, text='重新分析所选评语', command=self.generate); self.restart_button.pack(anchor='w', pady=8)
         self.open_button = ttk.Button(history, text='查看已保存结果', command=self.open_saved); self.open_button.pack(anchor='w')
-        self.generate_button = ttk.Button(footer, text='开始分析', command=self.generate)
-        self.preview_button = ttk.Button(footer, text='查看结果', command=self.open_preview)
+        self.generate_button = ttk.Button(footer, text='开始分析', style='Primary.TButton', command=self.generate)
+        self.preview_button = ttk.Button(footer, text='查看结果', style='Primary.TButton', command=self.open_preview)
         self.accept_button = ttk.Button(footer, text='保存分析', command=self.accept)
-        self.options_button = ttk.Button(footer, text='更多选项', command=self.toggle_options); self.options_button.pack(side='right')
+        self.options_button = ttk.Button(footer, text='模型与历史…', command=self.toggle_options); self.options_button.pack(side='right')
         self.records_tab, self.settings_tab, self.history_tab = records, model_container, history
         self.options_open = False
         self.tabs.hide(self.settings_tab); self.tabs.hide(self.history_tab)
         self.window.protocol('WM_DELETE_WINDOW', self.close)
-        self._controls(); self.timer = self.window.after(80, self.poll)
+        self.selection_changed(); self.timer = self.window.after(80, self.poll)
         self.window.bind('<Destroy>', self._destroyed, add='+')
+
+    def selection_changed(self):
+        selected = self.record_list.curselection()
+        self.scope.set('已选 ' + str(len(selected)) + ' / ' + str(len(self.record_ids)) + ' 条评语')
+        self.original.configure(state='normal'); self.original.delete('1.0', 'end')
+        if selected:
+            index = self.record_list.index('active')
+            if index not in selected: index = selected[0]
+            self.original.insert('1.0', self.session.snapshot['records'][index]['text'])
+        else:
+            self.original.insert('1.0', '尚未选择评语。请在上方选择本次分析范围。')
+        self.original.configure(state='disabled')
+        self._controls()
 
     def _controls(self):
         for b in (self.generate_button, self.restart_button, self.open_button, self.start_button):
@@ -267,6 +304,12 @@ class AttentionCandidateWindow:
             b.configure(state='normal' if self.run_id and not self.busy else 'disabled')
         self.stop_button.configure(state='normal' if self.service.owned and not self.busy else 'disabled')
         self.history.configure(state='disabled' if self.busy else 'readonly')
+        if not self.record_list.curselection():
+            self.generate_button.configure(state='disabled'); self.restart_button.configure(state='disabled')
+        if self.busy:
+            self.progress.pack(fill='x', before=self.status_label, pady=(0, 10))
+        else:
+            self.progress.pack_forget()
         api=self.provider.get()=='deepseek'
         self.provider_selector.configure(state='disabled' if self.busy else 'readonly')
         self.model_selector.configure(state='disabled' if self.busy or (self.service.owned and not api) else 'readonly')
@@ -292,7 +335,7 @@ class AttentionCandidateWindow:
         else:
             self.tabs.select(self.records_tab)
             self.tabs.hide(self.settings_tab); self.tabs.hide(self.history_tab)
-        self.options_button.configure(text='收起更多选项' if self.options_open else '更多选项')
+        self.options_button.configure(text='收起模型与历史' if self.options_open else '模型与历史…')
 
     def change_provider(self):
         if self.busy: return
@@ -302,6 +345,8 @@ class AttentionCandidateWindow:
         self.endpoint.set(API_ENDPOINT if api else 'http://127.0.0.1:8766/v1')
         self.max_tokens.set(str(API_DEFAULT_TOKENS) if api else '4096')
         self.api_key.set('')
+        self.api_settings.pack_forget(); self.local_settings.pack_forget()
+        (self.api_settings if api else self.local_settings).pack(fill='x')
         self._controls()
 
     def check_api_key(self):
@@ -330,6 +375,7 @@ class AttentionCandidateWindow:
         if self.busy: return
         self.busy = True; self._controls()
         self.status.set('正在处理，请稍候。窗口仍可查看；结果只属于上方固定目标。')
+        self.status_label.configure(style='TLabel')
         results = self.results
         def execute():
             try: results.put((action, worker(), None))
@@ -387,14 +433,18 @@ class AttentionCandidateWindow:
         self.submit('stop', self.service.stop)
 
     def poll(self):
+        if self.busy:
+            self.progress.step(4)
         try:
             while True:
                 action, result, error = self.results.get_nowait()
                 self.busy = False
                 if error:
+                    self.status_label.configure(style='Status.TLabel')
                     self.status.set('模型尚未就绪。本窗口已保留此次进程身份，请在模型设置中点击停止后重试。'
                         if action == 'start' and self.service.owned else candidate_message(error))
                 elif action == 'generate':
+                    self.status_label.configure(style='Status.TLabel')
                     self.run_id = result['run_id']; self.history.configure(values=self.session.runs()); self.history.set(self.run_id)
                     statuses = {'complete': '分析完成', 'partial': '部分内容未完成', 'failed': '分析未完成', 'zero_candidates': '没有生成结果'}
                     self.status.set(statuses.get(result['status'], '未完成') + ' · ' +
