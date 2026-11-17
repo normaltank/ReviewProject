@@ -26,4 +26,3 @@ def apply_legacy_patch(state, patch):
             result['legacy_aliases'] = copy.deepcopy(previous['legacy_aliases'])
         edits.append(result)
     apply_objects(state, dict(patch, schema='attention-patch/2', edits=edits))
-
