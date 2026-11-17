@@ -50,6 +50,9 @@ class Workbench:
                         return self.respond(200,Path(__file__).with_name(route.path[1:]).read_text(encoding='utf-8'),
                             'text/javascript' if route.path.endswith('.js') else 'text/css')
                     if route.path=='/health': return self.respond(200,{'status':'stopping' if app.stopping else 'ready'})
+                    if route.path=='/api/configuration':
+                        from .credential import credential_status
+                        return self.respond(200,credential_status())
                     if route.path in ('/result','/preview'):
                         project=app.project(query.get('id',[''])[0])
                         if route.path=='/result':
@@ -126,8 +129,10 @@ class Workbench:
 
     def action(self,route,payload):
         if route=='/api/home':
+            from .credential import credential_status
             draft=self.data_dir/'input-draft.json'
             return {'recent':self.recents(),'data_dir':str(self.data_dir),
+                    'configuration':credential_status(),
                     'draft':load_json(draft.read_bytes()) if draft.is_file() else None,
                     'jobs':[self.job_status(j) for j in self.jobs.values()]}
         if route=='/api/draft':

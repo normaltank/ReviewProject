@@ -3,9 +3,29 @@ import ctypes
 import os
 from pathlib import Path
 from .core import require, ReviewError
-from .local_io import atomic
+from .local_io import atomic, load_json
 
 ENTROPY = b'ReviewProject/DeepSeek/API/1'
+
+
+def trial_config_path():
+    """Optional packaging asset beside this module, including frozen bundles."""
+    return Path(__file__).with_name('trial-config.json')
+
+
+def _trial_key():
+    try:
+        raw=trial_config_path().read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        raise ReviewError('E_DEEPSEEK_TRIAL_CONFIG') from None
+    try:
+        value=load_json(raw)
+        require(isinstance(value,dict),'E_DEEPSEEK_TRIAL_CONFIG')
+        return _key(value.get('deepseek_api_key'))
+    except Exception:
+        raise ReviewError('E_DEEPSEEK_TRIAL_CONFIG') from None
 
 
 class _Blob(ctypes.Structure):
@@ -53,8 +73,11 @@ def load_deepseek_key(*, path=None, environ=None):
     try:
         if 'DEEPSEEK_API_KEY' in env: return _key(env['DEEPSEEK_API_KEY'])
         target=credential_path() if path is None else Path(path)
-        require(target.is_file(),'E_DEEPSEEK_CREDENTIAL_MISSING')
-        return _key(_dpapi(target.read_bytes(),False).decode('utf-8'))
+        if target.is_file():
+            return _key(_dpapi(target.read_bytes(),False).decode('utf-8'))
+        default=_trial_key()
+        require(default is not None,'E_DEEPSEEK_CREDENTIAL_MISSING')
+        return default
     except ReviewError:
         raise
     except Exception:
@@ -74,8 +97,21 @@ def save_deepseek_key(value, *, path=None):
 
 
 def credential_available(*, path=None, environ=None):
-    """Check only explicit env or file existence; do not decrypt for UI status."""
+    """Report availability without decrypting the personal credential store."""
+    return credential_status(path=path,environ=environ)['configured']
+
+
+def credential_status(*, path=None, environ=None):
+    """Public status contains only availability, source and a sanitized error."""
     env=os.environ if environ is None else environ
-    if 'DEEPSEEK_API_KEY' in env: return bool(env['DEEPSEEK_API_KEY'].strip())
-    try: return (credential_path() if path is None else Path(path)).is_file()
-    except ReviewError: return False
+    try:
+        if 'DEEPSEEK_API_KEY' in env:
+            _key(env['DEEPSEEK_API_KEY'])
+            return {'configured':True,'source':'environment'}
+        if (credential_path() if path is None else Path(path)).is_file():
+            return {'configured':True,'source':'personal'}
+        if _trial_key() is not None:
+            return {'configured':True,'source':'trial'}
+        return {'configured':False,'source':'none'}
+    except ReviewError as exc:
+        return {'configured':False,'source':'none','error':str(exc)}
