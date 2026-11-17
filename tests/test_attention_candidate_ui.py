@@ -27,6 +27,47 @@ def prepare(path):
 
 
 class CandidateWorkflow(unittest.TestCase):
+    def test_analysis_shows_next_actions_and_saves_without_audit_form_detour(self):
+        import tkinter as tk
+        import time
+        from unittest.mock import patch
+        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
+        from reviewproto.desktop import Controller
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'analysis'
+            before, response = prepare(path)
+            controller = Controller(); controller.open_attention(path)
+            root = tk.Tk(); root.withdraw()
+            try:
+                window = AttentionCandidateWindow(root, controller,
+                    provider_factory=lambda **kwargs: ReplayProvider([response]))
+                root.update()
+                self.assertTrue(window.generate_button.winfo_ismapped())
+                self.assertFalse(window.preview_button.winfo_ismapped())
+                self.assertFalse(window.accept_button.winfo_ismapped())
+                self.assertFalse(window.open_button.winfo_ismapped())
+                window.generate_button.invoke()
+                deadline = time.monotonic() + 10
+                while window.busy and time.monotonic() < deadline:
+                    root.update(); time.sleep(.02)
+                self.assertFalse(window.busy, window.status.get())
+                self.assertTrue(window.preview_button.winfo_ismapped())
+                self.assertTrue(window.accept_button.winfo_ismapped())
+                with patch.object(window, '_open_file') as opened:
+                    window.accept_button.invoke()
+                    deadline = time.monotonic() + 10
+                    while window.busy and time.monotonic() < deadline:
+                        root.update(); time.sleep(.02)
+                    self.assertFalse(window.busy, window.status.get())
+                    opened.assert_called_once_with(path / 'attention.html')
+                with closing(AttentionWorkspace(path)) as ws:
+                    saved = ws.state()
+                self.assertEqual(saved['revision'], 1)
+                self.assertEqual(saved['records'], before['records'])
+                self.assertEqual(saved['opinions'][0]['status'], 'needs_review')
+            finally:
+                root.destroy()
+
     def test_new_candidate_sessions_generate_and_preview_preserve_formal_file_bytes(self):
         from reviewproto.attention_candidate_ui import CandidateSession
         with tempfile.TemporaryDirectory() as tmp:
@@ -118,7 +159,7 @@ def create_root():
                     yield child
                     yield from walk(child)
             button = next(w for w in walk(root) if w.winfo_class() == 'TButton' and
-                w.cget('text') == '生成并核对B内容与A位置候选')
+                w.cget('text') == '分析评语')
             button.invoke(); root.update()
             seen.extend(w.title() for w in root.winfo_children() if isinstance(w, tk.Toplevel))
         finally: root.destroy()
@@ -126,7 +167,7 @@ def create_root():
     return root
 with patch('tkinter.Tk', create_root), patch('reviewproto.desktop.Controller', return_value=controller):
     desktop.main()
-assert seen == ['B内容与A位置候选'], seen
+assert seen == ['分析评语'], seen
 assert not errors, errors
 '''
             result = subprocess.run([sys.executable, '-c', script, str(path)], capture_output=True, text=True, timeout=20)
@@ -231,7 +272,7 @@ assert not errors, errors
                 self.assertEqual(ws.state()['opinions'], [])
             saved = session.accept('engineering', actor='合成编辑', reason='工程回查')
             self.assertEqual(saved['revision'], 1)
-            self.assertIn('已在修订 1 接收', session.preview('engineering').read_text(encoding='utf-8'))
+            self.assertIn('已在修订 1 保存', session.preview('engineering').read_text(encoding='utf-8'))
             reopened = CandidateSession(path)
             self.assertEqual(reopened.accept('engineering', actor='重复', reason='重放')['revision'], 1)
             with closing(AttentionWorkspace(path)) as ws:
@@ -259,7 +300,7 @@ assert not errors, errors
             session = CandidateSession(path)
             empty = session.generate('empty', ReplayProvider([{'edits': [], 'themes': [], 'relations': []}]))
             self.assertEqual(empty['status'], 'zero_candidates')
-            self.assertIn('零候选', session.preview('empty').read_text(encoding='utf-8'))
+            self.assertIn('未生成候选', session.preview('empty').read_text(encoding='utf-8'))
             with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_NO_CANDIDATES'):
                 session.accept('empty', actor='editor', reason='empty')
             response['unprocessed'] = [dict(record_id=state['records'][0]['record_id'], section_id='s', reason='still ambiguous')]
@@ -301,6 +342,9 @@ assert not errors, errors
             controller = Controller(); controller.open_attention(path)
             window = AttentionCandidateWindow(root, controller,
                 provider_factory=lambda **kwargs: HeldReplay([response]))
+            from unittest.mock import patch
+            opener = patch.object(window, '_open_file')
+            opener.start(); self.addCleanup(opener.stop)
             self.addCleanup(lambda: window.window.destroy() if window.window.winfo_exists() else None)
             window.generate_button.invoke()
             self.assertTrue(started.wait(3))
@@ -318,7 +362,7 @@ assert not errors, errors
             evidence = os.environ.get('ATTENTION_CANDIDATE_EVIDENCE_DIR')
             for width, height in ((920, 760), (760, 640)):
                 window.window.geometry(f'{width}x{height}'); root.update()
-                for button in (window.generate_button, window.preview_button, window.accept_button, window.open_button):
+                for button in (window.preview_button, window.accept_button, window.options_button):
                     self.assertTrue(button.winfo_ismapped())
                     self.assertLessEqual(button.winfo_rootx() + button.winfo_width(), window.window.winfo_rootx() + width)
                     self.assertLessEqual(button.winfo_rooty() + button.winfo_height(), window.window.winfo_rooty() + height)
@@ -340,7 +384,7 @@ assert not errors, errors
             deadline = time.monotonic() + 10
             while window.busy and time.monotonic() < deadline:
                 root.update(); time.sleep(.02)
-            self.assertIn('已接收为待核', window.status.get())
+            self.assertIn('分析已保存', window.status.get())
             with closing(AttentionWorkspace(path)) as ws:
                 self.assertEqual(ws.state()['revision'], 1)
             self.assertEqual(callback_errors, [])
@@ -377,14 +421,14 @@ assert not errors, errors
                 page.set_default_timeout(6000)
                 errors = []; page.on('pageerror', lambda e: errors.append(str(e)))
                 page.goto(mapped_html.as_uri())
-                page.get_by_role('link', name='对照A与位置图', exact=True).click()
+                page.get_by_role('link', name='查看分布图', exact=True).click()
                 open_panel(page, 'view-filters')
                 overlay = page.locator('#candidate-position-overlay')
-                self.assertIn('未接收、全部待核', overlay.inner_text())
+                self.assertIn('尚未保存，全部待核', overlay.inner_text())
                 self.assertEqual(overlay.locator('[data-candidate-region="item:one"]').count(), 1)
                 self.assertEqual(overlay.locator('[data-candidate-region="item:two"]').count(), 1)
                 self.assertIn('1/1', overlay.inner_text())
-                self.assertIn('0/1', page.locator('#view-hits').inner_text())
+                self.assertEqual(page.locator('#view-hits').inner_text(), '')
                 overlay.locator('svg a[href^="#candidate-facet-"]').first.click()
                 self.assertTrue(page.locator('[id^="candidate-facet-"]').first.evaluate('(e)=>e.open'))
                 overlay.locator('[data-candidate-region="item:one"]').focus()
@@ -398,7 +442,7 @@ assert not errors, errors
                 self.assertTrue(page.locator('[id^="candidate-source-"]').evaluate('(e)=>e.open'))
                 page.locator('#view-boiler').select_option('true')
                 self.assertIn('没有候选位置', overlay.inner_text())
-                self.assertIn('0/1', page.locator('#view-hits').inner_text())
+                self.assertIn('0/1', page.locator('#view-hits').text_content())
                 page.locator('#view-boiler').select_option('*')
                 output = os.environ.get('ATTENTION_CANDIDATE_EVIDENCE_DIR')
                 for width in (1440, 420):
@@ -429,14 +473,14 @@ assert not errors, errors
                         Path(output).mkdir(parents=True, exist_ok=True)
                         page.screenshot(path=str(Path(output) / f'candidate-preview-{width}.png'))
                 page.goto(preview_path.as_uri())
-                page.get_by_role('link', name='对照A与位置图', exact=True).click()
+                page.get_by_role('link', name='查看分布图', exact=True).click()
                 self.assertIn('未导入A', page.locator('#candidate-position-overlay').inner_text())
                 saved = session.accept('engineering', actor='工程编辑', reason='核对')
                 controller = Controller(); controller.open_attention(path)
                 page.goto((path / 'attention.html').as_uri())
                 open_panel(page, 'view-a-positions')
                 page.locator('#position-drill a').first.click()
-                page.get_by_role('button', name='在原话与编辑区核对').first.click()
+                page.get_by_role('button', name='查看原话并修改').first.click()
                 self.assertEqual(page.locator('#facet').input_value(), saved['opinions'][0]['facets'][0]['facet_id'])
                 page.locator('#actor').fill('工程编辑'); page.locator('#reason').fill('保留条件并纠正读法')
                 page.locator('#interpretation').fill('如有记录才补充图例')

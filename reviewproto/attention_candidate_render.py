@@ -24,25 +24,31 @@ def render_candidate_preview(run):
                    a_version=saved['a_reference']['version'], label=run['run_id'], placements=placements,
                    validity=run.get('validity'), accepted_revision=run.get('accepted_revision'))
     esc = lambda value: html.escape(str(value), quote=True)
-    acceptance = ('已在修订 ' + str(run['accepted_revision']) + ' 接收；这里是生成时的待核原候选（历史）。当前人工纠正结果请恢复并重开普通关注页查看。'
-                  if run.get('accepted_revision') is not None else '尚未接收，全部待核。请回到本机候选窗口显式接收，再打开关注页纠正并保存；预览不改变正式分析。')
+    acceptance = ('已在修订 ' + str(run['accepted_revision']) + ' 保存，仍需核对；这里保留生成时的待核结果。最新修改请重开分析页查看。'
+                  if run.get('accepted_revision') is not None else '结果尚未保存，全部待核。要保留，请回分析窗口点“保存分析”。')
     status = {'complete': '处理完成', 'partial': '部分处理', 'failed': '处理失败',
-              'zero_candidates': '零候选', 'running': '未完成'}
+              'zero_candidates': '未生成候选', 'running': '未完成'}
     records = {r['record_id']: r for r in saved['records']}
     record_label = lambda rid: records.get(rid, {}).get('anchor') or rid
     partial_count = sum(item['status'] == 'partial' for item in run.get('coverage', []))
-    out = ['<section id="candidate-preview"><h1>B关注候选</h1>',
+    progress = ('' if run['status'] == 'partial' and partial_count else status.get(run['status'], '未完成') + ' · ') + str(len(run['record_ids'])) + ' 条记录 · ' + str(len(candidate_ids)) + ' 条解释'
+    if partial_count:
+        progress += ' · 部分处理 ' + str(partial_count) + ' 条'
+    if run.get('unprocessed'):
+        progress += ' · 未完成范围 ' + str(len(run['unprocessed'])) + ' 项'
+    out = ['<section id="candidate-preview"><h1>评语分析结果</h1>',
            '<p>' + acceptance + '</p><p id="page-draft" role="status"></p>',
-           '<p>展开方面，核对原话、限定与表达作用；跨记录主题仍须人工整理。</p>',
-           '<p>' + status.get(run['status'], '未完成') + ' · 所选 ' + str(len(run['record_ids'])) +
-           ' 条记录 · ' + str(len(candidate_ids)) + ' 个候选方面 · 部分处理 ' + str(partial_count) +
-           ' 条 · 未完成范围 ' + str(len(run.get('unprocessed', []))) + ' 项</p>',
-           '<p class="candidate-meta">' + ('工程回放（非实际推理）' if run['mode'] == 'replay' else 'DeepSeek API联网推理' if run['mode']=='remote_api' else '实际本机推理') +
-           ' · ' + ('绑定有效' if run.get('validity') == 'current' else '输入或修订已变，须重新生成') + '</p>',
-           '<nav aria-label="候选导航"><a href="#candidate-details">阅读候选</a><a href="#candidate-sources">原话与原分</a><a href="#candidate-position-overlay">对照A与位置图</a><a href="#candidate-audit">处理范围与运行明细</a></nav>']
+           '<p class="candidate-meta">' + progress + '</p>',
+           '<nav aria-label="候选导航"><a href="#candidate-visualization">查看分布图</a><a href="#candidate-sources">查看原话与原分</a><a href="#candidate-audit">查看处理明细</a></nav>']
+    if run['mode'] == 'replay':
+        out.append('<p class="candidate-meta">工程回放（非实际推理）</p>')
+    if run.get('validity') != 'current':
+        out.append('<p class="reading-warning">输入或修订已变，须重新生成。以下仅供回查。</p>')
     reading = out
     out = []
     audit=request_audit(run)
+    if run['mode'] != 'replay':
+        out.append('<p>' + ('DeepSeek API联网推理' if run['mode']=='remote_api' else '实际本机推理') + '</p>')
     out.append('<p>已记录的提供方尝试数：'+(str(audit['count']) if audit['count'] is not None else '未知')+'。尝试数不代表服务器已收到请求、完成响应或计费成功。</p>')
     if audit['unfinished']:
         reading.append('<p class="reading-warning">请求结果与用量未知：运行可能仍在执行或已经中断；不会自动继续或重试。请展开处理范围与运行明细核对。</p>')
@@ -106,14 +112,33 @@ def render_candidate_preview(run):
     out = reading
     qualifiers = dict(object='对象', direction='判断方向', degree='程度', negation='否定',
                       reasons='理由', conditions='条件', actions='动作', examples='例示', alternatives='备选')
-    out.append('<h2 id="candidate-details">候选明细与逐字证据</h2>')
+    out.append('<h2 id="candidate-details">B关注什么，与A如何对应</h2>')
     for op in projected['opinions']:
         for f in op['facets']:
             if f['facet_id'] not in candidate_ids:
                 continue
+            links = [p for p in placements if p['facet_id'] == f['facet_id']]
+            regions = {r['id']: r for r in positions['regions']}
+            kind_names = {'explicit': '明确对应', 'partial': '部分对应', 'related': '内容相关', 'undetermined': '暂未定'}
+            descriptions = []
+            for p in links:
+                region = regions[p['region_id']]
+                if region['id'] == 'pending':
+                    continue
+                title = region['label']
+                title = title[:52] + '…' if len(title) > 52 else title
+                phrase = (kind_names.get(p.get('proposed_kind'), '') + '：' if region['kind'] == 'item' else '') + title
+                if phrase not in descriptions:
+                    descriptions.append(phrase)
+            correspondence = ('；'.join(descriptions) or '尚未确定A对应') if saved['a_reference']['items'] else '尚未导入A'
+            full = f['interpretation']
+            prefix = full.split('：')[0]
+            title = prefix if prefix != full and 10 <= len(prefix) <= 72 else full[:100] + '…' if len(full) > 100 else full
             out.append('<details id="candidate-facet-' + esc(f['facet_id']) + '"><summary>' +
-                       esc(f['interpretation']) + ' · 待核<span class="candidate-meta">' + esc(record_label(op['record_id'])) + ' · 展开证据与限定</span></summary><p>记录 ' + esc(record_label(op['record_id'])) +
-                       ' · 观点：' + esc(op['interpretation']) + '</p>')
+                       esc(title) + '<span class="candidate-meta">与A：' + esc(correspondence) + '</span></summary>')
+            if title != full:
+                out.append('<p>完整解释：' + esc(full) + '</p>')
+            out.append('<p class="candidate-meta">原话来自：' + esc(record_label(op['record_id'])) + '</p>')
             out.append('<p>表达作用：' + esc(f['expression']['function'] or '未说明') + ' · 套话候选：' +
                        {True: '是', False: '否', None: '未判断'}[f['expression']['boilerplate_candidate']] + '</p>')
             for key, label in qualifiers.items():
@@ -141,7 +166,7 @@ def render_candidate_preview(run):
     if patch.get('relations'):
         out.append('<h2>候选关系（待核）</h2>')
     for r in patch.get('relations', []):
-        out.append('<details><summary>' + esc(r['type']) + '</summary>')
+        out.append('<details><summary>' + esc(r.get('reading') or r.get('scope') or '查看联系') + '</summary>')
         for e in r['endpoints']:
             out.append('<p>' + esc(e['role']) + ' · <a href="#candidate-facet-' + esc(e['facet_id']) + '">查看方面证据</a></p>')
         for key, label in [('direction', '方向'), ('scope', '范围'), ('reading', '读法'), ('ambiguity', '歧义')]:
@@ -149,6 +174,7 @@ def render_candidate_preview(run):
         for e in r['evidence']:
             out.append('<blockquote>' + esc(e['quote']) + '</blockquote>')
         out.append('</details>')
+    out.append('<details id="candidate-visualization"><summary>查看候选分布图</summary></details>')
     out.append('<details id="candidate-audit"><summary>处理范围与运行明细 · 错误 ' + str(len(run.get('errors', []))) + ' 项 / 拒收 ' + str(len(run.get('rejected', []))) + ' 项</summary>' + audit_html + '</details>')
     out.append('<details id="candidate-sources"><summary>本次所选原话与原分</summary>')
     for r in saved['records']:
@@ -162,15 +188,15 @@ def render_candidate_preview(run):
         out.append('</details>')
     out.append('</details></section>')
     data = json.dumps(overlay, ensure_ascii=True).replace('<', '\\u003c')
-    script = '<script>AttentionPositions.setOverlay(' + data + ');</script>'
+    script = '<script>AttentionPositions.setOverlay(' + data + ');document.getElementById("candidate-visualization").before(document.getElementById("view-filters"));</script>'
     page = render(saved)
     # Draft status belongs outside the collapsible frozen snapshot: closing it
     # must never hide an unstaged edit or an unapplied patch.
-    page = page.replace('<p id="page-draft" role="status">没有未应用草稿</p>', '', 1)
+    page = page.replace('<p id="page-draft" role="status"></p>', '', 1)
     # Preserve the complete frozen saved-state editor under an explicit snapshot
     # disclosure. Candidate objects stay independent from saved statistics.
     page = page.replace('</style><body>', '</style><body>' + ''.join(out) +
-                        '<details id="candidate-saved"><summary>保存快照与位置工具 · 生成时修订 ' + str(saved['revision']) +
+                        '<details id="candidate-saved"><summary>生成时的已保存结果 · 修订 ' + str(saved['revision']) +
                         '</summary><p>以下保存结果不是实时状态。候选建议位置另列，不进入保存统计。历史候选接收后，请重开普通关注页查看当前人工纠正结果。</p>', 1)
     page = page.replace('<script id="attention-data"', '</details><script id="attention-data"', 1)
     return page.replace('</body>', script + '</body>')

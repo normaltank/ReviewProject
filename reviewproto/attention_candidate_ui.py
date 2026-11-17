@@ -67,7 +67,7 @@ class CandidateSession:
 def candidate_message(error):
     code = str(error)
     if code == 'E_DEEPSEEK_CREDENTIAL_MISSING':
-        return 'DeepSeek API密钥缺失。请在模型设置中输入并保存，或设置DEEPSEEK_API_KEY环境变量。'
+        return '尚未配置DeepSeek。请在“更多选项 → 分析设置”中保存密钥。'
     if code == 'E_DEEPSEEK_CREDENTIAL_STORE':
         return 'API凭据无法保存或解密。请使用当前Windows用户重新保存，或显式设置DEEPSEEK_API_KEY。'
     if code == 'E_ATTENTION_API_MODEL':
@@ -87,7 +87,7 @@ def candidate_message(error):
     if code == 'E_ATTENTION_REVALIDATION':
         return '来源、A或保存修订已变化，候选不能接收。请恢复关注页核对，并重新生成；旧记录保留。'
     if code == 'E_ATTENTION_OUTPUT_RECOVER':
-        return '修改可能已经保存，但页面输出未完成。请点击恢复并重开，再核对修订；同一候选可安全重复接收。'
+        return '修改可能已经保存，但页面未能更新。请点击“查看已保存结果”重新打开。'
     if code in {'E_ATTENTION_ENDPOINT', 'E_ATTENTION_MODEL', 'E_ATTENTION_CAPACITY'}:
         return '模型设置无效。请核对提供方、服务地址、模型名称、输出长度和上下文上限。'
     if code == 'E_ATTENTION_NO_CANDIDATES':
@@ -161,11 +161,13 @@ class AttentionCandidateWindow:
         self.target_path = self.session.path
         self.service = CandidateModelService()
         self.results, self.busy, self.run_id = queue.Queue(), False, None
+        self.accepted_run_id = None
         self.window = tk.Toplevel(parent)
-        self.window.title('B内容与A位置候选')
-        self.window.geometry('920x760'); self.window.minsize(640, 620)
-        self.status = tk.StringVar(value='选择记录并生成。候选先理解B，再独立对照A；生成不会保存正式分析。')
-        self.actor, self.reason = tk.StringVar(), tk.StringVar()
+        self.window.title('分析评语')
+        self.window.geometry('760x570'); self.window.minsize(640, 480)
+        self.status = tk.StringVar(value='选好评语，开始分析。看过结果后再决定是否保存。')
+        self.actor = tk.StringVar(value='本机使用者')
+        self.reason = tk.StringVar(value='保存本次分析，保留待核状态。')
         self.provider = tk.StringVar(value='deepseek')
         self.endpoint = tk.StringVar(value=API_ENDPOINT)
         self.model = tk.StringVar(value=API_MODELS[0])
@@ -174,23 +176,27 @@ class AttentionCandidateWindow:
         self.context_chars, self.max_tokens = tk.StringVar(value='24000'), tk.StringVar(value=str(API_DEFAULT_TOKENS))
         self.resource = tk.StringVar(value=str(ROOT))
         self.runtime = tk.StringVar(value=str(ROOT / 'work' / ('local-model-candidates-' + uuid.uuid4().hex[:12])))
-        target_label = ttk.Label(self.window, text='固定目标：' + str(self.target_path), wraplength=850)
+        snapshot = self.session.snapshot
+        target_label = ttk.Label(self.window, text='本次材料：' + str(len(snapshot['records'])) + ' 条评语 · ' +
+            str(len(snapshot['a_reference']['items'])) + ' 项关注清单', wraplength=850)
         target_label.pack(fill='x', padx=14, pady=10)
         target_label.bind('<Configure>', lambda e: target_label.configure(wraplength=max(200, e.width)))
         footer = ttk.Frame(self.window, padding=14); footer.pack(side='bottom', fill='x')
         message = ttk.Label(footer, textvariable=self.status, wraplength=850)
         message.pack(fill='x', pady=(0, 8)); message.bind('<Configure>', lambda e: message.configure(wraplength=max(200, e.width)))
+        self.processing_note = tk.StringVar()
+        ttk.Label(footer, textvariable=self.processing_note, wraplength=700).pack(fill='x', pady=(0, 10))
         self.tabs = ttk.Notebook(self.window); self.tabs.pack(fill='both', expand=True, padx=14)
-        records = ttk.Frame(self.tabs, padding=10); self.tabs.add(records, text='记录范围')
+        records = ttk.Frame(self.tabs, padding=10); self.tabs.add(records, text='选择评语')
         self.record_list = tk.Listbox(records, selectmode='extended', exportselection=False, height=10)
         scrollbar = ttk.Scrollbar(records, command=self.record_list.yview)
         self.record_list.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right', fill='y'); self.record_list.pack(fill='both', expand=True)
         self.record_ids = [r['record_id'] for r in self.session.snapshot['records']]
         for r in self.session.snapshot['records']:
-            self.record_list.insert('end', r['anchor'] + ' · ' + str(len(r['sections'])) + ' 个完整分区 · ' + r['text'][:55])
+            self.record_list.insert('end', r['anchor'] + ' · ' + r['text'][:80])
         self.record_list.selection_set(0, 'end')
-        model_container = ttk.Frame(self.tabs); self.tabs.add(model_container, text='模型设置')
+        model_container = ttk.Frame(self.tabs); self.tabs.add(model_container, text='分析设置')
         canvas = tk.Canvas(model_container, highlightthickness=0)
         model_scroll = ttk.Scrollbar(model_container, command=canvas.yview)
         canvas.configure(yscrollcommand=model_scroll.set)
@@ -236,21 +242,26 @@ class AttentionCandidateWindow:
         service_row = ttk.Frame(model_tab); service_row.pack(fill='x', pady=8)
         self.start_button = ttk.Button(service_row, text='启动已安装模型', command=self.start_service); self.start_button.pack(side='left')
         self.stop_button = ttk.Button(service_row, text='停止本窗口启动的模型', command=self.stop_service); self.stop_button.pack(side='left', padx=8)
-        history = ttk.Frame(self.tabs, padding=10); self.tabs.add(history, text='候选历史与接收')
-        ttk.Label(history, text='接收只新增待核分析；之后在普通关注页核对、纠正并应用草稿。', wraplength=750).pack(anchor='w', pady=8)
+        history = ttk.Frame(self.tabs, padding=10); self.tabs.add(history, text='以往结果')
+        ttk.Label(history, text='保存位置：' + str(self.target_path), wraplength=700).pack(anchor='w', pady=8)
         self.history = ttk.Combobox(history, state='readonly', values=self.session.runs()); self.history.pack(fill='x', pady=8)
         self.history.bind('<<ComboboxSelected>>', lambda e: self.select_run())
-        entry(history, '修改者声明', self.actor); entry(history, '接收理由', self.reason)
-        self.generate_button = ttk.Button(footer, text='生成所选记录候选', command=self.generate); self.generate_button.pack(side='left')
-        self.preview_button = ttk.Button(footer, text='预览候选与位置', command=self.open_preview); self.preview_button.pack(side='left', padx=6)
-        self.accept_button = ttk.Button(footer, text='显式接收为待核', command=self.accept); self.accept_button.pack(side='left')
-        self.open_button = ttk.Button(footer, text='恢复并重开关注页', command=self.open_saved); self.open_button.pack(side='right')
+        entry(history, '操作人', self.actor); entry(history, '保存备注', self.reason)
+        self.restart_button = ttk.Button(history, text='重新分析所选评语', command=self.generate); self.restart_button.pack(anchor='w', pady=8)
+        self.open_button = ttk.Button(history, text='查看已保存结果', command=self.open_saved); self.open_button.pack(anchor='w')
+        self.generate_button = ttk.Button(footer, text='开始分析', command=self.generate)
+        self.preview_button = ttk.Button(footer, text='查看结果', command=self.open_preview)
+        self.accept_button = ttk.Button(footer, text='保存分析', command=self.accept)
+        self.options_button = ttk.Button(footer, text='更多选项', command=self.toggle_options); self.options_button.pack(side='right')
+        self.records_tab, self.settings_tab, self.history_tab = records, model_container, history
+        self.options_open = False
+        self.tabs.hide(self.settings_tab); self.tabs.hide(self.history_tab)
         self.window.protocol('WM_DELETE_WINDOW', self.close)
         self._controls(); self.timer = self.window.after(80, self.poll)
         self.window.bind('<Destroy>', self._destroyed, add='+')
 
     def _controls(self):
-        for b in (self.generate_button, self.open_button, self.start_button):
+        for b in (self.generate_button, self.restart_button, self.open_button, self.start_button):
             b.configure(state='disabled' if self.busy else 'normal')
         for b in (self.preview_button, self.accept_button):
             b.configure(state='normal' if self.run_id and not self.busy else 'disabled')
@@ -263,6 +274,25 @@ class AttentionCandidateWindow:
         self.start_button.configure(state='disabled' if self.busy or api or self.service.owned else 'normal')
         for widget in (self.key_entry,self.save_key_button,self.check_key_button):
             widget.configure(state='normal' if api and not self.busy else 'disabled')
+        self.processing_note.set('通过 DeepSeek 分析所选评语和本次关注清单。' if api else '通过本机模型分析所选材料。')
+        for button in (self.generate_button, self.preview_button, self.accept_button):
+            button.pack_forget()
+        if self.run_id:
+            self.preview_button.configure(command=self.open_saved if self.run_id == self.accepted_run_id else self.open_preview)
+            self.preview_button.pack(side='left')
+            if self.run_id != self.accepted_run_id:
+                self.accept_button.pack(side='left', padx=8)
+        else:
+            self.generate_button.pack(side='left')
+
+    def toggle_options(self):
+        self.options_open = not self.options_open
+        if self.options_open:
+            self.tabs.add(self.settings_tab); self.tabs.add(self.history_tab)
+        else:
+            self.tabs.select(self.records_tab)
+            self.tabs.hide(self.settings_tab); self.tabs.hide(self.history_tab)
+        self.options_button.configure(text='收起更多选项' if self.options_open else '更多选项')
 
     def change_provider(self):
         if self.busy: return
@@ -310,7 +340,7 @@ class AttentionCandidateWindow:
         if self.busy or not self._target_current(): return
         ids = [self.record_ids[i] for i in self.record_list.curselection()]
         if not ids:
-            self.status.set('请至少选择一条评语记录。每条所选记录的全部普通分区均会处理。'); return
+            self.status.set('请至少选择一条评语。'); return
         try:
             chars, tokens = int(self.context_chars.get()), int(self.max_tokens.get())
             if self.provider.get()=='deepseek' and self.api_key.get():
@@ -326,7 +356,7 @@ class AttentionCandidateWindow:
 
     def select_run(self):
         self.run_id = self.history.get() or None; self._controls()
-        self.status.set('已选择候选历史。请预览并核对绑定；旧修订候选不能首次接收。')
+        self.status.set('已选中以往结果。可先查看，再决定是否保存。')
 
     def open_preview(self):
         run_id, session = self.run_id, self.session
@@ -334,9 +364,9 @@ class AttentionCandidateWindow:
 
     def accept(self):
         if self.busy or not self.run_id or not self._target_current(): return
-        actor, reason, run_id = self.actor.get(), self.reason.get(), self.run_id
-        if not actor.strip() or not reason.strip():
-            self.tabs.select(2); self.status.set('请填写修改者声明与接收理由，再显式接收为待核。'); return
+        actor = self.actor.get().strip() or '本机使用者'
+        reason = self.reason.get().strip() or '保存本次分析，保留待核状态。'
+        run_id = self.run_id
         session = self.session
         self.submit('accept', lambda: session.accept(run_id, actor=actor, reason=reason))
 
@@ -366,22 +396,22 @@ class AttentionCandidateWindow:
                         if action == 'start' and self.service.owned else candidate_message(error))
                 elif action == 'generate':
                     self.run_id = result['run_id']; self.history.configure(values=self.session.runs()); self.history.set(self.run_id)
-                    statuses = {'complete': '处理完成', 'partial': '部分处理', 'failed': '处理失败', 'zero_candidates': '零候选'}
+                    statuses = {'complete': '分析完成', 'partial': '部分内容未完成', 'failed': '分析未完成', 'zero_candidates': '没有生成结果'}
                     self.status.set(statuses.get(result['status'], '未完成') + ' · ' +
                         ('工程回放（非实际推理）' if result['mode'] == 'replay' else 'DeepSeek API联网推理' if result['mode']=='remote_api' else '实际本机推理') +
-                        '。候选未接收、全部待核。请预览原话、限定、位置和未完成范围。')
+                        '。请查看结果，核对后保存。')
                     if result.get('errors'):
                         code=result['errors'][0]['code']
                         if code.startswith('E_DEEPSEEK_') or code.startswith('E_ATTENTION_API'):
                             self.status.set(self.status.get()+' '+candidate_message(code))
-                    self.tabs.select(2)
                 elif action == 'preview':
-                    self._launch(result, '候选预览已打开；尚未接收。请回查逐字证据、限定和建议位置。')
+                    self._launch(result, '结果已打开，尚未保存。')
                 elif action in {'accept', 'saved'}:
                     if action == 'accept':
-                        self.status.set('已接收为待核 · 已保存修订 ' + str(result['revision']) + '。请恢复并重开关注页，核对或纠正后应用草稿。')
+                        self.accepted_run_id = self.run_id
+                        self._launch(self.target_path / 'attention.html', '分析已保存并打开，内容仍待核对。')
                     else:
-                        self._launch(self.target_path / 'attention.html', '保存态关注页已恢复并打开 · 修订 ' + str(result['revision']) + '。下载草稿后仍需应用。')
+                        self._launch(self.target_path / 'attention.html', '已打开保存的分析结果。')
                     current = getattr(self.controller, 'attention_path', None)
                     if self.on_result and current is not None and Path(current).absolute() == self.target_path:
                         self.on_result(dict(kind='attention', path=self.target_path, revision=result['revision'], material_status=result['material_status']))
@@ -413,7 +443,7 @@ class AttentionCandidateWindow:
             self._open_file(path)
             self.status.set(message)
         except Exception:
-            self.status.set('页面已生成，但浏览器未能打开。请检查本机默认浏览器，再点击预览或恢复并重开；保存状态不变。')
+            self.status.set('页面已生成，但浏览器未能打开。请检查默认浏览器，再点“查看结果”；保存状态不变。')
 
     def close(self):
         if self.busy:

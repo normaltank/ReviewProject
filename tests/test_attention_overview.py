@@ -1,4 +1,4 @@
-from attention_browser import open_panel
+from attention_browser import open_panel, open_editor_tools
 import os
 import json
 import tempfile
@@ -30,9 +30,9 @@ class AttentionOverview(unittest.TestCase):
                     open_panel(page, 'view-statistics')
                     open_panel(page, 'view-filters')
                     open_panel(page, 'view-extra-views')
-                    open_panel(page, 'attention-editor')
+                    open_editor_tools(page)
                     overview = page.get_by_role('region', name='当前关注概览')
-                    page.get_by_role('link', name='主题与统计').focus()
+                    page.get_by_role('link', name='查看统计').focus()
                     page.keyboard.press('Enter')
                     self.assertIn(f'{count} 条记录', overview.inner_text(timeout=1200))
                     self.assertIn('尚未形成有效观点方面', overview.inner_text())
@@ -56,7 +56,7 @@ class AttentionOverview(unittest.TestCase):
                     open_panel(page, 'view-statistics')
                     open_panel(page, 'view-filters')
                     open_panel(page, 'view-extra-views')
-                    open_panel(page, 'attention-editor')
+                    open_editor_tools(page)
                     self.assertIn('已保存修订 1', overview.inner_text())
                     self.assertIn('1 个观点 / 1 个方面', overview.inner_text())
                     self.assertIn(f'1/{count}', overview.inner_text())
@@ -74,7 +74,7 @@ class AttentionOverview(unittest.TestCase):
                     open_panel(page, 'view-statistics')
                     open_panel(page, 'view-filters')
                     open_panel(page, 'view-extra-views')
-                    open_panel(page, 'attention-editor')
+                    open_editor_tools(page)
                     self.assertIn('来源失效', overview.inner_text())
                     self.assertIn('旧快照', overview.inner_text())
                     source.write_bytes(original)
@@ -83,7 +83,7 @@ class AttentionOverview(unittest.TestCase):
                     open_panel(page, 'view-statistics')
                     open_panel(page, 'view-filters')
                     open_panel(page, 'view-extra-views')
-                    open_panel(page, 'attention-editor')
+                    open_editor_tools(page)
                     self.assertNotIn('来源失效', overview.inner_text())
                     self.assertIn('已保存修订 1', overview.inner_text())
                     page.close()
@@ -118,7 +118,7 @@ class AttentionOverview(unittest.TestCase):
                     open_panel(page, 'view-statistics')
                     open_panel(page, 'view-filters')
                     open_panel(page, 'view-extra-views')
-                    open_panel(page, 'attention-editor')
+                    open_editor_tools(page)
                     overview = page.get_by_role('region', name='当前关注概览')
                     self.assertIn('2 个观点 / 2 个方面', overview.inner_text())
                     self.assertIn(('3 项原分' if count == 3 else '1 项原分'), overview.inner_text())
@@ -169,7 +169,7 @@ class AttentionOverview(unittest.TestCase):
                 open_panel(page, 'view-statistics')
                 open_panel(page, 'view-filters')
                 open_panel(page, 'view-extra-views')
-                open_panel(page, 'attention-editor')
+                open_editor_tools(page)
                 overview = page.get_by_role('region', name='当前关注概览')
                 self.assertIn('旧快照', overview.inner_text())
                 self.assertIn('恢复原绑定文件', overview.inner_text())

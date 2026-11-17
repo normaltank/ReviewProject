@@ -3,5 +3,15 @@
 
 def open_panel(page, panel_id):
     panel = page.locator('#' + panel_id)
+    for parent in panel.locator('xpath=ancestor::details').all():
+        if parent.get_attribute('open') is None:
+            parent.locator(':scope > summary').click()
     if panel.get_attribute('open') is None:
         panel.locator(':scope > summary').click()
+
+
+def open_editor_tools(page):
+    """Open the optional tools when exercising advanced editing workflows."""
+    open_panel(page, 'attention-editor')
+    for panel_id in ('editor-structure', 'editor-expression', 'editor-a-links', 'editor-themes', 'editor-relations'):
+        open_panel(page, panel_id)

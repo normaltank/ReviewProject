@@ -110,27 +110,92 @@ class AttentionInputTk(unittest.TestCase):
     def test_real_desktop_entry_opens_ordinary_input_window(self):
         import tkinter as tk
         from reviewproto import desktop
+        from reviewproto.attention_input_ui import AttentionInputWindow
         original = tk.Tk
         observations = []
+        callback_errors = []
+        input_windows = []
+        def open_input(*args, **kwargs):
+            window = AttentionInputWindow(*args, **kwargs)
+            input_windows.append(window)
+            return window
         def create_root():
             root = original()
             def inspect():
                 try:
+                    # The timer may run before Tk's idle geometry/map events.
+                    # Complete layout explicitly, independent of machine load.
+                    root.update_idletasks()
                     def descendants(widget):
                         for child in widget.winfo_children():
                             yield child
                             yield from descendants(child)
-                    button = next(w for w in descendants(root) if w.winfo_class() == 'TButton' and
-                                  w.cget('text') == '准备A/B输入并建立独立分析')
+                    visible = [w for w in descendants(root) if w.winfo_class() == 'TButton' and w.winfo_ismapped()]
+                    self.assertEqual(len(visible), 3)
+                    button = next(w for w in visible if w.cget('text') == '新建分析')
                     button.invoke(); root.update()
                     titles = [w.title() for w in root.winfo_children() if isinstance(w, tk.Toplevel)]
-                    observations.append('准备输入 · 建立独立关注分析' in titles)
+                    self.assertIn('新建分析 · 输入材料', titles)
+                    entry = input_windows[-1]
+                    entry.quote.insert('1.0', '合成评语。')
+                    entry.save_b_button.invoke()
+                    with tempfile.TemporaryDirectory() as tmp:
+                        with patch('tkinter.filedialog.askdirectory', return_value=tmp):
+                            entry.build_button.invoke()
+                        root.update()
+                        visible = [w for w in descendants(root) if w.winfo_class() == 'TButton' and w.winfo_ismapped()]
+                        self.assertTrue(any(w.cget('text') == '分析评语' for w in visible), entry.status.get())
+                        self.assertTrue(any(w.cget('text') == '查看结果' for w in visible))
+                        self.assertFalse(any(w.cget('text') == '显式启动本项目已安装模型' for w in visible))
+                        controls = list(descendants(root))
+                        more = next(w for w in controls if w.winfo_class() == 'TButton' and
+                                    w.cget('text') == '保存修改与更换关注清单…')
+                        more.invoke(); root.update()
+                        self.assertTrue(any(w.winfo_class() == 'TButton' and w.winfo_ismapped() and
+                                            w.cget('text') == '保存下载的修改并查看' for w in descendants(root)))
+                    observations.append(True)
+                except Exception as error:
+                    callback_errors.append((error, error.__traceback__))
                 finally:
+                    for callback in root.tk.call('after', 'info'):
+                        root.after_cancel(callback)
                     root.destroy()
-            root.after(100, inspect)
+            # Exercise the before-idle ordering that caused the full-suite failure.
+            root.after(0, inspect)
             return root
-        with patch('tkinter.Tk', create_root): desktop.main()
+        with patch('tkinter.Tk', create_root), \
+             patch('reviewproto.attention_input_ui.AttentionInputWindow', side_effect=open_input):
+            desktop.main()
+        if callback_errors:
+            error, traceback = callback_errors[0]
+            raise error.with_traceback(traceback)
         self.assertEqual(observations, [True])
+
+    def test_pasted_material_builds_without_inventing_original_file_locations(self):
+        import tkinter as tk
+        from contextlib import closing
+        from reviewproto.attention_input_ui import AttentionInputWindow
+        from reviewproto.desktop import Controller
+        from reviewproto.attention import AttentionWorkspace
+        root = tk.Tk(); self.addCleanup(root.destroy)
+        controller = Controller()
+        window = AttentionInputWindow(root, controller)
+        quote = ' 原话😀\n若能补充，可以说明。 '
+        window.quote.insert('1.0', quote)
+        window.save_b_button.invoke()
+        window.version.set('手工清单1')
+        window.a_text.insert('1.0', '必要时说明范围。')
+        window.save_a_button.invoke()
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch('tkinter.filedialog.askdirectory', return_value=tmp):
+                window.build_button.invoke()
+            self.assertIsNotNone(getattr(controller, 'attention_path', None), window.status.get())
+            with closing(AttentionWorkspace(controller.attention_path)) as ws:
+                state = ws.state()
+                self.assertEqual(state['records'][0]['text'], quote)
+                self.assertIn('未提供原件位置', str(state['records'][0]['locator']))
+                self.assertEqual(state['a_reference']['items'][0]['text'], '必要时说明范围。')
+                self.assertIn('未提供原件位置', state['a_reference']['items'][0]['locator'])
 
     def test_a_entry_empty_part_replacement_and_changed_b_make_independent_packages(self):
         import tkinter as tk

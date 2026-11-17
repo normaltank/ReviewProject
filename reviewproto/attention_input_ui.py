@@ -22,12 +22,12 @@ class AttentionInputWindow:
         self.draft = AttentionInput()
         self.a_only = a_only
         self.window = tk.Toplevel(parent)
-        self.window.title('录入A参照并显式换版' if a_only else '准备输入 · 建立独立关注分析')
+        self.window.title('更换A关注清单' if a_only else '新建分析 · 输入材料')
         self.window.geometry('980x780')
         self.window.minsize(760, 640)
-        self.status = tk.StringVar(value='逐条填写后加入清单。核对清单再建包；原件和旧包保持。')
+        self.status = tk.StringVar(value='粘贴一份评语，加入清单后继续录入。A关注清单可稍后填写。')
         if a_only:
-            target_label = ttk.Label(self.window, text='显式导入的目标包（此窗口固定）：\n' + str(self.target_path), wraplength=920)
+            target_label = ttk.Label(self.window, text='正在更换此分析的关注清单：\n' + str(self.target_path), wraplength=920)
             target_label.pack(fill='x', padx=14, pady=(10, 0))
             target_label.bind('<Configure>', lambda event: target_label.configure(wraplength=max(200, event.width)))
             self.status.set('核对完整A清单后导入；旧对应待核。')
@@ -38,10 +38,10 @@ class AttentionInputWindow:
         self.tabs.pack(fill='both', expand=True, padx=14)
         if not a_only:
             self.b_tab = ttk.Frame(self.tabs, padding=10)
-            self.tabs.add(self.b_tab, text='B原话与原分')
+            self.tabs.add(self.b_tab, text='评语')
             self._b_controls()
         self.a_tab = ttk.Frame(self.tabs, padding=10)
-        self.tabs.add(self.a_tab, text='A参照（可选）' if not a_only else '新的A版本')
+        self.tabs.add(self.a_tab, text='A关注清单（可选）' if not a_only else '新的关注清单')
         self._a_controls()
         self.review_tab = ttk.Frame(self.tabs, padding=10)
         self.tabs.add(self.review_tab, text='核对整份清单')
@@ -51,13 +51,14 @@ class AttentionInputWindow:
         actions = ttk.Frame(self.window, padding=14)
         actions.pack(side='bottom', fill='x')
         if a_only:
-            self.import_a_button = ttk.Button(actions, text='将此A版本显式导入已打开包', command=lambda: self.guard(self.import_a))
+            self.import_a_button = ttk.Button(actions, text='保存新的关注清单', command=lambda: self.guard(self.import_a))
             self.import_a_button.pack(side='left')
         else:
-            self.build_button = ttk.Button(actions, text='核对并建立独立新包…', command=lambda: self.guard(self.build))
+            self.build_button = ttk.Button(actions, text='保存材料，建立分析…', command=lambda: self.guard(self.build))
             self.build_button.pack(side='left')
-        ttk.Button(actions, text='关闭输入准备', command=self.window.destroy).pack(side='right')
-        footer = ttk.Label(self.window, text='B变化请从此清单另建独立包；已有观点不会迁移。输入文件随整个分析目录保存。', wraplength=920)
+        ttk.Button(actions, text='关闭', command=self.window.destroy).pack(side='right')
+        footer = ttk.Label(self.window, text=('保存后保留旧清单及修改历史。' if a_only else
+                           '每次新建分析均单独保存。要继续已有分析，请从主窗口打开。'), wraplength=920)
         footer.pack(side='bottom', fill='x', padx=14, pady=(0, 4))
         footer.bind('<Configure>', lambda event: footer.configure(wraplength=max(200, event.width)))
         # Pack the resizable notebook last so short windows retain their actions.
@@ -91,6 +92,19 @@ class AttentionInputWindow:
             return None
 
     @staticmethod
+    def _details(parent, label):
+        holder = ttk.Frame(parent)
+        holder.pack(fill='x', pady=4)
+        body = ttk.Frame(holder)
+        def toggle():
+            if body.winfo_manager():
+                body.pack_forget()
+            else:
+                body.pack(fill='x', pady=4)
+        ttk.Button(holder, text=label + '…', command=toggle).pack(anchor='w')
+        return body
+
+    @staticmethod
     def _entry(parent, label, variable, width=28):
         row = ttk.Frame(parent)
         row.pack(fill='x', pady=3)
@@ -121,39 +135,41 @@ class AttentionInputWindow:
         pane.pack(fill='both', expand=True)
         left, right = ttk.Frame(pane), ttk.Frame(pane, padding=(12, 0, 0, 0))
         pane.add(left, weight=1); pane.add(right, weight=3)
-        ttk.Label(left, text='待建包的B清单').pack(anchor='w')
+        ttk.Label(left, text='已加入的评语').pack(anchor='w')
         self.b_list = tk.Listbox(left, exportselection=False, width=25)
         self.b_list.pack(fill='both', expand=True, pady=6)
         self.b_list.bind('<<ListboxSelect>>', lambda event: self.guard(self.load_b))
-        ttk.Button(left, text='新建转录条目 / 清空表单', command=self.clear_b).pack(fill='x', pady=3)
+        ttk.Button(left, text='清空，录入下一份', command=self.clear_b).pack(fill='x', pady=3)
         self.remove_b_button = ttk.Button(left, text='移除选中的清单项', command=lambda: self.guard(self.remove_b))
         self.remove_b_button.pack(fill='x', pady=3)
-        self.workspace_button = ttk.Button(left, text='选择已导入工作区普通分区…', command=lambda: self.guard(self.choose_workspace))
+        self.workspace_button = ttk.Button(left, text='从已有材料工作区选择…', command=lambda: self.guard(self.choose_workspace))
         self.workspace_button.pack(fill='x', pady=3)
         self.anchor, self.locator, self.paper = tk.StringVar(), tk.StringVar(), tk.StringVar()
         self.visibility = tk.StringVar(value=next(iter(VISIBILITY)))
-        self._entry(right, 'B锚点 / 记录名', self.anchor)
-        self._entry(right, '原件定位说明', self.locator)
-        self._entry(right, '材料组（可空）', self.paper)
-        row = ttk.Frame(right); row.pack(fill='x', pady=3)
+        ttk.Label(right, text='评语原文（保留换行、空格和限定）').pack(anchor='w', pady=(8, 3))
+        self.quote = self._text(right, height=7)
+        self.save_b_button = ttk.Button(right, text='将这份评语加入清单', command=lambda: self.guard(self.save_b))
+        self.save_b_button.pack(anchor='w', pady=8)
+        metadata = self._details(right, '记录名称、来源位置与材料分组（可选）')
+        self._entry(metadata, '记录名称', self.anchor)
+        self._entry(metadata, '原件位置说明', self.locator)
+        self._entry(metadata, '材料组', self.paper)
+        row = ttk.Frame(metadata); row.pack(fill='x', pady=3)
         ttk.Label(row, text='普通可见性', width=18).pack(side='left')
         ttk.Combobox(row, textvariable=self.visibility, values=list(VISIBILITY), state='readonly').pack(fill='x', expand=True)
-        ttk.Label(right, text='逐字B原话（保留换行、空格及限定）').pack(anchor='w', pady=(8, 3))
-        self.quote = self._text(right, height=5)
-        ttk.Label(right, text='原分：零至任意项，标签和值逐字保留').pack(anchor='w', pady=(8, 3))
+        scores = self._details(right, '原分（如有）')
+        ttk.Label(scores, text='标签和值按原样填写，不换算分数。').pack(anchor='w')
         self.score_label, self.score_value = tk.StringVar(), tk.StringVar()
-        self._entry(right, '原分标签', self.score_label)
-        self._entry(right, '原值（可空）', self.score_value)
-        row = ttk.Frame(right); row.pack(fill='x')
+        self._entry(scores, '原分标签', self.score_label)
+        self._entry(scores, '原值（可空）', self.score_value)
+        row = ttk.Frame(scores); row.pack(fill='x')
         self.add_score_button = ttk.Button(row, text='原分加入 / 保存修改', command=self.save_score)
         self.add_score_button.pack(side='left', pady=3)
         ttk.Button(row, text='移除选中原分', command=lambda: self.guard(self.remove_score)).pack(side='left', padx=5)
         ttk.Button(row, text='清空原分表单', command=self.clear_score).pack(side='left')
-        self.score_list = tk.Listbox(right, height=3, exportselection=False)
+        self.score_list = tk.Listbox(scores, height=3, exportselection=False)
         self.score_list.pack(fill='x')
         self.score_list.bind('<<ListboxSelect>>', lambda event: self.load_score())
-        self.save_b_button = ttk.Button(right, text='B条目加入 / 保存到清单', command=lambda: self.guard(self.save_b))
-        self.save_b_button.pack(anchor='w', pady=8)
         self.scores = []
         self.editing_b = self.editing_score = None
 
@@ -195,8 +211,11 @@ class AttentionInputWindow:
 
     def save_b(self):
         require(not self.score_label.get() and not self.score_value.get(), 'E_ATTENTION_UNSAVED_INPUT')
-        values = (self.anchor.get(), self.quote.get('1.0', 'end-1c'), VISIBILITY[self.visibility.get()],
-                  self.scores, self.locator.get(), self.paper.get())
+        # A generated name identifies this transcription, never an original-file coordinate.
+        anchor = self.anchor.get() or '手工录入-' + uuid.uuid4().hex[:12]
+        locator = self.locator.get() or '本窗口手工录入；未提供原件位置'
+        values = (anchor, self.quote.get('1.0', 'end-1c'), VISIBILITY[self.visibility.get()],
+                  self.scores, locator, self.paper.get())
         if self.editing_b is None:
             self.draft.add_transcription(*values)
         else:
@@ -207,9 +226,11 @@ class AttentionInputWindow:
 
     def refresh_b(self):
         self.b_list.delete(0, 'end')
-        for record in self.draft.records:
-            self.b_list.insert('end', record.get('anchor', record.get('section_id', '')) +
-                               (' · 工作区' if record['kind'] == 'workspace' else ' · 转录'))
+        for number, record in enumerate(self.draft.records, 1):
+            name = record.get('anchor', record.get('section_id', ''))
+            if record['kind'] == 'transcription' and name.startswith('手工录入-'):
+                name = '评语 ' + str(number)
+            self.b_list.insert('end', name + (' · 已有材料' if record['kind'] == 'workspace' else ''))
 
     def load_b(self):
         if not self.b_list.curselection(): return
@@ -252,40 +273,44 @@ class AttentionInputWindow:
 
     def _a_controls(self):
         self.version = tk.StringVar()
-        self._entry(self.a_tab, 'A版本名', self.version)
-        ttk.Label(self.a_tab, text='无A可留空。完整原话保留“可以、例如、必要时”等限定；身份编号自动生成。').pack(anchor='w', pady=4)
+        self._entry(self.a_tab, '清单版本名称', self.version)
+        ttk.Label(self.a_tab, text='逐条录入A关注的内容，保留“可以、例如、必要时”等限定。没有清单可跳过。', wraplength=680).pack(anchor='w', pady=4)
         pane = ttk.Panedwindow(self.a_tab, orient='horizontal'); pane.pack(fill='both', expand=True)
         left, right = ttk.Frame(pane), ttk.Frame(pane, padding=(12, 0, 0, 0))
         pane.add(left, weight=1); pane.add(right, weight=3)
-        ttk.Label(left, text='部分（可保留空部分）').pack(anchor='w')
-        self.part_list = tk.Listbox(left, height=5, exportselection=False)
+        groups = self._details(left, '按部分组织清单（可选）')
+        self.part_list = tk.Listbox(groups, height=5, exportselection=False)
         self.part_list.pack(fill='x', pady=4)
         self.part_list.bind('<<ListboxSelect>>', lambda event: self.load_part())
         self.part_label = tk.StringVar()
-        ttk.Entry(left, textvariable=self.part_label).pack(fill='x')
-        self.save_part_button = ttk.Button(left, text='部分加入 / 保存修改', command=lambda: self.guard(self.save_part))
+        ttk.Entry(groups, textvariable=self.part_label).pack(fill='x')
+        self.save_part_button = ttk.Button(groups, text='保存部分名称', command=lambda: self.guard(self.save_part))
         self.save_part_button.pack(fill='x', pady=4)
-        ttk.Button(left, text='清空部分表单', command=self.clear_part).pack(fill='x')
-        ttk.Button(left, text='移除选中部分', command=lambda: self.guard(self.remove_part)).pack(fill='x', pady=4)
-        ttk.Label(left, text='完整A条目').pack(anchor='w', pady=(12, 4))
+        ttk.Button(groups, text='清空部分表单', command=self.clear_part).pack(fill='x')
+        ttk.Button(groups, text='移除选中部分', command=lambda: self.guard(self.remove_part)).pack(fill='x', pady=4)
+        ttk.Label(left, text='已加入的关注条目').pack(anchor='w', pady=(12, 4))
         self.a_list = tk.Listbox(left, exportselection=False)
         self.a_list.pack(fill='both', expand=True)
         self.a_list.bind('<<ListboxSelect>>', lambda event: self.load_a())
-        ttk.Button(left, text='新建A条目 / 清空表单', command=self.clear_a).pack(fill='x', pady=4)
-        ttk.Button(left, text='移除选中A条目', command=lambda: self.guard(self.remove_a)).pack(fill='x')
+        ttk.Button(left, text='清空，录入下一条', command=self.clear_a).pack(fill='x', pady=4)
+        ttk.Button(left, text='移除选中条目', command=lambda: self.guard(self.remove_a)).pack(fill='x')
         self.item_part, self.item_locator = tk.StringVar(), tk.StringVar()
-        ttk.Label(right, text='所属部分（无部分时留空）').pack(anchor='w')
-        self.part_box = ttk.Combobox(right, textvariable=self.item_part, state='readonly')
+        self.part_row = ttk.Frame(right)
+        ttk.Label(self.part_row, text='所属部分').pack(anchor='w')
+        self.part_box = ttk.Combobox(self.part_row, textvariable=self.item_part, state='readonly')
         self.part_box.pack(fill='x', pady=4)
-        self._entry(right, 'A原件定位', self.item_locator)
-        ttk.Label(right, text='完整A原话').pack(anchor='w', pady=(10, 4))
+        self.a_quote_label = ttk.Label(right, text='关注条目原文')
+        self.a_quote_label.pack(anchor='w', pady=(10, 4))
         self.a_text = self._text(right, height=9)
-        self.save_a_button = ttk.Button(right, text='A条目加入 / 保存到清单', command=lambda: self.guard(self.save_a))
+        self.save_a_button = ttk.Button(right, text='将这条关注加入清单', command=lambda: self.guard(self.save_a))
         self.save_a_button.pack(anchor='w', pady=8)
+        details = self._details(right, '条目来源位置（可选）')
+        self._entry(details, '原件位置说明', self.item_locator)
         self.actor, self.reason = tk.StringVar(), tk.StringVar()
-        self._entry(right, '换版修改者声明', self.actor)
-        self._entry(right, '显式换版理由', self.reason)
-        ttk.Label(right, text='“显式导入”只改变已打开包的A。保留B、观点及旧A历史，旧对应待核。', wraplength=500).pack(anchor='w', pady=8)
+        if self.a_only:
+            self._entry(right, '修改者', self.actor)
+            self._entry(right, '更换清单的理由', self.reason)
+            ttk.Label(right, text='旧清单与分析保留；更换后，原有A对应需要重新核对。', wraplength=500).pack(anchor='w', pady=8)
         self.parts, self.items = [], []
         self.editing_part = self.editing_a = None
 
@@ -316,6 +341,10 @@ class AttentionInputWindow:
         for part in self.parts: self.part_list.insert('end', part['label'])
         for item in self.items: self.a_list.insert('end', item['text'][:40])
         self.part_box['values'] = [str(n + 1) + ' · ' + p['label'] for n, p in enumerate(self.parts)]
+        if self.parts:
+            self.part_row.pack(fill='x', before=self.a_quote_label)
+        else:
+            self.part_row.pack_forget()
         if self.item_part.get() not in self.part_box['values']: self.item_part.set('')
         self.refresh_review()
 
@@ -333,7 +362,8 @@ class AttentionInputWindow:
     def save_a(self):
         from .attention_input import nonempty
         item = {'id': self.items[self.editing_a]['id'] if self.editing_a is not None else 'item-' + uuid.uuid4().hex,
-                'text': nonempty(self.a_text.get('1.0', 'end-1c')), 'locator': nonempty(self.item_locator.get())}
+                'text': nonempty(self.a_text.get('1.0', 'end-1c')),
+                'locator': nonempty(self.item_locator.get() or '本窗口手工录入；未提供原件位置')}
         if self.parts:
             require(self.part_box.current() >= 0, 'E_ATTENTION_A')
             item['part_id'] = self.parts[self.part_box.current()]['id']

@@ -6,7 +6,7 @@ const root=document.getElementById('view-positions');
 const make=(tag,text,parent,attrs={})=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);parent?.append(e);return e;};
 const uniq=xs=>[...new Set(xs)];
 make('style',`#candidate-position-regions .candidate-region-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}@media(max-width:650px){#candidate-position-regions .candidate-region-grid{grid-template-columns:1fr}}`,document.head);
-const statuses={needs_review:'待核',working:'工作解释',confirmed:'已核对'};
+const statuses={needs_review:'待核',working:'未核对解释',confirmed:'已核对'};
 const kinds={explicit:'明确对应',partial:'部分对应',related:'内容相关',undetermined:'暂未定'};
 let selected='',offset=0,lastSelection={recordIds:[],facetIds:[]},overlay=null;
 make('style',`#view-positions{margin:1.6rem 0}#attention-views #view-positions svg{min-width:0;width:100%;display:block}#view-positions svg text{font:14px system-ui;fill:#17212e}#view-positions svg a:hover ellipse{fill:#e0eaf1}#view-positions svg a:focus-visible ellipse{stroke:#17212e;stroke-width:3}#view-positions .position-bands{display:flex;flex-wrap:wrap;gap:.5rem}#view-positions .position-bands button{flex:1 1 12rem;text-align:left}#position-drill{border-top:1px solid #c8d0da;margin-top:1rem}#position-drill li{margin:1rem 0}#position-drill small{display:block}#view-positions .position-pending{border:1px dashed #697d90}#view-positions .position-caption{max-width:72ch}`,document.head);
@@ -49,14 +49,15 @@ function render(selection=lastSelection){
  make('div',null,root,{id:'position-drill','aria-live':'polite'});drill(ps,ids.size);
 }
 function renderOverlay(ids,v){
- const o=make('section',null,root,{id:'candidate-position-overlay'});
+ document.getElementById('candidate-position-overlay')?.remove();
+ const o=make('section',null,document.getElementById('candidate-visualization')||root,{id:'candidate-position-overlay'});
  make('h3','候选建议位置',o);
- make('p',(overlay.accepted_revision!=null?'历史候选（已在修订 '+overlay.accepted_revision+' 接收，以下是生成时待核读法）':'候选预览（未接收、全部待核）')+'：'+overlay.label+'。独立于保存结果及上述统计。布局、距离与面积不表示对应强度。',o);
- if(overlay.validity==='needs_revalidation')make('p','输入或保存修订已变化。位置仅供历史回查；未接收的候选须重新生成。',o);
+ make('p',(overlay.accepted_revision!=null?'历史候选（已在修订 '+overlay.accepted_revision+' 保存，以下是生成时待核读法）':'候选预览（尚未保存，全部待核）')+'。候选单独展示，不进入已保存结果的统计。布局、距离与面积不表示对应强度。',o);
+ if(overlay.validity==='needs_revalidation')make('p','输入或保存修订已变化。位置仅供历史回查；尚未保存的候选须重新生成。',o);
  const matches=p=>(!p.record_id||ids.has(p.record_id))&&(!v.function||v.function==='*'||(p.expression?.function||'未说明')===v.function)&&(!v.direction||v.direction==='*'||p.directions?.includes(v.direction))&&(!v.status||v.status==='*'||v.status==='needs_review')&&(!v.boiler||v.boiler==='*'||JSON.stringify(p.expression?.boilerplate_candidate??null)===v.boiler);
  const ps=overlay.placements.filter(matches);
  for(const p of overlay.placements){const d=document.getElementById(p.detail_id);if(d)d.hidden=!matches(p);}
- make('p','候选命中 '+metric(ps,ids.size)+'；分母与上方记录/材料筛选相同，表达筛选保留分母。各区域记录去重，不可相加。',o);
+ make('p','候选命中 '+metric(ps,ids.size)+'；记录/材料筛选改变分母，表达筛选保留分母。各区域记录去重，不可相加。',o);
  const ns='http://www.w3.org/2000/svg',sn=(tag,attrs,parent,text)=>{const e=document.createElementNS(ns,tag);for(const[k,v]of Object.entries(attrs))e.setAttribute(k,v);if(text!=null)e.textContent=text;parent.append(e);return e;};
  const drill=make('div',null,o,{id:'candidate-position-drill','aria-live':'polite'});
  function detail(r,start=0){
@@ -66,7 +67,7 @@ function renderOverlay(ids,v){
    if(p.detail_id)make('a',p.label+' · 逐字证据与限定',item,{href:'#'+p.detail_id});else make('p',p.label,item);
    for(const e of es){make('p','待核 · '+(kinds[e.proposed_kind]||'位置说明')+' · '+(e.scope||'')+' · '+(e.reason||''),item);for(const q of e.evidence||[])make('blockquote',q.quote,item);}
   }
-  make('p','显示 '+(fids.length?start+1:0)+'–'+Math.min(start+20,fids.length)+' / '+fids.length+' 个候选方面。接收后在普通关注页核对、纠正并保存。',drill);
+  make('p','显示 '+(fids.length?start+1:0)+'–'+Math.min(start+20,fids.length)+' / '+fids.length+' 个候选方面。保存后在分析页核对和修改。',drill);
   for(const[label,step]of [['上一页',-20],['下一页',20]]){const b=make('button',label,drill,{type:'button'});b.disabled=start+step<0||start+step>=fids.length;b.onclick=()=>detail(r,start+step);}
  }
  const graph=make('div',null,o,{id:'candidate-position-regions'}),groups=new Map();o.append(drill);
@@ -89,7 +90,7 @@ function drill(ps,N){const d=document.getElementById('position-drill');d.replace
  const ul=make('ul',null,d);
  for(const fid of groups.slice(offset,offset+20)){const entries=matches.filter(p=>p.facet_id===fid),p=entries[0],li=make('li',null,ul);
  make('a',p.label,li,{href:'#view-facet-'+encodeURIComponent(fid)});
- make('small','记录 '+p.record_id+' · 方面 '+fid+' · 核对状态 '+(statuses[p.facet_status]||p.facet_status),li);
+ make('small','核对状态：'+(statuses[p.facet_status]||p.facet_status),li);
  for(const e of entries)make('p',(statuses[e.review_status]||e.review_status)+' · '+(kinds[e.proposed_kind]||'位置说明')+' · '+e.scope+' · '+e.reason,li);
  }
  if(!groups.length)make('p','当前筛选无命中；未提及不表示不关注。',d);
