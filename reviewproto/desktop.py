@@ -111,7 +111,9 @@ class Controller:
 
     def attention_session(self, path=None):
         from .attention_server import AttentionSession
-        path = Path(path or self.attention_path).resolve()
+        from .local_io import checked_local
+        require(path is not None or self.attention_path is not None, 'E_ATTENTION_EMPTY')
+        path = checked_local(path or self.attention_path)
         if path not in self._sessions:
             self._sessions[path] = AttentionSession(path)
         return self._sessions[path]

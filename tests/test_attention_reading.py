@@ -1,3 +1,4 @@
+from attention_browser import open_panel
 """Read, trace and correct synthetic results through the ordinary offline page."""
 import os
 import copy
@@ -243,6 +244,7 @@ class AttentionReading(unittest.TestCase):
             page.get_by_role('button', name='查看原话并修改').first.click()
             self.assertTrue(page.locator('#attention-editor').evaluate('(e)=>e.open'))
             self.assertEqual(page.locator('#facet').input_value(), fid)
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('合成核对者'); page.locator('#reason').fill('保留条件')
             page.locator('#interpretation').fill('如有记录才补充图例')
             page.locator('#attention-editor > summary').click()
@@ -253,6 +255,7 @@ class AttentionReading(unittest.TestCase):
             page.locator('#stage').click()
             self.assertIn('尚未保存的修改', page.locator('#page-draft').inner_text())
             before = (pack / 'attention-state.json').read_bytes()
+            open_panel(page, 'editor-export')
             with page.expect_download() as download:
                 page.locator('#download').click()
             patch = Path(tmp) / 'draft.json'; download.value.save_as(patch)

@@ -91,6 +91,7 @@ class AttentionReuse(unittest.TestCase):
 
     def audit(self, page, reason='按给定原话保存工作解释'):
         open_editor_tools(page)
+        open_panel(page, 'editor-audit')
         page.locator('#actor').fill('合成核对者'); page.locator('#reason').fill(reason)
 
     def opinion(self, page, interpretation, passage=1):
@@ -108,6 +109,7 @@ class AttentionReuse(unittest.TestCase):
     def save(self, page, name):
         before = self.state()
         self.assertTrue(page.locator('#download').is_enabled(), page.locator('#message').inner_text() + page.locator('#draft').inner_text())
+        open_panel(page, 'editor-export')
         with page.expect_download() as download: page.locator('#download').click()
         file = self.folder / (name + '.json'); download.value.save_as(file)
         self.assertEqual(self.state(), before, 'Download must not change saved state')
@@ -167,6 +169,7 @@ class AttentionReuse(unittest.TestCase):
                 self.audit(page, '绑定失效拒收新的未应用纠正')
                 page.locator('#opinion').select_option(index=1)
                 page.locator('#interpretation').fill('待保存的合成纠正'); page.locator('#stage').click()
+                open_panel(page, 'editor-export')
                 with page.expect_download() as d: page.locator('#download').click()
                 draft = self.folder / 'pending-correction.json'; d.value.save_as(draft)
                 # Exact-byte B binding loss/recovery on this independent synthetic package.

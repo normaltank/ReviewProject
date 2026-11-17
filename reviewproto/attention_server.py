@@ -2,17 +2,17 @@
 from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
-from pathlib import Path
 import secrets
 import threading
 from .attention import AttentionWorkspace
 from .attention_render import render
 from .core import ReviewError
+from .local_io import checked_local, load_json
 
 
 class AttentionSession:
     def __init__(self, path):
-        self._path = Path(path).resolve()
+        self._path = checked_local(path)
         with closing(AttentionWorkspace(self._path)) as ws:
             self._analysis_id = ws.state()['analysis_id']
         self.token = secrets.token_urlsafe(32)
@@ -63,13 +63,7 @@ class AttentionSession:
                 try:
                     self.connection.settimeout(10)
                     raw = self.rfile.read(length)
-                    def pairs(items):
-                        result = {}
-                        for key, value in items:
-                            if key in result: raise ValueError('duplicate')
-                            result[key] = value
-                        return result
-                    patch = json.loads(raw, object_pairs_hook=pairs, parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
+                    patch = load_json(raw)
                     if not isinstance(patch, dict) or patch.get('schema') != 'attention-patch/2' or patch.get('analysis_id') != session._analysis_id:
                         raise ValueError('patch')
                 except Exception:

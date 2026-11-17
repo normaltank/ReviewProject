@@ -192,6 +192,7 @@ class AttentionAcceptance(unittest.TestCase):
             page.locator('#passage').focus(); page.keyboard.press('End'); page.keyboard.press('Enter')
             page.locator('#interpretation').fill('对结构清晰的肯定（合成）')
             self.assertIn('未暂存', page.locator('#draft').inner_text())
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('合成浏览器编辑'); page.locator('#reason').fill('根据第二处原话')
             page.locator('#stage').click()
             self.assertIn('待保存修改：1项', page.locator('#draft').inner_text())
@@ -199,6 +200,7 @@ class AttentionAcceptance(unittest.TestCase):
                 page.set_viewport_size({'width': width, 'height': 1000})
                 self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
                 page.screenshot(path=str(evidence_dir / filename), full_page=True)
+            open_panel(page, 'editor-export')
             with page.expect_download() as download:
                 page.locator('#download').click()
             patchfile = self.root / 'draft.json'; download.value.save_as(patchfile)
@@ -216,8 +218,10 @@ class AttentionAcceptance(unittest.TestCase):
             self.assertIn('对结构清晰的肯定', page.locator('#saved').inner_text())
             oid = patch['edits'][0]['opinion_id']; page.locator('#opinion').select_option(oid)
             page.locator('#interpretation').fill('纠正后的结构肯定（合成）')
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('合成编辑'); page.locator('#reason').fill('修正解释')
             page.locator('#stage').click()
+            open_panel(page, 'editor-export')
             with page.expect_download() as download:
                 page.locator('#download').click()
             download.value.save_as(patchfile)
