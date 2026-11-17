@@ -38,6 +38,13 @@
 
 `work/attention-delivery-20261114/HANDOFF.md` 保留T6受控贯通入口及a85/102文件的历史证据，包含来源/输出指纹、逐记录与方面/关系核对、四类普通纠正演练、恢复及整包备份说明。名称含 `NOT-MAIN` 的副本仅供功能演练，其修订和数量变化不是主分析新发现。原件、A原文、旧draft与早期成果保持原样。此处仅导航本地证据，实际最终版本、独立审查与远端交付归STATE和Issue/PR；用户本人体验另记。
 
+<a id="side-research-20261117"></a>
+## 侧边工具研究与可复用补丁
+
+“比较当前工作与 RAG”的隔离产物位于本机 Codex 用户目录的 `visualizations/2026/11/17/01a1e6f3-48bb-7d50-828b-479e53336394/`。根目录 `PLAN.md`、`RESULTS.md` 和 `tool-research-candidates.md` 是首轮研究及接口验证；`real-ds-pilot/RESULTS.md`、`NEXT.md` 保留首次 DS 失败与接续安排。
+
+最新入口是 `guarded-grouping/RESULTS.md`、`HANDOFF.md` 和 `READING.html`；`evidence/reviewable.patch` 是重复字段小修复，`evidence/verification.json`、`patch-readiness.json` 及 `runs/` 保留冻结参考、调用/用量、原失败与回放身份。侧边预算不自动转成本轮可用额度。它们是本地隔离证据，不随仓库发布；本轮接收状态见[总计划](plans/attention-followthrough-20261117.md)与对应 Issue/PR。
+
 <a id="engineering-evidence"></a>
 ## 既有工程与验证证据
 

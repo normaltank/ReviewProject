@@ -1,5 +1,7 @@
 # ReviewProject
 
+**进度与下一步：** 先看[项目总清单](PROJECT_TODO.md)，其中分列已完成、尚未验收、待做和未排期事项。
+
 可重复接收不同A、B输入的本地关注分析工具：理解每批B评语关注什么、怎样表达及彼此的联系与差异，再与当次A关注方向对照，查看分布、明细、可选图形、原文回查和纠正保存。核对的是本项目对数据的处理，不审查B或论文的专业正确性。目标与验收见[业务规格](docs/specs/b-attention-distribution.md)和[复用规格](docs/specs/b-attention-reuse.md)，实际版本见[STATE](docs/STATE.md)。
 
 当前真实验收实例的A工作参照 `a-focus-20261112-01` 为5部分18项，后续A、B的数量、内容和原分均可变化；也可先不导入A。A关注保留原话限定，不是强制评分标准；中文相关研究覆盖的既有清单外决定限该A版本。原话、原分及分析确认的含义见[数据契约](docs/DATA_AND_ANNOTATION.md)与[术语表](GLOSSARY.md)。本地原件、工作稿及旧报告见[材料定位说明](docs/LOCAL_MATERIALS.md)，新克隆不包含这些受限材料。

@@ -1,5 +1,7 @@
 # 交接状态 2026-11-17
 
+面向使用者的进度和待办先看[项目总清单](../PROJECT_TODO.md)；本页保留工程续接与证据细节。
+
 <a id="当前目标与a参照"></a>
 <a id="已确认的业务边界"></a>
 ## 当前目标
@@ -28,6 +30,10 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 <a id="下一步"></a>
 <a id="续接点与远端记录"></a>
 ## 当前继续位置
+
+2026-11-17 已收拢侧边“比较当前工作与 RAG”的研究与隔离补丁，执行顺序见[当前总施工计划](plans/attention-followthrough-20261117.md)，可读进度见[总清单](../PROJECT_TODO.md)。先独立接收模型内容重复字段的小修复，再推进 #38 的语义范围问题和新 A/B 完整路径验收。DocETL/LOTUS/Haystack 已有隔离接口验证不重复做；归并预览尚未接入产品，当前不增加生产依赖。具体证据与候选身份见[工具状态](research/attention-tools.md#side-results-20261117)和[本地入口](LOCAL_MATERIALS.md#side-research-20261117)。
+
+收拢及小修复由[#40](https://github.com/normaltank/ReviewProject/issues/40)/[PR42](https://github.com/normaltank/ReviewProject/pull/42)交付：451 项本地完整检查零失败/错误/跳过，两轴审查无未解决发现，本轮无新增模型调用。最终远端与运行入口状态见工作项。旧 #1 已按目标变更退出；#38、#39、独立连接词 #41 继续开放，不以格式保全或归并实验代替内容验收。
 
 本轮延续focused路径，[Issue36](https://github.com/normaltank/ReviewProject/issues/36)与[PR37](https://github.com/normaltank/ReviewProject/pull/37)补齐原A对照请求遗漏的已有部分名称，具体边界见[A语境规格](specs/b-attention-a-context.md)。名称只辅助理解，不新增要求或排除跨部分的实际交集；未分组与无A保持。`1130139`完整检查444项零失败/错误/跳过，固定两轴审查无发现。新冻结5B三组A输入的独立盲首评两版均3通过、2部分；基线40次API，修订臂回放同一B后仅22次实际A调用，合计62次、用量已知，按本次时段估算约0.0326美元而非账单。没有证明语义提升；共同的确定排除/必要条件附加解释问题见[后续核对](https://github.com/normaltank/ReviewProject/issues/38)，不改写首评或混入本轮输入修复。最终文档、CI、main与本地入口状态以工作项为准。
 
