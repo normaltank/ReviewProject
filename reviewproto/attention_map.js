@@ -62,7 +62,7 @@ function fullIndex(width, exporting=false){
   'A版本 '+(summary.a_version||'未导入')+' · 保存修订 '+summary.revision+' · '+(hasA?'显示A参照':'B主题视图'),
   '单位：每个等大点为本主题/位置的一条记录；同源联动，跨组不可相加'];
  if(exporting)meta.forEach((t,i)=>svg('text',{x:pad,y:50+i*19,fill:'#b0b7b9'},s,t));
- 
+
  for(const g of groups){const isA=g.kind==='item';if(narrow&&!isA&&ly>ry)ry=ly+gap;
   let x=isA||!hasA||narrow?0:leftWidth+gap,w=isA||!hasA||narrow?leftWidth:rightWidth;
   if(narrow)w=width;
