@@ -113,6 +113,7 @@ class AttentionInputTk(unittest.TestCase):
         from reviewproto.attention_input_ui import AttentionInputWindow
         original = tk.Tk
         observations = []
+        callback_errors = []
         input_windows = []
         def open_input(*args, **kwargs):
             window = AttentionInputWindow(*args, **kwargs)
@@ -122,6 +123,9 @@ class AttentionInputTk(unittest.TestCase):
             root = original()
             def inspect():
                 try:
+                    # The timer may run before Tk's idle geometry/map events.
+                    # Complete layout explicitly, independent of machine load.
+                    root.update_idletasks()
                     def descendants(widget):
                         for child in widget.winfo_children():
                             yield child
@@ -150,15 +154,21 @@ class AttentionInputTk(unittest.TestCase):
                         self.assertTrue(any(w.winfo_class() == 'TButton' and w.winfo_ismapped() and
                                             w.cget('text') == '保存下载的修改并查看' for w in descendants(root)))
                     observations.append(True)
+                except Exception as error:
+                    callback_errors.append((error, error.__traceback__))
                 finally:
                     for callback in root.tk.call('after', 'info'):
                         root.after_cancel(callback)
                     root.destroy()
-            root.after(100, inspect)
+            # Exercise the before-idle ordering that caused the full-suite failure.
+            root.after(0, inspect)
             return root
         with patch('tkinter.Tk', create_root), \
              patch('reviewproto.attention_input_ui.AttentionInputWindow', side_effect=open_input):
             desktop.main()
+        if callback_errors:
+            error, traceback = callback_errors[0]
+            raise error.with_traceback(traceback)
         self.assertEqual(observations, [True])
 
     def test_pasted_material_builds_without_inventing_original_file_locations(self):

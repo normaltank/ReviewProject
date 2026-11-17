@@ -36,7 +36,7 @@ A的五列为 `explicit/partial/related/undetermined/needs_review`。`working` �
 
 `render_summary(result)` 返回带局部样式、无脚本、已转义的HTML `<section>`。可嵌入主页面已保存区；主题/A各列链接到同片段记录明细，键盘可展开原话与解释。同一页面只嵌入一次，避免重复锚点。主页面与即时筛选通过下述T5嵌入点使用本Interface。
 
-`contributions` 是逐方面贡献索引，每项带 `record_id/opinion_id/facet_id/kind/status/directions/expression/theme_ids/a_items/a_parts/a_unassigned/outside`。`theme_ids` 已展开父组，A条目/部分以 `{id,kind}` 给出Python已经判定的有效列；浏览器不得重新解释A版本/状态或从文字猜类型。列表可有同列重复贡献，汇总时必须取记录集合。
+`contributions` 是逐方面贡献索引，每项带 `record_id/opinion_id/facet_id/kind/status/directions/expression/theme_ids/a_items/a_parts/a_unassigned/outside`。`theme_ids` 已展开父组，A条目以 `{id,kind,version}` 保留原对应版本和Python已经判定的有效列，A部分以 `{id,kind}` 给出。版本仅用于从当前/历史参照读取原条文，浏览器不得重新判定有效列或从文字猜类型。列表可有同列重复贡献，汇总时必须取记录集合。
 
 T5在离线页面使用无表达筛选的结果作为完整贡献索引：先按记录/材料选出分母记录，随后按表达属性筛选贡献，再对指定行的贡献取 `record_id` 并集。关系使用 `relation_details.endpoints[].facet_id` 检查全部端点是否保留。辅助观点/方面按各自ID去重。原始 `details` 足够展示原话/原分及命中依据。已筛选结果的贡献索引仅包含该次命中，不能据此撤销筛选恢复原数据。
 

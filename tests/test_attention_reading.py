@@ -66,7 +66,7 @@ class AttentionReading(unittest.TestCase):
                 saved = ws.build({'schema': 'attention-input/1', 'records': [dict(
                     anchor=anchor, text='可以说明样本。', visibility='author_visible', paper_id=group)
                     for anchor, group in [('甲', '材料甲'), ('乙', '材料乙')]],
-                    'a_reference': dict(version='v1', items=[dict(id=k, text='说明样本', locator='合成') for k in ('a', 'b')])})
+                    'a_reference': dict(version='v1', items=[dict(id=k, text=t, locator='合成') for k,t in [('a','旧版样本范围说明' + '（保留原有范围，不依据新版扩充说明）' * 3), ('b','旧版记录来源说明')]])})
                 record = saved['records'][0]
                 ev = dict(source_id=record['source_id'], section_id='甲', start=0, end=7, quote='可以说明样本。')
                 facet = dict(facet_id='f', interpretation='说明样本', status='working', evidence=[ev],
@@ -104,6 +104,21 @@ class AttentionReading(unittest.TestCase):
                 self.assertTrue(all(link['status'] == 'needs_review' for link in
                     current['opinions'][0]['facets'][0]['a_links'] + current['opinions'][0]['facets'][0]['outside']))
                 page.reload(); view(1, 1)  # two A links, one facet; overlap is not summed
+                # Both a reused ID and a deleted ID retain their original version's text.
+                first_read = page.locator('#view-detail').inner_text()
+                for title in ('旧版样本范围说明', '旧版记录来源说明', '旧版 v1'):
+                    self.assertIn(title, first_read)
+                self.assertNotIn('可以说明样本范围', first_read)
+                self.assertEqual(first_read.count('旧版 v1'), 2)
+                page.locator('[id="view-record-' + record['record_id'] + '"] > summary').click()
+                page.locator('#view-facet-f .facet-a > summary').click()
+                saved_links = page.locator('#view-facet-f .facet-a p').filter(has_text='保存的对应').all_text_contents()
+                self.assertEqual(len(saved_links), 2)
+                self.assertIn('旧版样本范围说明', saved_links[0])
+                self.assertIn('旧版记录来源说明', saved_links[1])
+                self.assertTrue(all('旧版 v1' in text for text in saved_links))
+                self.assertNotIn('可以说明样本范围', ' '.join(saved_links))
+                page.reload()
                 self.assertTrue(all(page.locator('#' + key).get_attribute('open') is None
                     for key in ('view-statistics', 'view-a-positions', 'attention-editor', 'reading-history')))
                 # A B correction also keeps the old destinations pending, while
