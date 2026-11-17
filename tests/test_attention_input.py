@@ -47,16 +47,14 @@ class OrdinaryAttentionInput(unittest.TestCase):
         import json
         from reviewproto.attention_input import AttentionInput
         from reviewproto.core import ReviewError
-        from reviewproto.store import Workspace
+        from legacy_source_fixture import create_legacy_workspace
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / 'source.json'
-            source.write_text(json.dumps({'scores': [{'label': '原分', 'raw_value': ' 甲 '}], 'sections': [
+            payload = {'scores': [{'label': '原分', 'raw_value': ' 甲 '}], 'sections': [
                 {'section_id': 'ordinary', 'label': '评审意见', 'text': '普通😀'},
                 {'section_id': 'second', 'label': '评审意见', 'text': '普通二'},
-                {'section_id': 'private', 'label': '其他意见（作者不可见）', 'text': 'PRIVATE_NEVER_COPY'}]}), encoding='utf-8')
-            with self.workspace(root / 'source') as ws:
-                ws.run(source, 'synthetic', 'json')
+                {'section_id': 'private', 'label': '其他意见（作者不可见）', 'text': 'PRIVATE_NEVER_COPY'}]}
+            create_legacy_workspace(root / 'source', payload)
             db = root / 'source/review.sqlite3'
             before = db.read_bytes()
             draft = AttentionInput()
@@ -79,12 +77,6 @@ class OrdinaryAttentionInput(unittest.TestCase):
                 self.assertEqual(state['records'][0]['paper_id'], '材料甲')
                 self.assertNotIn('PRIVATE_NEVER_COPY', json.dumps(state))
             self.assertEqual(db.read_bytes(), before)
-
-    @staticmethod
-    def workspace(path):
-        from contextlib import closing
-        from reviewproto.store import Workspace
-        return closing(Workspace(path))
 
     def test_existing_file_and_nonempty_directory_never_overwritten(self):
         from reviewproto.attention_input import AttentionInput

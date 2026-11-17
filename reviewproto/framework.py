@@ -10,6 +10,7 @@ import re
 import zipfile
 
 from .core import ReviewError, digest, require
+from .local_io import load_json
 from .understanding import current_views
 
 SOURCE_LIMIT = 40_000_000
@@ -51,22 +52,6 @@ def checked_path(root, relative):
     require(all(not linklike(p) for p in [root, *root.parents, target.parent, target]), "E_FRAMEWORK_LINK")
     require(target.resolve().is_relative_to(root.resolve()), "E_FRAMEWORK_PATH")
     return target
-
-
-def load_json(data):
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            require(key not in result, "E_FRAMEWORK_JSON")
-            result[key] = value
-        return result
-    try:
-        return json.loads(data, object_pairs_hook=pairs,
-                          parse_constant=lambda _: (_ for _ in ()).throw(ReviewError("E_FRAMEWORK_JSON")))
-    except ReviewError:
-        raise
-    except Exception:
-        raise ReviewError("E_FRAMEWORK_JSON") from None
 
 
 def native_ppt(data):

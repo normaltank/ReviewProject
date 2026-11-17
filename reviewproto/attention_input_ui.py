@@ -396,8 +396,8 @@ class AttentionInputWindow:
                 lines.extend(['工作区：' + record['workspace'], '普通分区：' + record['section_id']])
                 # The read-only adapter supplies only the selected ordinary text.
                 try:
-                    from .batch import source_state
-                    state = source_state(record['workspace'])
+                    from .legacy_source import read_source_workspace
+                    state = read_source_workspace(record['workspace'])
                     require(self.draft.workspace_checks.get(record['workspace']) ==
                             (state['revision'], state['source']['source_id']), 'E_ATTENTION_REVALIDATION')
                     section = next(s for s in state['sections'] if s['section_id'] == record['section_id'])

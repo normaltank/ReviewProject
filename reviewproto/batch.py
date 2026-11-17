@@ -15,27 +15,12 @@ from .framework import MUTABLE_RULE, framework_digest, identifier, load_json, te
 from .store import Workspace, PRIVATE_IGNORE, atomic, encoded, linklike, now, read_input
 from .understanding import current_views
 
-LIMIT = 10_000_000
-
-
-def checked_local(path):
-    path = Path(path).absolute()
-    require(all(not linklike(p) for p in [path, *path.parents]), 'E_BATCH_LINK')
-    return path.resolve()
-
-
-def bounded(value):
-    require(len(encoded(value)) <= LIMIT, 'E_BATCH_LIMIT')
-    return value
+from .local_io import LIMIT, checked_local, bounded, read_json
 
 
 def stored_state(state):
     """Search projections stay in sidecars, including after later mutations."""
     return {k: v for k, v in state.items() if k != 'retrieval_runs'}
-
-
-def read_json(path):
-    return bounded(load_json(read_input(checked_local(path), LIMIT, 'E_BATCH_LIMIT')))
 
 
 def source_state(path):

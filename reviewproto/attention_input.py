@@ -9,9 +9,9 @@ from pathlib import Path
 
 from .attention import AttentionWorkspace
 from .attention_a import validate_reference
-from .batch import bounded, checked_local, source_state
+from .local_io import bounded, checked_local, encoded
+from .legacy_source import read_source_workspace
 from .core import require
-from .store import encoded
 
 
 def nonempty(value):
@@ -29,13 +29,13 @@ class AttentionInput:
 
     @staticmethod
     def workspace_options(path):
-        state = source_state(path)
+        state = read_source_workspace(path)
         return [copy.deepcopy(s) for s in state['sections']
                 if s['visibility'] in {'author_visible', 'visibility_unknown'}]
 
     def add_workspace(self, path, section_id, paper_id=''):
         path = checked_local(path)
-        state = source_state(path)
+        state = read_source_workspace(path)
         selected = next((s for s in state['sections'] if s['section_id'] == section_id), None)
         require(selected is not None, 'E_ATTENTION_SECTION')
         require(selected['visibility'] in {'author_visible', 'visibility_unknown'}, 'E_ATTENTION_PRIVATE')
@@ -81,7 +81,7 @@ def prepared_payload(draft):
     require(bool(draft.a_reference['items']) or not draft.a_reference.get('parts'), 'E_ATTENTION_A')
     for record in draft.records:
         if record.get('kind') == 'workspace':
-            state = source_state(record['workspace'])
+            state = read_source_workspace(record['workspace'])
             require(draft.workspace_checks.get(record['workspace']) ==
                     (state['revision'], state['source']['source_id']), 'E_ATTENTION_REVALIDATION')
     absent_version = 'no-a'
