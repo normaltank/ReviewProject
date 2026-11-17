@@ -1,6 +1,7 @@
 """Small local launcher; Tk and model dependencies are loaded only on demand."""
 from contextlib import closing
 from pathlib import Path
+import os
 import re
 import shutil
 import subprocess
