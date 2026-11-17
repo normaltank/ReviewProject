@@ -295,6 +295,7 @@ class AttentionViews(unittest.TestCase):
                 page.locator('#view-boiler').select_option('true')
                 self.assertIn('1/4',page.locator('#view-hits').inner_text())
                 self.assertNotIn('condition',page.locator('#view-detail').inner_text())
+                open_panel(page, 'reading-details')
                 page.locator('#view-detail > details[id^="view-relation-"] > summary').first.click()
                 self.assertIn('理由',page.locator('#view-detail').inner_text())
                 page.locator('#view-paper').select_option('"p2"')
@@ -311,6 +312,7 @@ class AttentionViews(unittest.TestCase):
                 page.get_by_role('button',name='清除筛选').click()
                 page.locator('#view-matrix-toggle').uncheck();page.locator('#view-graph-toggle').uncheck()
                 self.assertFalse(page.locator('#view-graph').is_visible())
+                open_panel(page, 'reading-details')
                 page.locator('#view-record-r1 > summary').click()
                 page.locator('#view-record-r1 .facet-a > summary').nth(1).click()
                 self.assertIn('合成在外范围',page.locator('#view-detail').inner_text())
@@ -376,6 +378,7 @@ class AttentionViews(unittest.TestCase):
                     self.assertEqual(page.locator('#view-hits').text_content(), '')
                     for selector in ['#revision','#view-matrix','#view-graph']:
                         self.assertIn('已保存修订 1',page.locator(selector).inner_text())
+                    open_panel(page, 'reading-details')
                     page.locator('#view-detail details > summary').first.click()
                     self.assertIn('新增合成解释',page.locator('#view-detail').inner_text())
                     self.assertIn(' 4.0 ',page.locator('#view-detail').text_content())

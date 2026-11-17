@@ -7,7 +7,7 @@ const $=id=>document.getElementById(id);
 const labels={withdrawn:'撤回',superseded:'已被替换',working:'未核对',needs_review:'待核对',confirmed:'已核对分析',explicit:'明确对应',partial:'部分对应',related:'内容相关',undetermined:'暂未定',content:'内容关注',disposition:'流程或总体处置',reason:'理由',conditional_fallback:'条件备用动作',alternative:'备选路径',co_occurrence:'相伴表达'};
 Object.assign(labels,{alternative_with_condition:'有条件的备选路径',coexisting_readings:'并存读法',shared_premise:'共同前提',alternative_with_minimum:'有最低动作的备选路径',suggestion_timing:'建议时机',declared_reason_scope:'明示理由范围',listed_ways_not_all_mandatory:'列举路径（非全部必做）',listed_ways_and_explicit_suggestion:'列举路径与明确建议',co_written_scope_unresolved:'共同表述（范围未决）'});
 const name=v=>labels[v]||v||'未说明';
-const recordLabel=id=>base.details[id]?.record.anchor||id;
+const recordLabel=id=>readingTitle((base.details[id]?.record.sections||[{text:base.details[id]?.record.text}]).map(s=>s.text||'').join(' '));
 const paperId=record=>record.paper_id??record.locator?.paper_id??null;
 const short=value=>value.length>52?value.slice(0,52)+'…':value;
 function readingTitle(value){const prefix=value.split('：')[0];return prefix.length>=10&&prefix.length<=72&&prefix!==value?prefix:value.length>100?value.slice(0,100)+'…':value;}
@@ -31,12 +31,12 @@ const unique=xs=>[...new Set(xs)].sort();
 const controls=$('view-controls');
 const picks={};
 function pick(key,title,values){const l=node('label',title,controls),s=node('select',null,l,{id:'view-'+key});node('option','全部',s,{value:'*'});for(const [value,text] of values)node('option',text,s,{value});s.onchange=refresh;picks[key]=s;}
-pick('record','记录筛选（改变分母）',Object.entries(base.details).map(([id,d])=>[id,d.record.anchor||id]));
+pick('record','记录筛选（改变分母）',Object.entries(base.details).map(([id,d])=>[id,short(recordLabel(id))]));
 pick('paper','材料筛选（改变分母）',unique(Object.values(base.details).map(d=>JSON.stringify(paperId(d.record)))).map(v=>[v,JSON.parse(v)??'未知材料组']));
 for(const [key,title,values] of [['function','表达作用',base.contributions.map(c=>c.expression.function||'未说明')],['direction','判断方向',base.contributions.flatMap(c=>c.directions)],['status','方面核对状态',base.contributions.map(c=>c.status)]])pick(key,title,unique(values).map(v=>[v,name(v)]));
 pick('boiler','套话候选',[['true','是候选'],['false','非候选'],['null','未判断']]);
 node('button','清除筛选',controls,{type:'button'}).onclick=()=>{Object.values(picks).forEach(s=>s.value='*');refresh();};
-const style=node('style',`#attention-views input[type=checkbox]{width:auto}#attention-views table{border-collapse:collapse;min-width:36rem;width:100%;font-variant-numeric:tabular-nums}#attention-views th,#attention-views td{border:1px solid #c8d0da;padding:.5rem;text-align:left;vertical-align:top}#attention-views .view-scroll{max-width:100%;overflow:auto}#attention-views th{min-width:9rem}#attention-views th:first-child{min-width:4rem}#attention-views td a{display:block;margin:.2rem 0}#attention-views td button{padding:.2rem;margin:0;text-align:left}#attention-views svg{min-width:960px;width:100%;display:block}#attention-views svg text{font:14px system-ui;fill:#17212e}#attention-views :target{outline:2px solid #315879}#attention-views blockquote{margin:.5rem 0;padding:.7rem;background:#eef1f5;white-space:pre-wrap}#attention-views [hidden]{display:none}`,document.head);
+
 let current;
 const anchor=rid=>'view-record-'+encodeURIComponent(rid);
 const facetAnchor=fid=>'view-facet-'+encodeURIComponent(fid);
@@ -68,48 +68,64 @@ function overview(){
  node('p','覆盖按记录去重，各类可重叠；观点、方面与关系组数是辅助规模。主题定义不等于命中，未核对解释不等于已核对；各主题、A部分/条目和关系类型的明细见下方。',root);
 }
 // Selection is a reading cursor; it never changes the summary denominator.
-let selectedRecord='', selectedFacet='', sourceOpen=false;
+let selectedRecord='', selectedFacet='', selectedFacets=[], selectedTheme='', clusterRecords=[], sourceOpen=false;
 const recordOrder=JSON.parse($('attention-data').textContent).records.map(r=>r.record_id);
 const shell=node('div',null,null,{id:'focus-shell'});
-$('view-detail').before(shell);
+$('reading-details').before(shell);
+const mapPanel=$('view-positions');shell.append(mapPanel);
 const list=node('aside',null,shell,{id:'focus-list','aria-label':'评语列表'});
 const center=node('main',null,shell,{id:'focus-reading','aria-label':'所选评语'});
 const sourcePanel=node('aside',null,shell,{id:'focus-source','aria-label':'来源查证',hidden:''});
 function selectRecord(id){
  if(!current.ids.includes(id))return;
- selectedRecord=id;selectedFacet='';sourceOpen=false;focusReading();list.querySelector('[aria-pressed=true]')?.focus({preventScroll:true});
+ selectedRecord=id;selectedFacet='';selectedFacets=[];selectedTheme='';clusterRecords=[];sourceOpen=false;focusReading();list.querySelector('[aria-pressed=true]')?.focus({preventScroll:true});
 }
 function showSource(c){selectedFacet=c?.facet_id||'';sourceOpen=true;focusReading();sourcePanel.tabIndex=-1;sourcePanel.focus({preventScroll:true});if(window.innerWidth<901)sourcePanel.scrollIntoView({block:'start'});}
 function focusReading(){
- if(!current.ids.includes(selectedRecord))selectedRecord=current.ids[0]||'';
+ if(!current.ids.includes(selectedRecord)){selectedRecord=current.ids[0]||'';selectedFacets=[];selectedFacet='';selectedTheme='';clusterRecords=[];}
+ selectedFacets=selectedFacets.filter(fid=>current.cs.some(c=>c.record_id===selectedRecord&&c.facet_id===fid));
  window.AttentionPositions.render({recordIds:current.ids,facetIds:current.cs.map(c=>c.facet_id),expressionFilters:Object.fromEntries(Object.entries(picks).map(([k,s])=>[k,s.value])),selectedRecordId:selectedRecord});
  list.replaceChildren();center.replaceChildren();sourcePanel.replaceChildren();
  node('h2','评语列表（'+current.ids.length+'）',list);
  for(const id of current.ids){
   const r=base.details[id].record,cs=current.cs.filter(c=>c.record_id===id);
   const b=node('button',null,list,{type:'button','aria-pressed':String(id===selectedRecord)});
-  node('strong',r.anchor||id,b);node('small',cs.some(c=>c.status!=='confirmed')?'待核对':cs.length?'已核对':'未整理',b);
+  node('strong',short(recordLabel(id)),b);node('small',cs.some(c=>c.status!=='confirmed')?'待核对':cs.length?'已核对':'未整理',b);
   node('span',(r.sections||[{text:r.text}]).map(s=>s.text).join(' '),b,{class:'focus-excerpt'});
   b.onclick=()=>selectRecord(id);
  }
  if(!selectedRecord){node('h2','当前筛选没有记录',center);node('p','调整筛选后继续阅读。',center);sourcePanel.hidden=true;return;}
- const r=base.details[selectedRecord].record,cs=current.cs.filter(c=>c.record_id===selectedRecord);
+ const r=base.details[selectedRecord].record,allCs=current.cs.filter(c=>c.record_id===selectedRecord),cs=selectedFacets.length?allCs.filter(c=>selectedFacets.includes(c.facet_id)):allCs;
  const pager=node('nav',null,center,{'aria-label':'评语切换',class:'focus-pager'}),index=current.ids.indexOf(selectedRecord);
  const previous=node('button','上一份',pager,{type:'button'});previous.disabled=index===0;previous.onclick=()=>selectRecord(current.ids[index-1]);
  node('span',String(index+1).padStart(2,'0')+' / '+String(current.ids.length).padStart(2,'0'),pager);
  const next=node('button','下一份',pager,{type:'button'});next.disabled=index===current.ids.length-1;next.onclick=()=>selectRecord(current.ids[index+1]);
- const heading=node('div',null,center,{class:'focus-heading'});node('h2',r.anchor||selectedRecord,heading);
+ const heading=node('div',null,center,{class:'focus-heading'});node('h2',selectedTheme?base.theme_definitions[selectedTheme]?.label||'所选内容':'逐条阅读',heading);
  node('span',cs.some(c=>c.status!=='confirmed')?'待核对':cs.length?'已核对分析':'未整理',heading,{class:'focus-state'});
- if(!cs.length)node('p','尚无命中解释；本条仍计入分母。可查看原话，或进入修改补录。',center);
+ const actions=node('div',null,center,{class:'focus-actions'});
+ if($('attention-editor')){const edit=node('button','修改解释',actions,{type:'button',class:'focus-primary'});
+ edit.onclick=()=>document.dispatchEvent(new CustomEvent(cs.length?'attention-edit-facet':'attention-edit-record',{detail:cs.length?(cs.find(c=>c.facet_id===selectedFacet)||cs[0]):{record_id:selectedRecord}}));}
+ if(selectedFacets.length)node('button','本份评语全部关注（'+allCs.length+'）',actions,{type:'button'}).onclick=()=>{selectedFacets=[];selectedTheme='';focusReading();};
+ node('span','已保存修订 '+base.revision,actions,{class:'focus-secondary'});
+ if(clusterRecords.length>1){const cluster=node('details',null,center,{class:'focus-cluster-records'});node('summary','本主题/区域的全部 '+clusterRecords.length+' 条记录',cluster);for(const row of clusterRecords){const b=node('button',short(recordLabel(row.record_id)),cluster,{type:'button','aria-pressed':String(row.record_id===selectedRecord)});b.onclick=()=>{selectedRecord=row.record_id;selectedFacets=row.facet_ids;selectedFacet=selectedFacets[0]||'';focusReading();};}}
+ const quote=node('div',null,center,{class:'focus-quote'});node('h3','评语原话',quote);
+ for(const section of r.sections||[{text:r.text,section_id:r.anchor}]){
+  const q=node('blockquote',null,quote),chars=Array.from(section.text||''),ranges=cs.flatMap(c=>base.details[selectedRecord].facets.find(e=>e.facet.facet_id===c.facet_id).facet.evidence||[]).filter(e=>e.section_id===section.section_id).sort((a,b)=>a.start-b.start);
+  let offset=0;const merged=[];for(const e of ranges){const last=merged.at(-1);if(last&&e.start<=last.end)last.end=Math.max(last.end,e.end);else merged.push({start:e.start,end:e.end});}
+  for(const e of merged){q.append(document.createTextNode(chars.slice(offset,e.start).join('')));node('mark',chars.slice(e.start,e.end).join(''),q);offset=e.end;}q.append(document.createTextNode(chars.slice(offset).join('')));
+ }
+ const info=node('details',null,quote);node('summary','原分、来源位置与权限',info);explain(info,'来源标识',r.anchor||selectedRecord);explain(info,'材料组',paperId(r)??'未知');explain(info,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');explain(info,'来源',r.source_id);explain(info,'可见性',r.visibility);
+ if(!cs.length)node('p','尚无命中解释；本条仍计入分母。可进入修改补录。',center);
  cs.forEach((c,i)=>{
   const entry=base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id),f=entry.facet;
   const concern=node('section',null,center,{class:'focus-concern'});
-  const title=node('button','关注点 '+(i+1)+'：'+(f.qualifiers?.object||readingTitle(f.interpretation)),concern,{type:'button','aria-label':'查证关注点 '+(i+1),class:'focus-concern-title'});
+  const title=node('button',(f.qualifiers?.object||readingTitle(f.interpretation)),concern,{type:'button','aria-label':'查证关注点 '+(i+1),class:'focus-concern-title'});
   title.onclick=()=>showSource(c);
   if(f.qualifiers?.object||readingTitle(f.interpretation)!==f.interpretation)node('p',f.interpretation,concern);
   for(const [key,label] of Object.entries({conditions:'条件',negation:'否定',degree:'程度',reasons:'理由',actions:'动作',alternatives:'备选',examples:'例示'}))explain(concern,label,f.qualifiers?.[key]);
+  if($('attention-editor'))node('button','修改此关注',concern,{type:'button'}).onclick=()=>document.dispatchEvent(new CustomEvent('attention-edit-facet',{detail:c}));
  });
- const a=node('section',null,center,{class:'focus-a'});node('h3','与参考方向 A 的对应关系',a);
+ const a=node('section',null,center,{class:'focus-a'});node('h3','与A工作参照的交集',a);node('p','A版本 '+(base.a_version||'尚未导入'),a);
  for(const c of cs){const f=base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id).facet;
   const associationPending=c.status==='needs_review'||[base.a_material_status||base.material_status,base.b_material_status].includes('needs_revalidation');
   let itemIndex=0,unassignedIndex=0;
@@ -119,7 +135,7 @@ function focusReading(){
    // saved source, facet and link review boundaries without adding coverage.
    return {link:l,kind:savedKind??(associationPending||l.status==='needs_review'||l.version!==base.a_version||(!known&&l.a_item_id!=null)?'needs_review':l.kind)};
   });
-  const title=mappings.length?mappings.map(({link:l,kind})=>name(kind||l.kind)+'：'+aTitle(l.a_item_id,l.version,true)).join('；'):aReading(c);
+  const title=mappings.length?mappings.map(({link:l,kind})=>name(kind||l.kind)+'：'+aTitle(l.a_item_id,l.version)).join('；'):aReading(c);
   node(mappings.length?'h4':'p',(f.qualifiers?.object||'关注点 '+(cs.indexOf(c)+1))+' · '+title,a);
   for(const {link:l,kind} of mappings)explain(a,'A关联 · '+name(kind||l.kind)+' / '+name(kind==='needs_review'?'needs_review':l.status),l.scope+' · '+(l.reason||'未说明'));
   const outsidePositions=positions.placements.filter(p=>p.facet_id===c.facet_id&&p.proposed_kind==null&&['outside','stale'].includes(p.region_id));
@@ -128,13 +144,12 @@ function focusReading(){
   });
  }
  if(!cs.length)node('p',(base.a_reference.items||[]).length?'尚未标注 A 对应':'尚未导入 A，可先整理 B。',a);
- const actions=node('div',null,center,{class:'focus-actions'});
- if($('attention-editor')){const edit=node('button','修改解释',actions,{type:'button',class:'focus-primary'});
- edit.onclick=()=>document.dispatchEvent(new CustomEvent(cs.length?'attention-edit-facet':'attention-edit-record',{detail:cs.length?(cs.find(c=>c.facet_id===selectedFacet)||cs[0]):{record_id:selectedRecord}}));}
- node('span','已保存修订 '+base.revision,actions,{class:'focus-secondary'});
- node('button','查看原话',actions,{type:'button'}).onclick=()=>showSource(cs[0]);
+ const relations=current.relations.filter(r=>r.endpoints.some(e=>cs.some(c=>c.facet_id===e.facet_id)));
+ if(relations.length){const related=node('details',null,center);node('summary','相关联系与具体范围（'+relations.length+'）',related);
+  for(const r of relations){node('h4',r.reading||name(r.type),related);explain(related,'类型 / 核对',name(r.type)+' / '+name(r.status));explain(related,'作用范围',r.scope);explain(related,'方向',r.direction);explain(related,'未决',r.ambiguity);for(const e of r.endpoints){const c=current.cs.find(c=>c.facet_id===e.facet_id);if(c)link(related,(e.role||'作用未说明')+'：'+facetLabel(c),facetAnchor(c.facet_id));}evidence(related,r.evidence);}
+ }
  const ref=node('details',null,center,{class:'focus-reference'});node('summary','参考方向 A（'+base.a_reference.items.length+' 项）',ref);
- for(const item of base.a_reference.items){node('h4',item.id,ref);node('p',item.text,ref);explain(ref,'位置',item.locator);}explain(ref,'版本',base.a_version);
+ for(const item of base.a_reference.items){node('h4',base.a_reference.parts?.find(p=>p.id===item.part_id)?.label||'A条目',ref);node('p',item.text,ref);explain(ref,'位置',item.locator);}explain(ref,'版本',base.a_version);
  sourcePanel.hidden=!sourceOpen;shell.classList.toggle('source-open',sourceOpen);
  if(sourceOpen){
   const close=node('button','关闭来源',sourcePanel,{type:'button'});close.onclick=()=>{sourceOpen=false;focusReading();};
@@ -151,15 +166,21 @@ function focusReading(){
  }
  document.querySelectorAll('#view-detail > details[id^="view-record-"]').forEach(d=>{d.hidden=d.id!==anchor(selectedRecord);});
 }
-const distribution=node('button','关注分布',document.querySelector('header nav'),{type:'button',id:'focus-distribution','aria-expanded':'false'});
-const optionHome=document.createComment('distribution disclosure home');$('view-options').before(optionHome);
+const distribution=node('button','关注分布',document.querySelector('header nav'),{type:'button',id:'focus-distribution','aria-expanded':'true'});
+const reading=node('button','逐条阅读',document.querySelector('header nav'),{type:'button',id:'focus-reading-mode','aria-pressed':'false'});
 function distributionMode(open){
- const options=$('view-options');options.open=open;center.hidden=open;shell.classList.toggle('distribution-open',open);
- distribution.setAttribute('aria-expanded',String(open));
- if(open){center.after(options);$('view-a-positions').open=true;}else optionHome.after(options);
+ shell.classList.toggle('distribution-open',open);mapPanel.hidden=!open;
+ distribution.setAttribute('aria-expanded',String(open));reading.setAttribute('aria-pressed',String(!open));
+ if(open&&current)focusReading();
 }
-distribution.onclick=()=>distributionMode(distribution.getAttribute('aria-expanded')!=='true');
-document.querySelector('a[href="#focus-shell"]')?.addEventListener('click',()=>distributionMode(false));
+distribution.onclick=()=>distributionMode(true);reading.onclick=()=>distributionMode(false);
+document.querySelector('a[href="#focus-shell"]')?.addEventListener('click',()=>distributionMode(true));
+document.addEventListener('attention-map-select',event=>{
+ const target=event.detail;if(!current.ids.includes(target.record_id))return;
+ selectedRecord=target.record_id;selectedFacets=target.facet_ids;selectedFacet=selectedFacets[0]||'';selectedTheme=target.theme_id;clusterRecords=target.cluster_records||[];sourceOpen=false;focusReading();
+ if(window.innerWidth<901)center.scrollIntoView({block:'start'});
+});
+distributionMode(true);
 
 function refresh(){
  const v=Object.fromEntries(Object.entries(picks).map(([k,s])=>[k,s.value]));
@@ -169,7 +190,7 @@ function refresh(){
  const relations=base.relation_details.filter(r=>r.endpoints.length&&r.endpoints.every(e=>facets.has(e.facet_id)));
  current={ids,cs,relations};
  const aPending=cs.filter(c=>c.a_items.some(a=>a.kind==='needs_review')||c.a_unassigned.includes('needs_review')).length;
- const outsidePending=cs.filter(c=>c.outside.includes('needs_review')).length;
+ const outsidePending=unique(positions.placements.filter(p=>cs.some(c=>c.facet_id===p.facet_id)&&p.proposed_kind==null&&['outside','stale'].includes(p.region_id)&&p.review_status==='needs_review').map(p=>p.facet_id)).length;
  const pending=[['B解释',cs.filter(c=>c.status==='needs_review').length],['A对应',aPending],['清单外范围',outsidePending]].filter(([,n])=>n);
  $('view-version').textContent='当前范围 '+ids.length+' 条记录（分母）'+(pending.length?' · 待核对：'+pending.map(([t,n])=>t+' '+n+' 项').join('、')+'（可重叠）':'');
  const hits=unique(cs.map(c=>c.record_id)),filtered=Object.values(v).some(value=>value!=='*');$('view-hits').textContent=filtered?'筛选命中 '+hits.length+'/'+ids.length+' 条记录（表达筛选保留分母）':'';
@@ -242,7 +263,7 @@ function reveal(target){
 }
 function hashTarget(hash){try{return $(hash.slice(1))||$(decodeURIComponent(hash.slice(1)));}catch{return null;}}
 window.AttentionReading={reveal};
-document.addEventListener('click',e=>{const href=e.target.closest('a')?.getAttribute('href');if(!href?.startsWith('#'))return;const target=hashTarget(href);if(target)reveal(target);});
+document.addEventListener('click',e=>{if(e.defaultPrevented)return;const href=e.target.closest('a')?.getAttribute('href');if(!href?.startsWith('#'))return;const target=hashTarget(href);if(target)reveal(target);});
 window.addEventListener('hashchange',()=>reveal(hashTarget(location.hash)));
 refresh();
 requestAnimationFrame(()=>reveal(hashTarget(location.hash)));

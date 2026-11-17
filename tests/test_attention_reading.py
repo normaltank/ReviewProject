@@ -37,7 +37,8 @@ class AttentionReading(unittest.TestCase):
             page = browser.new_page(offline=True, viewport=dict(width=1440,height=900))
             errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
             page.goto((pack/'attention.html').as_uri())
-            page.get_by_role('button', name='评语 2', exact=False).click()
+            page.get_by_role('button',name='逐条阅读',exact=True).click()
+            page.get_by_role('button', name='合成原话 2', exact=False).click()
             self.assertIn('保存的关注解释', page.locator('#focus-reading').inner_text())
             self.assertIn('仅适用于本例', page.locator('#focus-reading').inner_text())
             self.assertIn('当前范围 2 条记录（分母）',page.locator('#view-version').inner_text())
@@ -48,11 +49,11 @@ class AttentionReading(unittest.TestCase):
             page.get_by_role('button',name='修改解释',exact=True).click()
             self.assertEqual(page.locator('#facet').input_value(),'f2')
             page.locator('#interpretation').fill('尚未保存的合成更正')
-            page.locator('#focus-list').get_by_role('button',name='评语 1',exact=False).click()
+            page.locator('#focus-list').get_by_role('button',name='合成原话 1',exact=False).click()
             self.assertEqual(page.locator('#interpretation').input_value(),'尚未保存的合成更正')
             self.assertIn('尚未保存',page.locator('#page-draft').inner_text())
             page.get_by_role('button',name='关注分布',exact=True).click()
-            self.assertTrue(page.locator('#view-options').evaluate('(e)=>e.open'))
+            self.assertTrue(page.locator('#attention-map').is_visible())
             self.assertFalse(errors,errors)
             browser.close()
 
@@ -79,13 +80,14 @@ class AttentionReading(unittest.TestCase):
             browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
             page = browser.new_page(offline=True, viewport=dict(width=420, height=1000))
             page.goto((pack / 'attention.html').as_uri())
-            visible = page.locator('#view-detail').inner_text()
+            visible = page.locator('#focus-reading').inner_text()
             for text in ('标明图例', '说明图例含义', '说明记录来源', '部分对应'):
                 self.assertIn(text, visible)
-            self.assertNotIn('若有记录，请标明图例。', visible)
+            self.assertIn('若有记录，请标明图例。', visible)
             self.assertNotIn('7 / 9', visible)
             self.assertNotIn('working', visible)
             self.assertFalse(page.locator('#page-draft').is_visible())
+            open_panel(page, 'reading-details')
             page.locator('#view-detail > details > summary').first.click()
             self.assertIn('若有记录，请标明图例。', page.locator('#view-detail').inner_text())
             self.assertIn(' 7 / 9 ', page.locator('#view-detail').text_content())
@@ -145,11 +147,12 @@ class AttentionReading(unittest.TestCase):
                     current['opinions'][0]['facets'][0]['a_links'] + current['opinions'][0]['facets'][0]['outside']))
                 page.reload(); view(1, 1)  # two A links, one facet; overlap is not summed
                 # Both a reused ID and a deleted ID retain their original version's text.
-                first_read = page.locator('#view-detail').inner_text()
+                first_read = page.locator('#focus-reading').inner_text()
                 for title in ('旧版样本范围说明', '旧版记录来源说明', '旧版 v1'):
                     self.assertIn(title, first_read)
                 self.assertNotIn('可以说明样本范围', first_read)
                 self.assertEqual(first_read.count('旧版 v1'), 2)
+                open_panel(page, 'reading-details')
                 page.locator('[id="view-record-' + record['record_id'] + '"] > summary').click()
                 page.locator('#view-facet-f .facet-a > summary').click()
                 saved_links = page.locator('#view-facet-f .facet-a p').filter(has_text='保存的对应').all_text_contents()
@@ -160,7 +163,7 @@ class AttentionReading(unittest.TestCase):
                 self.assertNotIn('可以说明样本范围', ' '.join(saved_links))
                 page.reload()
                 self.assertTrue(all(page.locator('#' + key).get_attribute('open') is None
-                    for key in ('view-statistics', 'view-a-positions', 'attention-editor', 'reading-history')))
+                    for key in ('view-statistics', 'reading-details', 'attention-editor', 'reading-history')))
                 # A B correction also keeps the old destinations pending, while
                 # the facet itself remains a working interpretation.
                 opinion = saved_opinion()
@@ -292,7 +295,8 @@ class AttentionReading(unittest.TestCase):
             controller = Controller(); controller.open_attention(pack)
             page.goto((pack / 'attention.html').as_uri())
             self.assertFalse(page.locator('#attention-editor').evaluate('(e)=>e.open'))
-            self.assertIn('标明图例', page.locator('#view-detail').inner_text())
+            self.assertIn('标明图例', page.locator('#focus-reading').inner_text())
+            open_panel(page, 'reading-details')
             page.locator('#view-detail > details > summary').first.click()
             self.assertIn('若有记录，请标明图例。', page.locator('#view-detail').inner_text())
             page.get_by_role('button', name='查看原话并修改').first.click()
@@ -316,7 +320,7 @@ class AttentionReading(unittest.TestCase):
             self.assertEqual((pack / 'attention-state.json').read_bytes(), before)
             self.assertIn('尚未保存的修改', page.locator('#page-draft').inner_text())
             self.assertIn('已保存修订 1', page.locator('#revision').inner_text())
-            self.assertIn('标明图例', page.locator('#view-detail').inner_text())
+            self.assertIn('标明图例', page.locator('#focus-reading').inner_text())
             with closing(AttentionWorkspace(pack)) as ws:
                 self.assertEqual(ws.apply(input_path=patch)['revision'], 2)
             self.assertEqual(controller.recover_attention()['revision'], 2)
