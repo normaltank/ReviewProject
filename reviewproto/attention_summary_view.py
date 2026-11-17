@@ -4,8 +4,16 @@ from html import escape
 from .attention_summary import material_group
 
 _LABELS = {'explicit': '明确对应', 'partial': '部分对应', 'related': '相关',
-           'undetermined': '暂未定', 'needs_review': '待核对', 'working': '工作解释',
-           'confirmed': '已核对分析', 'content': '内容关注', 'disposition': '流程或总体处置'}
+           'undetermined': '暂未定', 'needs_review': '待核对', 'working': '未核对',
+           'confirmed': '已核对分析', 'content': '内容关注', 'disposition': '流程或总体处置',
+           'current': '来源有效', 'needs_revalidation': '来源待核',
+           'reason': '理由', 'conditional_fallback': '条件下的备用动作', 'alternative': '备选路径',
+           'co_occurrence': '相伴表达', 'coexisting_readings': '并存读法', 'shared_premise': '共同前提',
+           'alternative_with_condition': '有条件的备选路径', 'suggestion_timing': '建议时机',
+           'alternative_with_minimum': '有最低动作的备选路径', 'declared_reason_scope': '明示理由范围',
+           'listed_ways_not_all_mandatory': '列举路径（非全部必做）',
+           'listed_ways_and_explicit_suggestion': '列举路径与明确建议',
+           'co_written_scope_unresolved': '共同表述（范围未决）'}
 
 
 def render_summary(summary):
@@ -60,7 +68,7 @@ def render_summary(summary):
         return union([dict(record_ids=[c['record_id']]) for c in values])
 
     overview = ['<div id="view-overview" role="region" aria-label="当前关注概览"><h3>当前关注概览</h3>']
-    overview.append('<p>分析 ' + text(summary['analysis_id']) + ' · 已保存修订 ' + text(summary['revision']) +
+    overview.append('<p>已保存修订 ' + text(summary['revision']) + ' · 分母 ' + str(summary['denominator']['count']) + ' 条评语记录' +
                     ' · A版本 ' + text(summary['a_version'] if summary['a_reference'].get('items') else 'A未导入') + '</p>')
     overview.append('<p>' + str(summary['denominator']['count']) + ' 条记录 · ' +
                     str(sum(len(d['record'].get('scores', [])) for d in summary['details'].values())) + ' 项原分 · ' +
@@ -70,13 +78,13 @@ def render_summary(summary):
     if not cs:
         overview.append('<p>当前集合尚未形成有效观点方面；材料导入不等于完成分析。若已设置筛选，可清除筛选查看。请在下方原话区补录并保存。</p>')
     if not summary['a_reference'].get('items'):
-        overview.append('<p>A未导入：可先整理B，之后在本机窗口显式导入A参照版本；不把无A当作清单外。</p>')
+        overview.append('<p>A未导入：可先整理B，之后在本机窗口导入A参照版本；不把无A当作清单外。</p>')
     overview.append('<p>A结构：' + str(len(summary['a_reference'].get('parts', []))) + ' 个部分 / ' + str(len(summary['a_reference'].get('items', []))) + ' 个条目</p>')
     overview.append('<p>B输入状态：' + text({'current':'绑定有效', 'needs_revalidation':'来源待核'}.get(summary.get('b_material_status') or summary.get('material_status'), '未说明')) +
                     ' · A输入状态：' + text('未导入' if not summary['a_reference'].get('items') else {'current':'绑定有效', 'needs_revalidation':'来源待核'}.get(summary.get('a_material_status') or summary.get('material_status'), '未说明')) + '</p>')
     if summary.get('material_status') == 'needs_revalidation':
-        overview.append('<p>来源失效：以下保留旧快照。B有效时，A可显式导入版本接续；B须恢复原绑定文件，或为变化材料另建分析，不迁移旧标注。</p>')
-    overview.append('<p>页面为保存快照，不实时轮询来源；本机打开、恢复或应用时重查，成功后重开本页。下载草稿不更新概览。</p><ul>')
+        overview.append('<p>来源失效：以下保留旧快照。B有效时，A可导入版本接续；B须恢复原绑定文件，或为变化材料另建分析，不迁移旧标注。</p>')
+    overview.append('<p>页面为保存快照，不实时轮询来源；本机打开、恢复或应用时重查，成功后重开本页。下载修改文件不更新概览。</p><ul>')
     overview.append('<li>观点方面记录覆盖 ' + metric(summary['hits']) + '</li>')
     overview.append('<li>内容主题记录并集 ' + metric(union(summary['themes'].values())) + '</li>')
     for kind in ('explicit', 'partial', 'related', 'undetermined', 'needs_review'):
@@ -84,14 +92,13 @@ def render_summary(summary):
     for status in ('working', 'needs_review', 'confirmed'):
         overview.append('<li>内容方面' + label(status) + '记录 ' + metric(contribution_metric([c for c in content if c['status'] == status])) + '</li>')
     overview.append('<li>关系端点记录并集 ' + metric(union(summary['relations'].values())) + '</li></ul>')
-    overview.append('<p>覆盖按记录去重，各类可重叠；观点、方面与关系组数是辅助规模。主题定义不等于命中，工作解释不等于已核对；各主题、A部分/条目和关系类型的明细见下方。</p></div>')
+    overview.append('<p>覆盖按记录去重，各类可重叠；观点、方面与关系组数是辅助规模。主题定义不等于命中，未核对解释不等于已核对；各主题、A部分/条目和关系类型的明细见下方。</p></div>')
     output.append(''.join(overview))
-    output.append(f'<p>已保存修订 {text(summary["revision"])} · 分母 {summary["denominator"]["count"]} 条评语记录</p>')
     output.append('<p>表达、套话候选、方向与状态筛选只改变命中；记录与材料筛选改变分母。零命中仍列为 0/N；分母为零时不计算比例。</p>')
-    output.append('<p>各项可重叠，父主题及A部分按记录取并集。工作解释可见；部分、相关、暂未定及待核均不合称明确覆盖。处置和条件关系单列。</p>')
-    output.append('<p>数字描述本批表达，不代表群体重要性、论文质量或A权重；未提及不表示不关注。下载或未应用草稿不会改变本视图。</p>')
-    output.append('<p><small>分析规则：' + text(summary['rules_version']) + ' · 计数规则：' + text(summary['summary_rules_version']) +
-                  ' · A版本：' + text(summary['a_version']) + ' · 材料状态：' + text(summary['material_status']) + '</small></p>')
+    output.append('<p>各项可重叠，父主题及A部分按记录取并集。未核对解释可见；部分、相关、暂未定及待核均不合称明确覆盖。处置和条件关系单列。</p>')
+    output.append('<p>数字描述本批表达，不代表群体重要性、论文质量或A权重；未提及不表示不关注。下载或未保存修改不会改变本视图。</p>')
+    output.append('<details><summary>来源与计数规则</summary><p><small>分析：' + text(summary['analysis_id']) + ' · 分析规则：' + text(summary['rules_version']) + ' · 计数规则：' + text(summary['summary_rules_version']) +
+                  ' · A版本：' + text(summary['a_version']) + ' · 材料状态：' + label(summary['material_status']) + '</small></p></details>')
     if summary['filters']:
         filter_names = {'record_ids':'评语记录', 'paper_ids':'材料组', 'directions':'判断方向', 'statuses':'核对状态', 'functions':'表达作用', 'boilerplate_candidate':'套话候选'}
         output.append('<p>当前筛选：' + '；'.join(text(filter_names[k]) + '：' + text(v) for k,v in summary['filters'].items()) + '</p>')
@@ -125,7 +132,7 @@ def render_summary(summary):
         output.append('<p>材料组：' + text(material_group(record)) + '</p>')
         sections = record.get('sections') or [dict(text=record.get('text', ''), section_id=record.get('anchor', ''))]
         for section in sections:
-            output.append('<p>普通分区：' + text(section.get('section_id')) + '</p><blockquote class="as-source">' + text(section.get('text')) + '</blockquote>')
+            output.append('<p>原话位置：' + text(section.get('section_id')) + '</p><blockquote class="as-source">' + text(section.get('text')) + '</blockquote>')
         output.append('<p>原分：' + '；'.join(text(s.get('label')) + '：' + text(s.get('raw_value')) for s in record.get('scores', [])) + '</p>')
         if not detail['facets']:
             output.append('<p>没有命中方面；该记录仍在本次分母中。</p>')

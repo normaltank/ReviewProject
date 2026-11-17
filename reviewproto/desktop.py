@@ -359,13 +359,13 @@ def main():
         raise ReviewError('E_DESKTOP_UNAVAILABLE') from None
 
     root = tk.Tk()
-    root.title('ReviewProject · 可信编辑本机入口')
-    root.geometry('800x920')
+    root.title('ReviewProject · 评语分析')
+    root.geometry('800x640')
     controller, results = Controller(), queue.Queue()
     candidate_windows = []
     busy = False
     widgets = []
-    status = tk.StringVar(value='选择新材料或已有工作区。材料、报告和补丁仅供可信编辑。')
+    status = tk.StringVar(value='新建分析，录入评语；或打开已有分析继续。')
     location = tk.StringVar(value='尚未打开工作区')
     batch_location = tk.StringVar(value='尚未选择审核包；下载决定不等于已保存。')
     batch_source = tk.StringVar()
@@ -383,16 +383,7 @@ def main():
     outer_window = outer.create_window((0, 0), window=frame, anchor='nw')
     frame.bind('<Configure>', lambda e: outer.configure(scrollregion=outer.bbox('all')))
     outer.bind('<Configure>', lambda e: outer.itemconfigure(outer_window, width=e.width))
-    ttk.Label(frame, text='可信编辑工作区', font=('', 16)).pack(anchor='w')
-    ttk.Label(frame, textvariable=location, wraplength=700).pack(anchor='w', pady=10)
-    options = ttk.Frame(frame)
-    options.pack(fill='x')
-    for label, variable, choices in [('来源声明', origin, list(origin_labels.values())),
-                                       ('输入类型', source_format, ['docx', 'csv', 'json'])]:
-        ttk.Label(options, text=label).pack(side='left')
-        box = ttk.Combobox(options, textvariable=variable, values=choices, state='readonly', width=17)
-        box.pack(side='left', padx=6)
-        widgets.append(box)
+    ttk.Label(frame, text='评语分析', font=('', 18)).pack(anchor='w', pady=(0, 12))
 
     def submit(action, success='操作完成'):
         nonlocal busy
@@ -429,6 +420,7 @@ def main():
                 status.set(success)
                 if isinstance(result, dict) and result.get('kind') == 'attention':
                     attention_location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · ' + result['material_status'])
+                    analysis_actions.pack(fill='x', after=attention_label, pady=12)
                 elif isinstance(result, dict) and result.get('kind') == 'batch':
                     batch_location.set(str(result['path']) + ' · 审核包 ' + result['batch_id'] + ' · 已保存修订 ' + str(result['revision']) + ' · 材料 ' + result['material_status'])
                     batch_source_box['values'] = [s['source_id'] for s in result['sources']]
@@ -480,9 +472,9 @@ def main():
         b.pack(anchor='w', pady=3)
         widgets.append(b)
 
-    attention_location = tk.StringVar(value='尚未打开关注分析；下载草稿不等于已保存。')
-    ttk.Label(frame, text='B关注分析', font=('', 14)).pack(anchor='w')
-    ttk.Label(frame, textvariable=attention_location, wraplength=700).pack(anchor='w')
+    attention_location = tk.StringVar(value='尚未打开分析')
+    attention_label = ttk.Label(frame, textvariable=attention_location, wraplength=700)
+    attention_label.pack(anchor='w', pady=8)
 
     def new_attention():
         if busy:
@@ -492,7 +484,8 @@ def main():
 
     def input_result(result):
         attention_location.set(str(result['path']) + ' · 已保存修订 ' + str(result['revision']) + ' · ' + result['material_status'])
-        status.set('输入已保存。打开关注页整理或核对；建包不表示已经理解B，下载草稿不等于已应用。')
+        analysis_actions.pack(fill='x', after=attention_label, pady=12)
+        status.set('输入已保存。点击“分析评语”开始，或“查看结果”继续整理。')
 
     def choose_attention():
         path = filedialog.askdirectory(title='选择含 attention.sqlite3 的分析包')
@@ -516,9 +509,12 @@ def main():
             submit(lambda: controller.migrate_attention(source, destination, actor, reason), '工作稿已迁入新包；请打开关注页核对。')
 
     def choose_attention_patch():
-        patch = filedialog.askopenfilename(title='选择关注草稿补丁', filetypes=[('JSON', '*.json')])
+        patch = filedialog.askopenfilename(title='选择从结果页下载的修改文件', filetypes=[('JSON', '*.json')])
         if patch:
-            submit(lambda: controller.apply_attention(patch), '关注补丁已保存，请重开关注页。')
+            def save_and_open():
+                controller.apply_attention(patch)
+                return controller.open_attention_report()
+            submit(save_and_open, '修改已保存，已重新打开当前结果。')
 
     def choose_attention_a():
         if busy:
@@ -538,11 +534,6 @@ def main():
         if actor and reason:
             submit(lambda: controller.import_attention_a(source, actor, reason), 'A参照已保存；旧版本及绑定保留在历史，请重开核对。')
 
-    button('录入A参照并显式换版', choose_attention_a)
-    button('准备A/B输入并建立独立分析', new_attention)
-    button('从已有A输入文件导入（高级）', choose_attention_a_file)
-    button('迁入B关注工作稿', migrate_attention)
-    button('打开关注分析包', choose_attention)
     def attention_candidates():
         if busy:
             return
@@ -555,11 +546,47 @@ def main():
             candidate_windows.append(AttentionCandidateWindow(root, controller, on_result=input_result))
         except Exception as error:
             status.set(candidate_message(error))
-    button('生成并核对B内容与A位置候选', attention_candidates)
-    button('打开关注页', lambda: submit(controller.open_attention_report))
-    button('应用关注草稿补丁', choose_attention_patch)
-    button('恢复关注页', lambda: submit(controller.recover_attention))
+    button('新建分析', new_attention)
+    button('打开已有分析', choose_attention)
+    home = frame
+    analysis_actions = ttk.Frame(home)
+    frame = analysis_actions
+    button('分析评语', attention_candidates)
+    button('查看结果', lambda: submit(controller.open_attention_report, '已打开当前保存的结果。'))
+
+    def disclosure(parent, label):
+        holder = ttk.Frame(parent)
+        holder.pack(fill='x', pady=(12, 0))
+        body = ttk.Frame(holder, padding=(12, 8))
+        def toggle():
+            if body.winfo_manager():
+                body.pack_forget()
+            else:
+                body.pack(fill='x')
+        control = ttk.Button(holder, text=label + '…', command=toggle)
+        control.pack(anchor='w')
+        widgets.append(control)
+        return body
+
+    frame = disclosure(analysis_actions, '保存修改与更换关注清单')
+    ttk.Label(frame, text='在结果页下载修改文件后，在这里保存。', wraplength=650).pack(anchor='w')
+    button('保存下载的修改并查看', choose_attention_patch)
+    button('更换A关注清单', choose_attention_a)
+    button('从文件更换A关注清单', choose_attention_a_file)
+    button('重新载入已保存结果', lambda: submit(controller.open_attention_report))
+    frame = disclosure(home, '其他工具（导入、旧审核与模型）')
+    button('迁入B关注工作稿', migrate_attention)
     ttk.Separator(frame).pack(fill='x', pady=8)
+    ttk.Label(frame, text='原始材料工作区', font=('', 14)).pack(anchor='w')
+    ttk.Label(frame, textvariable=location, wraplength=700).pack(anchor='w', pady=8)
+    options = ttk.Frame(frame)
+    options.pack(fill='x')
+    for label, variable, choices in [('来源声明', origin, list(origin_labels.values())),
+                                       ('输入类型', source_format, ['docx', 'csv', 'json'])]:
+        ttk.Label(options, text=label).pack(side='left')
+        box = ttk.Combobox(options, textvariable=variable, values=choices, state='readonly', width=17)
+        box.pack(side='left', padx=6)
+        widgets.append(box)
     button('新导入（创建专用子目录）', new_import)
     button('打开已有工作区', open_existing)
     button('打开报告', lambda: submit(controller.open_report, '报告已交给本机浏览器打开。'))

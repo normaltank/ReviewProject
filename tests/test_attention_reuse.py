@@ -2,7 +2,7 @@
 
 Only the OS directory chooser is mocked. All material is synthetic.
 """
-from attention_browser import open_panel
+from attention_browser import open_panel, open_editor_tools
 import hashlib
 import json
 import os
@@ -83,14 +83,14 @@ class AttentionReuse(unittest.TestCase):
         page.on('request', lambda r: self.http.append(r.url) if r.url.startswith(('https:', 'http:')) else None)
         page.on('dialog', lambda d: d.accept())
         page.goto((self.controller.attention_path / 'attention.html').as_uri())
-        open_panel(page, 'attention-editor')
+        open_editor_tools(page)
         open_panel(page, 'view-statistics')
         open_panel(page, 'view-filters')
         open_panel(page, 'view-extra-views')
         return page
 
     def audit(self, page, reason='按给定原话保存工作解释'):
-        open_panel(page, 'attention-editor')
+        open_editor_tools(page)
         page.locator('#actor').fill('合成核对者'); page.locator('#reason').fill(reason)
 
     def opinion(self, page, interpretation, passage=1):

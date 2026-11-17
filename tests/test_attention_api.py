@@ -1,4 +1,5 @@
 """API wire and audit tests use synthetic transport and never contact a service."""
+from attention_browser import open_panel
 import copy
 import json
 import tempfile
@@ -256,9 +257,11 @@ class APITransport(unittest.TestCase):
             with sync_playwright() as p:
                 browser=p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'],headless=True)
                 page=browser.new_page();page.goto(preview.as_uri())
+                open_panel(page, 'candidate-audit')
                 self.assertIn('DeepSeek API联网推理',page.locator('#candidate-preview').inner_text())
                 self.assertNotIn('实际本机推理',page.locator('#candidate-preview').inner_text())
                 self.assertNotIn('SYNTHETIC-NEVER-READ',page.content())
+                page.locator('[id^="candidate-facet-"] summary').first.click()
                 self.assertIn('若有记录',page.locator('body').inner_text())
                 browser.close()
             self.assertEqual(session.accept('api-full',actor='synthetic editor',reason='engineering fixture')['revision'],1)
