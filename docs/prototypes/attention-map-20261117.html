@@ -1,0 +1,259 @@
+<div id="attention-map-prototype-20261117" lang="zh-CN" aria-label="B关注分布可点击原型">
+  <style>
+    #attention-map-prototype-20261117{--am-bg:#17191a;--am-panel:#1b1d1f;--am-text:#e4e7e8;--am-sub:#b0b7b9;--am-line:#454c4f;--am-soft:#272c2e;--am-point:#aeb9b8;--am-active:#d5e8e2;color:var(--am-text);background:var(--am-bg);font:400 15px/1.65 "Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;box-sizing:border-box;padding:24px;overflow-wrap:anywhere;color-scheme:dark}
+    #attention-map-prototype-20261117 *{box-sizing:border-box}
+    #attention-map-prototype-20261117 h2,#attention-map-prototype-20261117 h3,#attention-map-prototype-20261117 p{margin:0}
+    #attention-map-prototype-20261117 h2{font-size:18px;font-weight:500;line-height:1.5}
+    #attention-map-prototype-20261117 h3{font-size:16px;font-weight:500;line-height:1.65}
+    #attention-map-prototype-20261117 button{font:inherit;color:inherit;cursor:inherit}
+    #attention-map-prototype-20261117 .am-head{padding-right:76px;margin-bottom:16px}
+    #attention-map-prototype-20261117 .am-meta{color:var(--am-sub);margin-top:4px;font-size:14px}
+    #attention-map-prototype-20261117 .am-controls{display:flex;gap:12px 24px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--am-line);padding-bottom:14px}
+    #attention-map-prototype-20261117 .am-check{display:inline-flex;align-items:center;gap:8px;min-height:44px}
+    #attention-map-prototype-20261117 input{width:17px;height:17px;accent-color:var(--am-active);margin:0}
+    #attention-map-prototype-20261117 .am-state-button{padding:6px 10px;min-height:40px;background:transparent;border:1px solid var(--am-line);border-radius:5px}
+    #attention-map-prototype-20261117 .am-state-button[aria-pressed="true"]{background:var(--am-soft);border-color:var(--am-active)}
+    #attention-map-prototype-20261117 .am-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:24px;align-items:start;padding-top:16px}
+    #attention-map-prototype-20261117 .am-map-panel{min-width:0}
+    #attention-map-prototype-20261117 .am-map-key{color:var(--am-sub);font-size:14px;max-width:540px}
+    #attention-map-prototype-20261117 .am-map{position:relative;width:100%;min-width:0}
+    #attention-map-prototype-20261117 .am-map-svg{display:block;width:100%;overflow:visible;font:400 15px/1.5 "Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Segoe UI",sans-serif}
+    #attention-map-prototype-20261117 .am-map-svg text{fill:var(--am-text)}
+    #attention-map-prototype-20261117 .am-map-svg .am-a-label{fill:var(--am-sub)}
+    #attention-map-prototype-20261117 .am-map-svg .am-region{fill:#1d2223;stroke:var(--am-line);stroke-width:1}
+    #attention-map-prototype-20261117 .am-map-svg .am-contour{fill:none;stroke:#697376;stroke-width:1}
+    #attention-map-prototype-20261117 .am-map-svg .am-point{stroke:var(--am-point);stroke-width:1.8;fill:var(--am-bg)}
+    #attention-map-prototype-20261117 .am-map-svg .am-point.am-solid{fill:var(--am-point)}
+    #attention-map-prototype-20261117 .am-map-svg .am-point.am-linked{stroke:var(--am-active);stroke-width:2.2}
+    #attention-map-prototype-20261117 .am-map-svg .am-point.am-solid.am-linked{fill:var(--am-active)}
+    #attention-map-prototype-20261117 .am-map-svg .am-halo{fill:none;stroke:var(--am-active);stroke-width:1;opacity:.6}
+    #attention-map-prototype-20261117 .am-map-svg .am-link{fill:none;stroke:var(--am-active);stroke-width:1;opacity:.65}
+    #attention-map-prototype-20261117 .am-map-svg .am-link-label{fill:var(--am-active);paint-order:stroke;stroke:var(--am-bg);stroke-width:7;stroke-linejoin:round}
+    #attention-map-prototype-20261117 .am-hit{position:absolute;width:44px;height:44px;margin:0;padding:0;border:0;border-radius:50%;background:transparent;color:transparent;transform:translate(-50%,-50%)}
+    #attention-map-prototype-20261117 .am-legend{display:flex;gap:8px 16px;flex-wrap:wrap;color:var(--am-sub);font-size:14px;border-top:1px solid var(--am-line);padding-top:12px}
+    #attention-map-prototype-20261117 .am-legend span{display:inline-flex;align-items:center;gap:7px}
+    #attention-map-prototype-20261117 .am-symbol{display:inline-block;width:10px;height:10px;border:1.5px solid var(--am-point);border-radius:50%}
+    #attention-map-prototype-20261117 .am-symbol.am-filled{background:var(--am-point)}
+    #attention-map-prototype-20261117 .am-symbol.am-diamond{border-radius:0;transform:rotate(45deg);width:9px;height:9px}
+    #attention-map-prototype-20261117 .am-symbol.am-square{border-radius:0}
+    #attention-map-prototype-20261117 .am-detail{min-width:0;border-left:1px solid var(--am-line);padding-left:20px}
+    #attention-map-prototype-20261117 .am-detail-kicker{color:var(--am-sub);font-size:14px;margin-bottom:5px}
+    #attention-map-prototype-20261117 .am-detail-block{margin-top:20px}
+    #attention-map-prototype-20261117 .am-label{font-size:14px;color:var(--am-sub);margin-bottom:6px}
+    #attention-map-prototype-20261117 .am-quote{border-left:2px solid var(--am-line);padding-left:12px;line-height:1.85}
+    #attention-map-prototype-20261117 mark{background:#354641;color:#eef5f2;padding:1px 0}
+    #attention-map-prototype-20261117 .am-relation{display:inline-block;border-bottom:1px solid #7f9690;padding-bottom:2px;margin-bottom:8px}
+    #attention-map-prototype-20261117 .am-a-quote{color:var(--am-sub);margin-top:10px}
+    #attention-map-prototype-20261117 .am-related{display:flex;flex-direction:column;gap:8px}
+    #attention-map-prototype-20261117 .am-related button{text-align:left;padding:8px 10px;background:transparent;border:1px solid var(--am-line);border-radius:5px;min-height:44px}
+    #attention-map-prototype-20261117 .am-related button[aria-pressed="true"]{background:var(--am-soft);border-color:#8a9c96}
+    @media(max-width:700px){#attention-map-prototype-20261117{padding:18px}#attention-map-prototype-20261117 .am-layout{grid-template-columns:minmax(0,1fr);gap:24px}#attention-map-prototype-20261117 .am-detail{border-left:0;border-top:1px solid var(--am-line);padding:20px 0 0}#attention-map-prototype-20261117 .am-head{padding-right:54px}}
+    @media(prefers-reduced-motion:no-preference){#attention-map-prototype-20261117 .am-point{transition:stroke .16s,fill .16s}}
+  </style>
+  <header class="am-head">
+    <h2>B关注分布</h2>
+    <p class="am-meta">示例批次 · 共6条评语 · 已归主题5条 · 6个内容主题</p>
+  </header>
+  <div class="am-controls">
+    <label class="am-check"><input class="am-a-toggle" type="checkbox" checked><span>显示示例A参照</span></label>
+    <button class="am-state-button cursor-interaction" type="button" aria-pressed="false">未整理 · 1条</button>
+  </div>
+  <div class="am-layout">
+    <section class="am-map-panel" aria-label="主题及对应分布">
+      <p class="am-map-key">每个点代表该主题中的一条评语</p>
+      <div class="am-map">
+        <svg class="am-map-svg" role="img" aria-label="B主题中的8个出现标记，来自5条已归主题评语。选择标记可查看原话，同份评语在各主题联动。"></svg>
+        <div class="am-hit-layer"></div>
+      </div>
+      <div class="am-legend" aria-label="标记含义">
+        <span><i class="am-symbol am-filled" aria-hidden="true"></i>明确对应</span>
+        <span><i class="am-symbol" aria-hidden="true"></i>部分对应</span>
+        <span><i class="am-symbol am-diamond" aria-hidden="true"></i>A未列出</span>
+        <span><i class="am-symbol am-square" aria-hidden="true"></i>对应未定</span>
+      </div>
+    </section>
+    <aside class="am-detail" aria-live="polite" aria-atomic="true"></aside>
+  </div>
+  <script>
+  (() => {
+    const root = document.getElementById('attention-map-prototype-20261117');
+    const svg = root.querySelector('.am-map-svg');
+    const map = root.querySelector('.am-map');
+    const hitLayer = root.querySelector('.am-hit-layer');
+    const detail = root.querySelector('.am-detail');
+    const toggle = root.querySelector('.am-a-toggle');
+    const unprocessed = root.querySelector('.am-state-button');
+    const sources = {
+      one:'研究问题有价值，但相关研究需要补充。',
+      two:'建议补充样本来源。若无法扩充样本，应限定结论的适用范围。',
+      three:'结构清晰，但数据来源交代不足。',
+      four:'无需扩大样本，限定结论的适用范围即可。',
+      five:'建议统一术语。总体上完成度较好。',
+      six:'建议说明本研究的局限。'
+    };
+    const aText = {
+      question:'交代研究问题与相关研究的关系。',
+      methods:'说明数据的来源与获取方法。',
+      conclusions:'结合材料说明结论的适用范围。'
+    };
+    const aspects = [
+      {id:'literature',source:'one',topic:'文献与问题',title:'研究问题有价值，但相关研究需要补充',range:'研究问题有价值，但相关研究需要补充',status:'partial',relation:'部分对应',a:'question',reason:'B肯定研究问题的价值，并要求补充相关研究。A关注的是两者的关系；两者有交集，但B没有直接要求交代这种关系。'},
+      {id:'sample-two',source:'two',topic:'样本来源',title:'补充样本来源',range:'建议补充样本来源',status:'explicit',relation:'明确对应',a:'methods',reason:'B要求补充样本从哪里来，直接对应A中“数据的来源”这一具体范围；这不表示整份评语涵盖了A的全部内容。'},
+      {id:'sample-three',source:'three',topic:'样本来源',title:'数据来源交代不足',range:'数据来源交代不足',status:'explicit',relation:'明确对应',a:'methods',reason:'B指出数据来源说明不足，直接谈到了A要求说明的“数据的来源”。这里保留B的不足判断。'},
+      {id:'scope-two',source:'two',topic:'结论范围',title:'无法扩充样本时，限定结论范围',range:'若无法扩充样本，应限定结论的适用范围',status:'partial',relation:'部分对应',a:'conclusions',reason:'B谈结论的适用范围，A还要求“结合材料说明”。当前读法只确认这部分交集。B的建议以无法扩充样本为条件，不能省去这个条件。'},
+      {id:'scope-four',source:'four',topic:'结论范围',title:'限定结论的适用范围即可',range:'限定结论的适用范围即可',status:'partial',relation:'部分对应',a:'conclusions',reason:'B建议限定结论适用范围，A还要求“结合材料说明”，因此只确认部分交集。这份评语明确说无需扩大样本，与另一份“若无法扩充样本”的条件表达不同。'},
+      {id:'structure',source:'three',topic:'结构安排',title:'结构清晰',range:'结构清晰',status:'outside',relation:'本版A未列出',reason:'这是对结构安排的肯定。本版A的三项原文分别谈研究问题、数据与方法、结果与结论，没有明示结构安排这一方面。'},
+      {id:'terms',source:'five',topic:'术语用字',title:'统一术语',range:'建议统一术语',status:'outside',relation:'本版A未列出',reason:'B提出术语一致性的建议。本版A的三项原文没有明示术语用字这一方面。',extra:'“总体上完成度较好”保留在原话中，未另算为内容主题。'},
+      {id:'size',source:'four',topic:'样本规模',title:'无需扩大样本',range:'无需扩大样本',status:'undecided',relation:'与A关系未定',reason:'B明确否定扩大样本的必要性。A谈数据来源与获取方法，没有直接谈样本规模；当前尚未确定二者是否有可说明的对应，单列待核。'}
+    ];
+    let selected = 'scope-two';
+    let showA = true;
+    let positions = {};
+    const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const S = (tag, attrs={}, text='') => {
+      const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      Object.entries(attrs).forEach(([k,v]) => node.setAttribute(k,String(v)));
+      if(text) node.textContent = text;
+      return node;
+    };
+    function text(x,y,value,cls='',anchor='middle') {
+      return S('text',{x,y,'text-anchor':anchor,class:cls},value);
+    }
+    function draw() {
+      const width = Math.max(250, map.clientWidth);
+      const wide = width >= 500;
+      const r = wide ? Math.min(180,(width*.67-32)/2) : Math.min(190,(width-30)/2);
+      const cx = wide ? r+20 : width/2, cy = wide ? 228 : r+48;
+      const bottom = cy+r;
+      const outsideY = bottom+70;
+      const pendingY = outsideY+112;
+      const sideX = (cx+r+width)/2;
+      const height = wide ? 450 : pendingY+65;
+      svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
+      svg.setAttribute('width',width);
+      svg.setAttribute('height',height);
+      map.style.height = `${height}px`;
+      svg.replaceChildren();
+      svg.appendChild(S('title',{},'B主题与示例A的对应分布'));
+      const aGroup = S('g',{'aria-hidden':'true'});
+      if(showA) {
+        const angles = [-150,-30,90,210];
+        for(let i=0;i<3;i++) {
+          const start=angles[i]*Math.PI/180,end=angles[i+1]*Math.PI/180;
+          const x1=cx+r*Math.cos(start), y1=cy+r*Math.sin(start);
+          const x2=cx+r*Math.cos(end), y2=cy+r*Math.sin(end);
+          aGroup.appendChild(S('path',{d:`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`,class:'am-region'}));
+        }
+        aGroup.appendChild(S('circle',{cx,cy,r,class:'am-contour'}));
+        aGroup.appendChild(text(cx,26,'A清单中的关注','am-a-label'));
+        aGroup.appendChild(text(cx,cy-r*.78,'A 研究问题','am-a-label'));
+        aGroup.appendChild(text(cx-r*.47,cy+r*.06,'A 数据与方法','am-a-label'));
+        aGroup.appendChild(text(cx+r*.47,cy+r*.06,'A 结果与结论','am-a-label'));
+        svg.appendChild(aGroup);
+      }
+      const clusterLeft = cx-r*.47, clusterRight = cx+r*.47;
+      const markY = cy+r*.55;
+      positions = {
+        literature:[cx,cy-r*.27],
+        'sample-two':[clusterLeft-23,markY],
+        'sample-three':[clusterLeft+23,markY],
+        'scope-two':[clusterRight-23,markY],
+        'scope-four':[clusterRight+23,markY],
+        structure:wide?[sideX,143]:[width*.27,outsideY+31],
+        terms:wide?[sideX,243]:[width*.73,outsideY+31],
+        size:wide?[sideX,385]:[width*.5,pendingY+13]
+      };
+      svg.appendChild(text(cx,cy-r*.49,'文献与问题 · 1条'));
+      svg.appendChild(text(clusterLeft,cy+r*.32,'样本来源 · 2条'));
+      svg.appendChild(text(clusterRight,cy+r*.32,'结论范围 · 2条'));
+      if(wide) {
+        svg.appendChild(text(sideX,76,showA?'A清单未列出':'另外的B主题','am-a-label'));
+        svg.appendChild(text(sideX,112,'结构安排 · 1条'));
+        svg.appendChild(text(sideX,212,'术语用字 · 1条'));
+        svg.appendChild(S('line',{x1:cx+r+24,y1:287,x2:width-18,y2:287,stroke:'var(--am-line)','stroke-width':1}));
+        svg.appendChild(text(sideX,318,'与A对应未定','am-a-label'));
+        svg.appendChild(text(sideX,354,'样本规模 · 1条'));
+      } else {
+        svg.appendChild(text(cx,bottom+37,showA?'A清单未列出':'另外的B主题','am-a-label'));
+        svg.appendChild(text(width*.27,outsideY,'结构安排 · 1条'));
+        svg.appendChild(text(width*.73,outsideY,'术语用字 · 1条'));
+        svg.appendChild(S('line',{x1:18,y1:pendingY-46,x2:width-18,y2:pendingY-46,stroke:'var(--am-line)','stroke-width':1}));
+        svg.appendChild(text(cx,pendingY-23,'与A对应未定','am-a-label'));
+        svg.appendChild(text(cx,pendingY+43,'样本规模 · 1条'));
+      }
+      const current = aspects.find(item=>item.id===selected);
+      const linked = current ? aspects.filter(item=>item.source===current.source) : [];
+      if(linked.length>1) {
+        const [x1,y1]=positions[linked[0].id], [x2,y2]=positions[linked[1].id];
+        if(y1===y2) {
+          svg.appendChild(S('path',{d:`M ${x1} ${y1} Q ${(x1+x2)/2} ${y1+60} ${x2} ${y2}`,class:'am-link'}));
+          svg.appendChild(text((x1+x2)/2,y1+52,'同一份评语','am-link-label'));
+        } else if(wide) {
+          const lane = cx+r+24;
+          if(current.source==='three') {
+            svg.appendChild(S('path',{d:`M ${x1} ${y1} Q ${x1} 416 ${(x1+lane)/2} 416 L ${lane} 416 L ${lane} ${y2} L ${x2} ${y2}`,class:'am-link'}));
+            svg.appendChild(text((x1+lane)/2,440,'同一份评语','am-link-label'));
+          } else {
+            svg.appendChild(S('path',{d:`M ${x1} ${y1} Q ${lane} 416 ${x2} ${y2}`,class:'am-link'}));
+            svg.appendChild(text((x1+x2)/2,430,'同一份评语','am-link-label'));
+          }
+        } else {
+          const lane = current.source==='three' ? 18 : width-18;
+          svg.appendChild(S('path',{d:`M ${x1} ${y1} L ${lane} ${y1} L ${lane} ${y2} L ${x2} ${y2}`,class:'am-link'}));
+          svg.appendChild(text(lane,bottom+12,'同一份评语','am-link-label',current.source==='three'?'start':'end'));
+        }
+      }
+      hitLayer.replaceChildren();
+      aspects.forEach(item => {
+        const [x,y]=positions[item.id];
+        const isLinked=Boolean(current&&item.source===current.source);
+        if(isLinked) svg.appendChild(S('circle',{cx:x,cy:y,r:15,class:'am-halo'}));
+        let mark;
+        const classes=`am-point${item.status==='explicit'?' am-solid':''}${isLinked?' am-linked':''}`;
+        if(item.status==='outside') mark=S('polygon',{points:`${x},${y-8} ${x+8},${y} ${x},${y+8} ${x-8},${y}`,class:classes});
+        else if(item.status==='undecided') mark=S('rect',{x:x-7,y:y-7,width:14,height:14,rx:1,class:classes});
+        else mark=S('circle',{cx:x,cy:y,r:7,class:classes});
+        svg.appendChild(mark);
+        if(item.id===selected) svg.appendChild(S('circle',{cx:x,cy:y,r:2.3,fill:'var(--am-active)'}));
+        const button=document.createElement('button');
+        button.type='button';button.className='am-hit cursor-interaction';
+        button.style.left=`${x}px`;button.style.top=`${y}px`;
+        button.setAttribute('aria-label',`${item.topic}：${item.title}。${item.relation}。查看这份评语`);
+        button.setAttribute('data-tooltip',`${item.topic}：${item.title}。原话：“${sources[item.source]}”`);
+        button.setAttribute('aria-pressed',String(item.id===selected));
+        button.dataset.aspect=item.id;
+        button.addEventListener('click',()=>select(item.id));
+        hitLayer.appendChild(button);
+      });
+    }
+    function sourceQuote(item) {
+      const original=sources[item.source], index=original.indexOf(item.range);
+      return esc(original.slice(0,index))+'<mark>'+esc(item.range)+'</mark>'+esc(original.slice(index+item.range.length));
+    }
+    function renderDetail() {
+      unprocessed.setAttribute('aria-pressed',String(selected==='unprocessed'));
+      if(selected==='unprocessed') {
+        detail.innerHTML='<p class="am-detail-kicker">未整理 · 这份评语</p><h3>建议说明本研究的局限</h3><div class="am-detail-block"><p class="am-label">完整原话</p><p class="am-quote">建议说明本研究的局限。</p></div><div class="am-detail-block"><p>这条评语尚未整理，未归入主题，也未判断与A的关系。</p></div>';
+        return;
+      }
+      const item=aspects.find(value=>value.id===selected);
+      const related=aspects.filter(value=>value.source===item.source&&value.id!==selected);
+      let aEvidence='';
+      if(item.a) aEvidence=`<p class="am-a-quote">示例A原话：<br>“${esc(aText[item.a])}”</p>`;
+      else aEvidence=`<div class="am-a-quote">示例A的三项原话：<p>“${esc(aText.question)}”</p><p>“${esc(aText.methods)}”</p><p>“${esc(aText.conclusions)}”</p></div>`;
+      detail.innerHTML=`<p class="am-detail-kicker">${esc(item.topic)} · 这份评语</p><h3>${esc(item.title)}</h3><div class="am-detail-block"><p class="am-label">完整原话 · 高亮本点范围</p><p class="am-quote">${sourceQuote(item)}</p></div><div class="am-detail-block"><p class="am-relation">${esc(item.relation)}</p><p>${esc(item.reason)}</p>${aEvidence}</div>${item.extra?`<div class="am-detail-block"><p>${esc(item.extra)}</p></div>`:''}${related.length?`<div class="am-detail-block"><p class="am-label">这份评语还谈到</p><div class="am-related">${related.map(other=>`<button type="button" class="cursor-interaction" data-related="${other.id}">${esc(other.title)}</button>`).join('')}</div></div>`:''}`;
+      detail.querySelectorAll('[data-related]').forEach(button=>button.addEventListener('click',()=>select(button.dataset.related)));
+    }
+    function select(id) {
+      const restoreFocus=Boolean(document.activeElement&&((document.activeElement.dataset||{}).aspect||(document.activeElement.dataset||{}).related));
+      selected=id;renderDetail();draw();
+      if(restoreFocus) hitLayer.querySelector(`[data-aspect="${id}"]`)?.focus({preventScroll:true});
+    }
+    toggle.addEventListener('change',()=>{showA=toggle.checked;draw();});
+    unprocessed.addEventListener('click',()=>select('unprocessed'));
+    renderDetail();
+    new ResizeObserver(draw).observe(map);
+    draw();
+  })();
+  </script>
+</div>
