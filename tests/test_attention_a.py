@@ -83,6 +83,7 @@ class AttentionA(unittest.TestCase):
             open_editor_tools(page)
             open_panel(page, 'reading-history')
             page.locator('#opinion').select_option('o')
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('浏览器编辑');page.locator('#reason').fill('保存A范围')
             for kind in ['explicit','partial','related','undetermined','outside']:
                 page.locator('#a-kind').select_option(kind)
@@ -94,6 +95,7 @@ class AttentionA(unittest.TestCase):
                 self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
             patchfile=self.root/'download.json'
             def save():
+                open_panel(page, 'editor-export')
                 with page.expect_download() as d:page.locator('#download').focus();page.keyboard.press('Enter')
                 d.value.save_as(patchfile);controller.apply_attention(patchfile);controller.recover_attention();page.reload()
                 open_editor_tools(page)
@@ -104,9 +106,11 @@ class AttentionA(unittest.TestCase):
             if not page.locator('#saved').is_visible():
                 page.get_by_text('展开全部保存解释与撤回/替换历史（不随上方筛选）', exact=True).click()
             self.assertIn('内容相关',page.locator('#saved').inner_text())
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('浏览器编辑');page.locator('#reason').fill('纠正关联范围')
             page.locator('#a-link').select_option('a_links:0');page.locator('#a-scope').fill('纠正后的范围');page.locator('#a-save').click();save()
             self.assertEqual(self.ws.state()['opinions'][0]['facets'][0]['a_links'][-1]['scope'],'纠正后的范围')
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('浏览器编辑');page.locator('#reason').fill('清空最后一条也保存')
             while page.locator('#a-link option').count()>1:
                 page.locator('#a-link').select_option(index=1);page.locator('#a-remove').focus();page.keyboard.press('Enter')

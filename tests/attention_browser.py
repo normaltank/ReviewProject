@@ -13,5 +13,5 @@ def open_panel(page, panel_id):
 def open_editor_tools(page):
     """Open the optional tools when exercising advanced editing workflows."""
     open_panel(page, 'attention-editor')
-    for panel_id in ('editor-structure', 'editor-expression', 'editor-a-links', 'editor-themes', 'editor-relations'):
+    for panel_id in ('editor-audit', 'editor-export', 'editor-analysis-details', 'editor-source-position', 'editor-structure', 'editor-expression', 'editor-a-links', 'editor-themes', 'editor-relations'):
         open_panel(page, panel_id)

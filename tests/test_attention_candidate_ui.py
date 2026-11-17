@@ -482,9 +482,11 @@ assert not errors, errors
                 page.locator('#position-drill a').first.click()
                 page.get_by_role('button', name='查看原话并修改').first.click()
                 self.assertEqual(page.locator('#facet').input_value(), saved['opinions'][0]['facets'][0]['facet_id'])
+                open_panel(page, 'editor-audit')
                 page.locator('#actor').fill('工程编辑'); page.locator('#reason').fill('保留条件并纠正读法')
                 page.locator('#interpretation').fill('如有记录才补充图例')
                 page.locator('#stage').click()
+                open_panel(page, 'editor-export')
                 with page.expect_download() as download:
                     page.locator('#download').click()
                 draft = Path(tmp) / 'draft.json'; download.value.save_as(draft)

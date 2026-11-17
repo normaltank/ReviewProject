@@ -79,17 +79,17 @@ class AttentionInputTk(unittest.TestCase):
         from contextlib import closing
         from reviewproto.attention_input_ui import AttentionInputWindow
         from reviewproto.desktop import Controller
-        from reviewproto.store import Workspace
+        from legacy_source_fixture import create_legacy_workspace
         from reviewproto.attention import AttentionWorkspace
         root = tk.Tk(); self.addCleanup(root.destroy)
         controller = Controller()
         window = AttentionInputWindow(root, controller)
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp); source = path / 'source.json'
-            source.write_text(json.dumps({'scores': [], 'sections': [
+            path = Path(tmp)
+            payload = {'scores': [], 'sections': [
                 {'section_id': 'ordinary', 'label': '评审意见', 'text': '普通原话😀'},
-                {'section_id': 'private', 'label': '其他意见（作者不可见）', 'text': 'PRIVATE_NEVER_COPY'}]}), encoding='utf-8')
-            with closing(Workspace(path / 'source')) as ws: ws.run(source, 'synthetic', 'json')
+                {'section_id': 'private', 'label': '其他意见（作者不可见）', 'text': 'PRIVATE_NEVER_COPY'}]}
+            create_legacy_workspace(path / 'source', payload)
             with patch('tkinter.filedialog.askdirectory', return_value=str(path / 'source')):
                 window.workspace_button.invoke()
             root.update()
