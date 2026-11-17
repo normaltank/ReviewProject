@@ -137,6 +137,10 @@ class Workbench:
             return {'path':str(path),'parent':str(path.parent),'directories':sorted(str(p) for p in path.iterdir() if p.is_dir()),
                     'analysis':(path/'attention.sqlite3').is_file()}
         if route=='/api/source': return {'sections':AttentionInput.workspace_options(payload['path'])}
+        if route=='/api/sample':
+            from .workbench_sample import create_sample
+            path=self.data_dir/('synthetic-example-'+uuid.uuid4().hex)
+            create_sample(path); return self.open(path)
         if route=='/api/create':
             build_prepared(self.draft(payload),payload['path']); return self.open(payload['path'])
         if route=='/api/open': return self.open(payload['path'])

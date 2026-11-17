@@ -68,6 +68,27 @@ class WebWorkbenchTests(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError):post(app,'/api/generate',{'id':p['id']})
             self.assertEqual(post(app,'/api/home',{})['jobs'],[])
 
+    def test_sample_has_saved_graph_without_credentials_and_can_be_corrected(self):
+        with tempfile.TemporaryDirectory() as tmp, Workbench(Path(tmp)/'data') as app:
+            with patch('reviewproto.credential.load_deepseek_key',side_effect=AssertionError('No model or key needed')):
+                sample=post(app,'/api/sample',{})
+            state=sample['state']
+            self.assertEqual(len(state['records']),2)
+            self.assertEqual(len(state['themes']),3)
+            self.assertEqual(len(state['opinions']),3)
+            self.assertEqual(len(state['a_reference']['items']),2)
+            self.assertEqual(post(app,'/api/home',{})['jobs'],[])
+            self.assertIn('非专业金标',state['history'][-1]['reason'])
+            from copy import deepcopy
+            changed=deepcopy(state['opinions'][0])
+            edit={key:changed[key] for key in ('opinion_id','record_id','interpretation','status','facets')}
+            edit['interpretation']='试用者纠正合成解释'
+            patch_data={'schema':'attention-patch/2','analysis_id':state['analysis_id'],
+                'base_revision':state['revision'],'actor':'合成试用者','reason':'练习纠正保存','edits':[edit]}
+            post(app,'/save',patch_data,app.project(sample['id'])['token'])
+            reopened=post(app,'/api/open',{'path':sample['path']})
+            self.assertEqual(reopened['state']['opinions'][0]['interpretation'],'试用者纠正合成解释')
+
     def test_empty_create_preserves_directory_and_stop_closes_listener(self):
         with tempfile.TemporaryDirectory() as tmp:
             app=Workbench(Path(tmp)/'data')

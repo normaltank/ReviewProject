@@ -3,17 +3,12 @@ from contextlib import closing
 from pathlib import Path
 import copy
 import json
-import os
-import queue
 import re
-import threading
-import uuid
 
 from .attention import AttentionWorkspace
-from .attention_candidates import generate, preview, accept, LocalProvider
+from .attention_candidates import generate, preview, accept
 from .attention_candidate_render import render_candidate_preview
-from .local_model_profiles import profiles, profile, DEFAULT_MODEL
-from .attention_api_provider import DeepSeekProvider, API_MODELS, API_ENDPOINT, API_DEFAULT_TOKENS
+from .local_model_profiles import profile, DEFAULT_MODEL
 from .core import require
 
 
@@ -67,7 +62,7 @@ class CandidateSession:
 def candidate_message(error):
     code = str(error)
     if code == 'E_DEEPSEEK_CREDENTIAL_MISSING':
-        return '尚未配置DeepSeek。请在“更多选项 → 分析设置”中保存密钥。'
+        return '尚未配置DeepSeek。请展开网页“分析设置”保存密钥。'
     if code == 'E_DEEPSEEK_CREDENTIAL_STORE':
         return 'API凭据无法保存或解密。请使用当前Windows用户重新保存，或显式设置DEEPSEEK_API_KEY。'
     if code == 'E_ATTENTION_API_MODEL':
@@ -75,7 +70,7 @@ def candidate_message(error):
     if code.startswith('E_ATTENTION_API'):
         return 'DeepSeek API操作未完成。请核对官方地址、模型和凭据；不会自动重试或改用本机模型。'
     if code == 'E_LOCAL_MODEL_MISSING':
-        return '所选模型未安装。请由操作员按候选分析操作说明，将对应 GGUF 文件放入资源根目录的 .tools/local-llm 后重试；窗口不会下载。'
+        return '所选模型未安装。请由操作员按候选分析操作说明，将对应 GGUF 文件放入资源根目录的 .tools/local-llm 后重试；工作台不会下载。'
     if code == 'E_LOCAL_MODEL_WEIGHT':
         return '所选模型大小或 SHA-256 不符。请由操作员按候选分析操作说明核对固定文件版本并重新安装。'
     if code == 'E_ATTENTION_MODEL_PROFILE':
@@ -83,7 +78,7 @@ def candidate_message(error):
     if code == 'E_ATTENTION_CAPACITY_PROFILE':
         return '表达分类需要至少768的输出长度以保留有界思考和完整结果。请将最大输出长度设为至少768后重新生成；本次未提高你设置的上限。'
     if code == 'E_ATTENTION_TARGET':
-        return '目标或保存修订已变化。请关闭候选窗口，从当前分析包重新打开；原候选仍保留在原包。'
+        return '目标或保存修订已变化。请刷新当前分析包并重新打开；原候选仍保留在原包。'
     if code == 'E_ATTENTION_REVALIDATION':
         return '来源、A或保存修订已变化，候选不能接收。请恢复关注页核对，并重新生成；旧记录保留。'
     if code == 'E_ATTENTION_OUTPUT_RECOVER':

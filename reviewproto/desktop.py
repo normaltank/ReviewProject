@@ -1,4 +1,4 @@
-"""Small local launcher; Tk and model dependencies are loaded only on demand."""
+"""Reusable local controller and compatibility launcher for the browser workbench."""
 from contextlib import closing
 from pathlib import Path
 import os
