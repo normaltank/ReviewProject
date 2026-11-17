@@ -4,11 +4,11 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 from reviewproto.attention import AttentionWorkspace
-from reviewproto.attention_candidates import generate, ReplayProvider
+from reviewproto.attention_candidates import generate, accept, ReplayProvider
 
 
 class RelationConnectors(unittest.TestCase):
-    def run_relation(self, original, kind, *, evidence=None, endpoint='left'):
+    def run_relation(self, original, kind, *, evidence=None, endpoint='left', roundtrip=False):
         left,right=original.split('，',1)
         with tempfile.TemporaryDirectory() as tmp, closing(AttentionWorkspace(Path(tmp)/'pack')) as ws:
             ws.build({'schema':'attention-input/1','records':[{'anchor':'s','visibility':'author_visible','text':original}],
@@ -20,7 +20,30 @@ class RelationConnectors(unittest.TestCase):
                 'relations':[{'type':kind,'endpoints':[{'facet':endpoint,'role':'第一项'},{'facet':'right','role':'第二项'}],
                     'direction':'两项安排的联系','scope':'两项安排','reading':'仅记录原文明示的安排联系','ambiguity':'',
                     'evidence':[quote(original if evidence is None else evidence)]}],'unprocessed':[]}
-            return generate(ws,'connector',ReplayProvider([b]))
+            run=generate(ws,'connector',ReplayProvider([b]))
+            if not roundtrip:
+                return run
+            accept(ws,'connector',actor='合成编辑',reason='核对明示对照')
+            with closing(AttentionWorkspace(ws.path)) as reopened:
+                return run,reopened.state()
+
+    def test_er_bu_shi_contrast_survives_accept_and_reopen_with_evidence(self):
+        original='请交代删节的规则，而不是增加访谈人数。'
+        run,saved=self.run_relation(original,'对照/排除',roundtrip=True)
+        self.assertEqual(len(run['patch']['relations']),1,run['rejected'])
+        self.assertEqual(run['rejected'],[])
+        relation=saved['relations'][0]
+        self.assertEqual(relation['type'],'对照/排除')
+        self.assertEqual(relation['status'],'needs_review')
+        self.assertEqual(relation['evidence'][0]['quote'],original)
+        self.assertEqual(len(relation['endpoints']),2)
+        unsupported=self.run_relation(original,'理由支持')
+        self.assertEqual(unsupported['patch']['relations'],[])
+        self.assertIn('E_ATTENTION_RELATION_CONNECTION',str(unsupported['rejected']))
+        missing=self.run_relation('请交代删节规则，先保留现有节录。可以补说明，而不是增加访谈人数。',
+            '对照/排除',evidence='而不是增加访谈人数。')
+        self.assertEqual(missing['patch']['relations'],[])
+        self.assertIn('E_ATTENTION_RELATION_RANGE',str(missing['rejected']))
 
     def test_alternative_forms_are_admitted_in_alternative_branch(self):
         for original in ('可以使用纸质目录，使用电子目录也行。',
