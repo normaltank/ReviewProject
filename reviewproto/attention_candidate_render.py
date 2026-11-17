@@ -190,13 +190,18 @@ def render_candidate_preview(run):
     data = json.dumps(overlay, ensure_ascii=True).replace('<', '\\u003c')
     script = '<script>AttentionPositions.setOverlay(' + data + ');document.getElementById("candidate-visualization").before(document.getElementById("view-filters"));</script>'
     page = render(saved)
-    # Draft status belongs outside the collapsible frozen snapshot: closing it
-    # must never hide an unstaged edit or an unapplied patch.
-    page = page.replace('<p id="page-draft" role="status"></p>', '', 1)
-    # Preserve the complete frozen saved-state editor under an explicit snapshot
-    # disclosure. Candidate objects stay independent from saved statistics.
+    # Keep the existing reading/position views, without an editable snapshot.
+    start = page.index('<details id="attention-editor">')
+    end = page.index('<script id="attention-data"', start)
+    page = page[:start] + page[end:]
+    from pathlib import Path
+    editor = Path(__file__).with_name('attention_editor.js').read_text(encoding='utf-8')
+    page = page.replace('<script>' + editor + '</script>', '')
+    page = page.replace("node('button','查看原话并修改',", "if(document.getElementById('attention-editor'))node('button','查看原话并修改',")
+    page = page.replace('<p id="page-draft" role="status"></p>', '')
     page = page.replace('</style><body>', '</style><body>' + ''.join(out) +
-                        '<details id="candidate-saved"><summary>生成时的已保存结果 · 修订 ' + str(saved['revision']) +
-                        '</summary><p>以下保存结果不是实时状态。候选建议位置另列，不进入保存统计。历史候选接收后，请重开普通关注页查看当前人工纠正结果。</p>', 1)
+                        '<p><a href="../../attention.html">查看当前已保存结果（编辑请从桌面打开）</a></p>' +
+                        '<details id="candidate-saved"><summary>生成时的只读保存结果 · 修订 ' + str(saved['revision']) +
+                        '</summary><p>此处是历史快照。当前结果请从桌面打开。</p>', 1)
     page = page.replace('<script id="attention-data"', '</details><script id="attention-data"', 1)
     return page.replace('</body>', script + '</body>')

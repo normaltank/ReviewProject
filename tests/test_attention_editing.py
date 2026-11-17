@@ -1,3 +1,4 @@
+from contextlib import closing
 from attention_browser import open_panel, open_editor_tools
 import copy
 import tempfile
@@ -145,10 +146,11 @@ class AttentionEditing(unittest.TestCase):
                 failed.state()
         from reviewproto.desktop import Controller
         controller = Controller()
-        result = controller.migrate_attention(source, self.root / 'controller-migration', '合成编辑', '普通本机入口')
+        with closing(AttentionWorkspace(self.root / 'controller-migration')) as migrated:
+            saved = migrated.migrate_working_draft(source, actor='合成编辑', reason='显式迁入')
+            result = dict(revision=saved['revision'], kind='attention')
         self.assertEqual(result['revision'], 1)
         self.assertEqual(result['kind'], 'attention')
-        self.assertIsNone(controller.path)
         source.write_text('{}', encoding='utf-8')
         self.assertEqual(target.recover()['material_status'], 'needs_revalidation')
 
@@ -232,7 +234,7 @@ class AttentionEditing(unittest.TestCase):
                     patch = json.loads(patchfile.read_text(encoding='utf-8'))
                     self.assertEqual(patch['schema'], 'attention-patch/2')
                     controller = Controller(); controller.open_attention(path)
-                    controller.apply_attention(patchfile); controller.recover_attention()
+                    with closing(AttentionWorkspace(controller.attention_path)) as saved_workspace: saved_workspace.apply(input_path=patchfile)
                     after = target.state()
                     saved = after['opinions'][0]['facets'][0]
                     self.assertEqual(after['revision'], 2)
@@ -315,7 +317,7 @@ class AttentionEditing(unittest.TestCase):
             patch = json.loads(patchfile.read_text(encoding='utf-8'))
             self.assertEqual(patch['schema'], 'attention-patch/2')
             controller = Controller(); controller.open_attention(self.root / 'analysis')
-            controller.apply_attention(patchfile); controller.recover_attention()
+            with closing(AttentionWorkspace(controller.attention_path)) as saved_workspace: saved_workspace.apply(input_path=patchfile)
             page.reload()
             open_editor_tools(page)
             open_panel(page, 'reading-history')
@@ -343,7 +345,7 @@ class AttentionEditing(unittest.TestCase):
             with page.expect_download() as download:
                 page.locator('#download').focus(); page.keyboard.press('Enter')
             download.value.save_as(patchfile)
-            controller.apply_attention(patchfile); controller.recover_attention(); page.reload()
+            with closing(AttentionWorkspace(controller.attention_path)) as saved_workspace: saved_workspace.apply(input_path=patchfile); page.reload()
             open_editor_tools(page)
             open_panel(page, 'reading-history')
             after = self.ws.state()

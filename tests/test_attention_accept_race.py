@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 from reviewproto.attention import AttentionWorkspace
 from reviewproto import attention_candidates as c
-from reviewproto.store import atomic, encoded
+from reviewproto.local_io import atomic, encoded
 from reviewproto.core import digest
 from test_attention_candidate_ui import prepare
 
@@ -53,7 +53,7 @@ class AcceptRace(unittest.TestCase):
                 self.assertEqual(history[0]['fingerprint'],digest((path/'candidate-runs/race/acceptance.json').read_bytes()))
                 self.assertEqual(c.accept(ws,'race',actor='repeat',reason='different')['revision'],1)
             from reviewproto.attention_candidate_ui import CandidateSession
-            self.assertIn('已在修订 1 接收',CandidateSession(path).preview('race').read_text(encoding='utf-8'))
+            self.assertIn('已在修订 1 保存',CandidateSession(path).preview('race').read_text(encoding='utf-8'))
 
     def test_cross_process_prevalidated_accepts_apply_one_winner(self):
         script=r'''

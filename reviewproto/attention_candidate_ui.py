@@ -409,9 +409,9 @@ class AttentionCandidateWindow:
                 elif action in {'accept', 'saved'}:
                     if action == 'accept':
                         self.accepted_run_id = self.run_id
-                        self._launch(self.target_path / 'attention.html', '分析已保存并打开，内容仍待核对。')
+                        self._launch_current('分析已保存并打开，内容仍待核对。')
                     else:
-                        self._launch(self.target_path / 'attention.html', '已打开保存的分析结果。')
+                        self._launch_current('已打开保存的分析结果。')
                     current = getattr(self.controller, 'attention_path', None)
                     if self.on_result and current is not None and Path(current).absolute() == self.target_path:
                         self.on_result(dict(kind='attention', path=self.target_path, revision=result['revision'], material_status=result['material_status']))
@@ -437,6 +437,13 @@ class AttentionCandidateWindow:
         else:
             import webbrowser
             require(webbrowser.open(path.as_uri()), 'E_BROWSER_OPEN')
+
+    def _launch_current(self, message):
+        try:
+            self.controller.open_attention_report(self.target_path)
+            self.status.set(message)
+        except Exception:
+            self.status.set('分析保存状态不变，浏览器未能打开。请重新点击查看结果。')
 
     def _launch(self, path, message):
         try:
