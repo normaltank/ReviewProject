@@ -45,7 +45,7 @@ function metric(parent,cs,N){const ids=unique(cs.map(c=>c.record_id));node('span
 function row(parent,title,cs){const li=node('li',null,parent);node('strong',title+' ',li);metric(li,cs,current.ids.length);}
 function group(title,rows){let root=$('view-summary');if(title.startsWith('A部分')||title==='A条目'){root=node('details',null,root);node('summary',title+'（展开各关系种类与记录集合）',root);}else node('h3',title,root);const ul=node('ul',null,root);for(const [title,cs] of rows)row(ul,title,cs);}
 function evidence(parent,entries){for(const e of entries||[]){const b=node('blockquote',e.quote,parent);node('small','出处：'+(e.section_id||'未说明')+' · 字符 '+e.start+'–'+e.end,b);}}
-function explain(parent,title,value){if(value!=null&&value!=='')node('p',title+'：'+(Array.isArray(value)?value.join('；'):value),parent);}
+function explain(parent,title,value){if(value!=null&&value!==''&&(!Array.isArray(value)||value.length))node('p',title+'：'+(Array.isArray(value)?value.join('；'):value),parent);}
 function overview(){
  const root=node('div',null,$('view-summary'),{id:'view-overview',role:'region','aria-label':'当前关注概览'});
  node('h3','当前关注概览',root);
@@ -66,9 +66,92 @@ function overview(){
  row(ul,'关系端点记录并集',current.cs.filter(c=>endpoints.has(c.facet_id)));
  node('p','覆盖按记录去重，各类可重叠；观点、方面与关系组数是辅助规模。主题定义不等于命中，未核对解释不等于已核对；各主题、A部分/条目和关系类型的明细见下方。',root);
 }
+// Selection is a reading cursor; it never changes the summary denominator.
+let selectedRecord='', selectedFacet='', sourceOpen=false;
+const recordOrder=JSON.parse($('attention-data').textContent).records.map(r=>r.record_id);
+const shell=node('div',null,null,{id:'focus-shell'});
+$('view-detail').before(shell);
+const list=node('aside',null,shell,{id:'focus-list','aria-label':'评语列表'});
+const center=node('main',null,shell,{id:'focus-reading','aria-label':'所选评语'});
+const sourcePanel=node('aside',null,shell,{id:'focus-source','aria-label':'来源查证',hidden:''});
+function selectRecord(id){
+ if(!current.ids.includes(id))return;
+ selectedRecord=id;selectedFacet='';sourceOpen=false;focusReading();list.querySelector('[aria-pressed=true]')?.focus({preventScroll:true});
+}
+function showSource(c){selectedFacet=c?.facet_id||'';sourceOpen=true;focusReading();sourcePanel.tabIndex=-1;sourcePanel.focus({preventScroll:true});if(window.innerWidth<901)sourcePanel.scrollIntoView({block:'start'});}
+function focusReading(){
+ if(!current.ids.includes(selectedRecord))selectedRecord=current.ids[0]||'';
+ list.replaceChildren();center.replaceChildren();sourcePanel.replaceChildren();
+ node('h2','评语列表（'+current.ids.length+'）',list);
+ for(const id of current.ids){
+  const r=base.details[id].record,cs=current.cs.filter(c=>c.record_id===id);
+  const b=node('button',null,list,{type:'button','aria-pressed':String(id===selectedRecord)});
+  node('strong',r.anchor||id,b);node('small',cs.some(c=>c.status!=='confirmed')?'待核对':cs.length?'已核对':'未整理',b);
+  node('span',(r.sections||[{text:r.text}]).map(s=>s.text).join(' '),b,{class:'focus-excerpt'});
+  b.onclick=()=>selectRecord(id);
+ }
+ if(!selectedRecord){node('h2','当前筛选没有记录',center);node('p','调整筛选后继续阅读。',center);sourcePanel.hidden=true;return;}
+ const r=base.details[selectedRecord].record,cs=current.cs.filter(c=>c.record_id===selectedRecord);
+ const pager=node('nav',null,center,{'aria-label':'评语切换',class:'focus-pager'}),index=current.ids.indexOf(selectedRecord);
+ const previous=node('button','上一份',pager,{type:'button'});previous.disabled=index===0;previous.onclick=()=>selectRecord(current.ids[index-1]);
+ node('span',String(index+1).padStart(2,'0')+' / '+String(current.ids.length).padStart(2,'0'),pager);
+ const next=node('button','下一份',pager,{type:'button'});next.disabled=index===current.ids.length-1;next.onclick=()=>selectRecord(current.ids[index+1]);
+ const heading=node('div',null,center,{class:'focus-heading'});node('h2',r.anchor||selectedRecord,heading);
+ node('span',cs.some(c=>c.status!=='confirmed')?'待核对':cs.length?'已核对分析':'未整理',heading,{class:'focus-state'});
+ if(!cs.length)node('p','尚无命中解释；本条仍计入分母。可查看原话，或进入修改补录。',center);
+ cs.forEach((c,i)=>{
+  const entry=base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id),f=entry.facet;
+  const concern=node('section',null,center,{class:'focus-concern'});
+  const title=node('button','关注点 '+(i+1)+'：'+(f.qualifiers?.object||readingTitle(f.interpretation)),concern,{type:'button','aria-label':'查证关注点 '+(i+1),class:'focus-concern-title'});
+  title.onclick=()=>showSource(c);
+  if(f.qualifiers?.object||readingTitle(f.interpretation)!==f.interpretation)node('p',f.interpretation,concern);
+  for(const [key,label] of Object.entries({conditions:'条件',negation:'否定',degree:'程度',reasons:'理由',actions:'动作',alternatives:'备选',examples:'例示'}))explain(concern,label,f.qualifiers?.[key]);
+ });
+ const a=node('section',null,center,{class:'focus-a'});node('h3','与参考方向 A 的对应关系',a);
+ for(const c of cs){const f=base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id).facet;
+  const mappings=(f.a_links||[]).filter(l=>!['withdrawn','superseded'].includes(l.status));
+  const title=mappings.length?mappings.map(l=>name(l.kind)+(c.a_items.some(x=>x.id===l.a_item_id&&x.kind==='needs_review')?'（待核对）':'')+'：'+aTitle(l.a_item_id,l.version,true)).join('；'):aReading(c);
+  node(mappings.length?'h4':'p',(f.qualifiers?.object||'关注点 '+(cs.indexOf(c)+1))+' · '+title,a);
+  for(const l of f.a_links||[])if(!['withdrawn','superseded'].includes(l.status)){explain(a,l.scope,l.reason);}
+  for(const l of f.outside||[])if(!['withdrawn','superseded'].includes(l.status)){explain(a,'清单外范围',l.scope);explain(a,'依据',l.reason);}
+ }
+ if(!cs.length)node('p',(base.a_reference.items||[]).length?'尚未标注 A 对应':'尚未导入 A，可先整理 B。',a);
+ const actions=node('div',null,center,{class:'focus-actions'});
+ if($('attention-editor')){const edit=node('button','修改解释',actions,{type:'button',class:'focus-primary'});
+ edit.onclick=()=>cs.length?document.dispatchEvent(new CustomEvent('attention-edit-facet',{detail:cs.find(c=>c.facet_id===selectedFacet)||cs[0]})):window.AttentionReading.reveal($('attention-editor'));}
+ node('span','已保存修订 '+base.revision,actions,{class:'focus-secondary'});
+ node('button','查看原话',actions,{type:'button'}).onclick=()=>showSource(cs[0]);
+ const ref=node('details',null,center,{class:'focus-reference'});node('summary','参考方向 A（'+base.a_reference.items.length+' 项）',ref);
+ for(const item of base.a_reference.items){node('h4',item.id,ref);node('p',item.text,ref);explain(ref,'位置',item.locator);}explain(ref,'版本',base.a_version);
+ sourcePanel.hidden=!sourceOpen;shell.classList.toggle('source-open',sourceOpen);
+ if(sourceOpen){
+  const close=node('button','关闭来源',sourcePanel,{type:'button'});close.onclick=()=>{sourceOpen=false;focusReading();};
+  node('h2','来源查证',sourcePanel);node('p','评语原话',sourcePanel,{class:'focus-secondary'});
+  const f=base.details[selectedRecord].facets.find(e=>e.facet.facet_id===selectedFacet)?.facet;
+  for(const section of r.sections||[{text:r.text,section_id:r.anchor}]){
+   const q=node('blockquote',null,sourcePanel);const ev=f?.evidence?.filter(e=>e.section_id===section.section_id).sort((a,b)=>a.start-b.start)||[];
+   const chars=Array.from(section.text||'');let offset=0;
+   for(const e of ev){if(e.start<offset)continue;q.append(document.createTextNode(chars.slice(offset,e.start).join('')));node('mark',chars.slice(e.start,e.end).join(''),q);offset=e.end;}
+   q.append(document.createTextNode(chars.slice(offset).join('')));explain(sourcePanel,'原话位置',section.section_id);
+  }
+  node('h3','已选中片段',sourcePanel);evidence(sourcePanel,f?.evidence);explain(sourcePanel,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');
+  const provenance=node('details',null,sourcePanel);node('summary','来源位置与权限',provenance);explain(provenance,'材料组',paperId(r)??'未知');explain(provenance,'来源',r.source_id);explain(provenance,'可见性',({author_visible:'作者可见',visibility_unknown:'可见范围未知'}[r.visibility]||r.visibility));
+ }
+ document.querySelectorAll('#view-detail > details[id^="view-record-"]').forEach(d=>{d.hidden=d.id!==anchor(selectedRecord);});
+}
+const distribution=node('button','关注分布',document.querySelector('header nav'),{type:'button',id:'focus-distribution','aria-expanded':'false'});
+const optionHome=document.createComment('distribution disclosure home');$('view-options').before(optionHome);
+function distributionMode(open){
+ const options=$('view-options');options.open=open;center.hidden=open;shell.classList.toggle('distribution-open',open);
+ distribution.setAttribute('aria-expanded',String(open));
+ if(open){center.after(options);$('view-statistics').open=true;}else optionHome.after(options);
+}
+distribution.onclick=()=>distributionMode(distribution.getAttribute('aria-expanded')!=='true');
+document.querySelector('a[href="#focus-shell"]')?.addEventListener('click',()=>distributionMode(false));
+
 function refresh(){
  const v=Object.fromEntries(Object.entries(picks).map(([k,s])=>[k,s.value]));
- const ids=Object.keys(base.details).filter(id=>(v.record==='*'||id===v.record)&&(v.paper==='*'||JSON.stringify(paperId(base.details[id].record))===v.paper));
+ const ids=recordOrder.filter(id=>(v.record==='*'||id===v.record)&&(v.paper==='*'||JSON.stringify(paperId(base.details[id].record))===v.paper));
  const cs=base.contributions.filter(c=>ids.includes(c.record_id)&&(v.function==='*'||(c.expression.function||'未说明')===v.function)&&(v.direction==='*'||c.directions.includes(v.direction))&&(v.status==='*'||c.status===v.status)&&(v.boiler==='*'||JSON.stringify(c.expression.boilerplate_candidate??null)===v.boiler));
  const facets=new Set(cs.map(c=>c.facet_id));
  const relations=base.relation_details.filter(r=>r.endpoints.length&&r.endpoints.every(e=>facets.has(e.facet_id)));
@@ -91,7 +174,7 @@ function refresh(){
  group('方面核对状态',unique(base.contributions.filter(c=>c.kind==='content').map(c=>c.status)).map(k=>[name(k),content.filter(c=>c.status===k)]));
  for(const kind of ['content','disposition']){const subset=cs.filter(c=>c.kind===kind);group(name(kind)+'辅助数：'+unique(subset.map(c=>c.opinion_id)).length+'观点 / '+unique(subset.map(c=>c.facet_id)).length+'方面',[[name(kind)+'记录',subset]]);}
  group('关系（单列，不作主题排名）',Object.keys(base.relations).map(type=>[name(type),relations.filter(r=>r.type===type).flatMap(r=>r.endpoints.map(e=>cs.find(c=>c.facet_id===e.facet_id)))]));
- details();matrix();graph();
+ details();focusReading();matrix();graph();
  window.AttentionPositions.render({recordIds:ids, facetIds:cs.map(c=>c.facet_id),expressionFilters:v});
 }
 function details(){const root=$('view-detail');root.replaceChildren();if(!current.ids.length)node('p','当前筛选没有记录；请调整筛选。',root);else if(!current.cs.length)node('p','尚无可读的B解释。可调整筛选，或打开“查看原话与修改”补录；导入材料不等于完成分析。',root);
@@ -140,6 +223,8 @@ $('view-matrix-toggle').onchange=matrix;$('view-graph-toggle').onchange=graph;
 // Native disclosure navigation also works on direct links and browser history.
 function reveal(target){
  if(!target)return;
+ const record=target.closest('[id^="view-record-"]');
+ if(record){const id=Object.keys(base.details).find(id=>anchor(id)===record.id);if(id&&id!==selectedRecord){selectedRecord=id;sourceOpen=false;focusReading();}record.hidden=false;}
  for(let p=target;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;
  if(target.id.startsWith('view-facet-'))for(const detail of target.querySelectorAll(':scope > details'))detail.open=true;
  target.setAttribute('tabindex','-1');target.focus({preventScroll:true});target.scrollIntoView({block:'start'});

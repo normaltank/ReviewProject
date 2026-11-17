@@ -174,7 +174,7 @@ class AttentionViews(unittest.TestCase):
                 line_start=edge.locator('line').evaluate('(e)=>{const p=new DOMPoint(e.x1.baseVal.value,e.y1.baseVal.value).matrixTransform(e.getScreenCTM());return {x:p.x,y:p.y};}')
                 aspect=page.locator('#view-graph svg a[href="#view-facet-f1"] rect').bounding_box()
                 self.assertAlmostEqual(line_start['x'],aspect['x']+aspect['width'],delta=1)
-                self.assertAlmostEqual(line_start['y'],aspect['y']+23,delta=1)
+                self.assertAlmostEqual(line_start['y'],aspect['y']+aspect['height']*23/48,delta=1)
                 edge.focus();page.keyboard.press('Enter')
                 self.assertIn('不推反向因果',page.locator('#view-detail').inner_text())
                 page.locator('#view-matrix-kind').select_option('a')

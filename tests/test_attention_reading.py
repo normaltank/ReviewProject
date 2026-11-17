@@ -18,6 +18,44 @@ from test_attention_candidate_ui import prepare
 
 
 class AttentionReading(unittest.TestCase):
+    def test_focus_record_navigation_preserves_scope_and_opens_exact_source(self):
+        with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
+            pack = Path(tmp) / 'pack'
+            with closing(AttentionWorkspace(pack)) as ws:
+                state = ws.build(dict(schema='attention-input/1', records=[dict(anchor='评语 '+str(i),
+                    text='合成原话 '+str(i)+'。', visibility='author_visible') for i in (1, 2)], a_reference=dict(version='empty',items=[])))
+                r = state['records'][1]
+                ev = dict(source_id=r['source_id'], section_id=r['anchor'], start=0, end=7, quote='合成原话 2。')
+                ws.apply(dict(schema='attention-patch/2', analysis_id=state['analysis_id'], base_revision=0,
+                    actor='合成核对者', reason='阅读切片', edits=[dict(opinion_id='o', record_id=r['record_id'],
+                    interpretation='保存的关注解释', status='working', facets=[dict(facet_id='f',
+                    interpretation='保存的关注解释', status='working', evidence=[ev],
+                    qualifiers=dict(conditions=['仅适用于本例']), expression=dict(function='建议', boilerplate_candidate=False)),
+                    dict(facet_id='f2',interpretation='第二个独立方面',status='working',evidence=[ev])])]))
+                ws.recover()
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport=dict(width=1440,height=900))
+            errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+            page.goto((pack/'attention.html').as_uri())
+            page.get_by_role('button', name='评语 2', exact=False).click()
+            self.assertIn('保存的关注解释', page.locator('#focus-reading').inner_text())
+            self.assertIn('仅适用于本例', page.locator('#focus-reading').inner_text())
+            self.assertIn('当前范围 2 条记录（分母）',page.locator('#view-version').inner_text())
+            self.assertFalse(page.locator('#focus-source').is_visible())
+            page.get_by_role('button',name='查证关注点 1').click()
+            self.assertIn('合成原话 2。',page.locator('#focus-source').inner_text())
+            page.get_by_role('button',name='查证关注点 2').click()
+            page.get_by_role('button',name='修改解释',exact=True).click()
+            self.assertEqual(page.locator('#facet').input_value(),'f2')
+            page.locator('#interpretation').fill('尚未保存的合成更正')
+            page.locator('#focus-list').get_by_role('button',name='评语 1',exact=False).click()
+            self.assertEqual(page.locator('#interpretation').input_value(),'尚未保存的合成更正')
+            self.assertIn('尚未保存',page.locator('#page-draft').inner_text())
+            page.get_by_role('button',name='关注分布',exact=True).click()
+            self.assertTrue(page.locator('#view-options').evaluate('(e)=>e.open'))
+            self.assertFalse(errors,errors)
+            browser.close()
+
     def test_saved_reading_shows_b_and_multiple_a_matches_before_opening_evidence(self):
         from reviewproto.attention import AttentionWorkspace
         with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
@@ -164,6 +202,7 @@ class AttentionReading(unittest.TestCase):
             page.goto(session.preview('synthetic-draft').as_uri())
             page.locator('#candidate-saved > summary').click()
             self.assertEqual(page.locator('#attention-editor').count(),0)
+            self.assertEqual(page.get_by_role('button',name='修改解释',exact=True).count(),0)
             self.assertEqual(page.locator('#save').count(),0)
             self.assertEqual(page.locator('#attention-session').count(),0)
             self.assertEqual(page.get_by_role('button',name='查看原话并修改').count(),0)

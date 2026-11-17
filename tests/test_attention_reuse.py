@@ -1,3 +1,4 @@
+from attention_browser import open_reading_records
 """Ordinary Tk entry -> ordinary Chrome forms -> download/apply/reopen.
 
 Only the OS directory chooser is mocked. All material is synthetic.
@@ -161,7 +162,7 @@ class AttentionReuse(unittest.TestCase):
                 self.assertEqual((ev['start'], ev['end'], ev['quote']), (8, 15, '对象说明清楚。'))
                 self.assertEqual(len(saved['opinions']), 1)
                 self.assertIn('1/2', page.get_by_role('region', name='当前关注概览').inner_text())
-                for detail in page.locator('#view-detail > details[id^="view-record-"]').all(): detail.locator('summary').first.click()
+                open_reading_records(page)
                 for row in S1: self.assertIn(row[2], page.locator('#view-detail').text_content())
                 self.assertFalse(page.locator('#view-graph-toggle').is_checked())
                 self.web_shots(page, 's1-saved')
@@ -260,7 +261,7 @@ class AttentionReuse(unittest.TestCase):
                 self.assertIn('0/1',overview.inner_text()); self.assertNotIn('条件限制',page.locator('#view-graph').text_content())
                 page.get_by_role('button',name='清除筛选').click()
                 page.locator('#view-graph-record').select_option(initial['records'][0]['record_id'])
-                for detail in page.locator('#view-detail > details').all(): detail.locator('summary').first.click()
+                open_reading_records(page)
                 self.web_shots(page,'s2-saved')
                 # Native A-only entry preserves B/opinion identities, then ordinary mapping correction.
                 a = AttentionInputWindow(self.root,self.controller,a_only=True)
