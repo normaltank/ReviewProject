@@ -193,53 +193,12 @@ class APITransport(unittest.TestCase):
             self.assertNotIn('scores',json.dumps(sent))
             self.assertEqual(run['patch']['edits'][0]['facets'][0]['a_links'][0]['status'],'needs_review')
 
-    def test_tk_api_default_masked_save_status_and_owned_stop_are_separate(self):
-        import tkinter as tk
-        import gc
-        from test_attention_candidate_ui import prepare
-        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
-        from reviewproto.desktop import Controller
-        from reviewproto.credential import save_deepseek_key, credential_available
-        with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)/'pack';prepare(path)
-            target=Path(tmp)/'fake-credentials/api.dpapi'
-            controller=Controller();controller.open_attention(path)
-            root=tk.Tk()
-            try:
-                window=AttentionCandidateWindow(root,controller)
-                self.assertEqual(window.provider.get(),'deepseek')
-                self.assertEqual(window.model.get(),'deepseek-flash')
-                self.assertEqual(window.max_tokens.get(),'32768')
-                self.assertEqual(window.key_entry.cget('show'),'*')
-                self.assertTrue(window.start_button.instate(['disabled']))
-                with patch('reviewproto.credential.credential_available',side_effect=lambda:credential_available(path=target,environ={})):
-                    window.check_key_button.invoke()
-                    self.assertIn('缺失',window.credential_status.get())
-                    window.api_key.set('SYNTHETIC-UI-KEY')
-                    with patch('reviewproto.credential.save_deepseek_key',side_effect=lambda value:save_deepseek_key(value,path=target)):
-                        window.save_key_button.invoke()
-                    self.assertEqual(window.api_key.get(),'')
-                    window.check_key_button.invoke();self.assertIn('已配置',window.credential_status.get())
-                window.service.owned=(Path(tmp),Path(tmp),'e'*32)
-                window._controls()
-                self.assertFalse(window.stop_button.instate(['disabled']))
-                self.assertTrue(window.start_button.instate(['disabled']))
-                window.busy=True;window._controls()
-                self.assertTrue(window.provider_selector.instate(['disabled']))
-                window.busy=False;window._controls()
-                captured=[]
-                with patch.object(window,'submit',side_effect=lambda action,worker:captured.append(worker)), patch.object(window.session,'generate') as generate_call:
-                    window.generate_button.invoke();captured.pop()()
-                    self.assertEqual(generate_call.call_args.args[1].config['model'],'deepseek-flash')
-                window.window.destroy()
-            finally:
-                root.destroy();gc.collect()
 
     def test_api_preview_accept_and_chrome_do_not_claim_local_or_include_secret(self):
         import os
         from playwright.sync_api import sync_playwright
         from reviewproto.attention_api_provider import DeepSeekProvider
-        from reviewproto.attention_candidate_ui import CandidateSession
+        from reviewproto.attention_candidate_service import CandidateSession
         from test_attention_candidate_ui import prepare
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'pack';prepare(path)

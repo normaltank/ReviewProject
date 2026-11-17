@@ -25,6 +25,7 @@ def main(argv=None):
         parser = SafeParser(prog="python -m reviewproto", description="Local trusted-editor attention analysis; no author export.")
         sub = parser.add_subparsers(dest="command", required=True)
         sub.add_parser("desktop")
+        sub.add_parser("workbench")
         for command in ('attention-build', 'attention-apply', 'attention-recover', 'attention-migrate', 'attention-import-a'):
             item = sub.add_parser(command)
             item.add_argument('--workspace', required=True)
@@ -98,7 +99,7 @@ def main(argv=None):
                 result = workspace.recover()
             print('OK ' + args.command + ' revision=' + str(result['revision']) + ' material=' + result['material_status'])
             return 0
-        if args.command == "desktop":
+        if args.command in {"desktop", "workbench"}:
             from .desktop import main as desktop_main
             return desktop_main()
     except Exception as error:

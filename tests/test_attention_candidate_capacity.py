@@ -9,7 +9,7 @@ from pathlib import Path
 
 from reviewproto.attention import AttentionWorkspace
 from reviewproto.attention_candidates import LocalProvider, generate, accept
-from reviewproto.attention_candidate_ui import CandidateSession
+from reviewproto.attention_candidate_service import CandidateSession
 
 
 @contextmanager
