@@ -146,6 +146,8 @@ class AttentionReading(unittest.TestCase):
                     # Opening the original source from a copied deep link also
                     # opens every disclosure ancestor on first document load.
                     page.goto(path.as_uri() + '#' + source_id); page.reload()
+                    page.locator('#candidate-sources[open]').wait_for(state='visible', timeout=10000)
+                    page.locator('#' + source_id + '[open]').wait_for(state='visible', timeout=10000)
                     self.assertTrue(page.locator('#candidate-sources').evaluate('(e)=>e.open'))
                     self.assertTrue(page.locator('#' + source_id).evaluate('(e)=>e.open'))
                     self.assertIn('若有记录，请标明图例。', page.locator('#' + source_id).inner_text())
