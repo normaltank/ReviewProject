@@ -119,7 +119,7 @@ def summarize(state, filters=None):
                     contribution['a_unassigned'].append(kind)
                     continue
                 item_sets[aid][kind].add(rid)
-                contribution['a_items'].append(dict(id=aid, kind=kind))
+                contribution['a_items'].append(dict(id=aid, kind=kind, version=link.get('version')))
                 part = items[aid].get('part_id')
                 if part in parts:
                     part_sets[part][kind].add(rid)

@@ -68,7 +68,7 @@ class AttentionInputGroups(unittest.TestCase):
                     self.assertIn('0/' + str(len(anchors)), page.locator('#view-hits').inner_text())
                     for detail in page.locator('#view-detail > details').all():
                         detail.locator(':scope > summary').click()
-                        detail.locator('details > summary').click()
+                        detail.locator('.record-source > summary').click()
                         self.assertIn('材料组：' + (group or '未知'), detail.inner_text())
                 context = browser.new_context(java_script_enabled=False, offline=True)
                 plain = context.new_page(); plain.goto((path / 'attention.html').as_uri())

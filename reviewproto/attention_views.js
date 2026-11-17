@@ -10,10 +10,17 @@ const recordLabel=id=>base.details[id]?.record.anchor||id;
 const paperId=record=>record.paper_id??record.locator?.paper_id??null;
 const short=value=>value.length>52?value.slice(0,52)+'…':value;
 function readingTitle(value){const prefix=value.split('：')[0];return prefix.length>=10&&prefix.length<=72&&prefix!==value?prefix:value.length>100?value.slice(0,100)+'…':value;}
-const aTitle=id=>base.a_reference.items.find(a=>a.id===id)?.text||'原A条目';
+const aReferences=[base.a_reference,...(JSON.parse($('attention-data').textContent).a_reference_history||[]).map(h=>h.a_reference)];
+function aTitle(id,version,compact=false){
+ const reference=aReferences.find(a=>a.version===version),title=reference?.items.find(a=>a.id===id)?.text;
+ const text=title||'原A条目（原文不可用）';
+ return (compact?short(text):text)+(version&&version!==base.a_version?'（旧版 '+version+'）':!version?'（版本未说明）':'');
+}
 function aReading(c){
- const parts=c.a_items.map(a=>name(a.kind)+'：'+short(aTitle(a.id)));
- if(c.a_unassigned.length)parts.push(c.a_unassigned.includes('needs_review')?'原A对应待核对':'A条目尚未确定');
+ const parts=c.a_items.map(a=>name(a.kind)+'：'+aTitle(a.id,a.version,true));
+ const facet=base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id).facet;
+ const unassigned=(facet.a_links||[]).filter(a=>!['withdrawn','superseded'].includes(a.status)&&!base.a_reference.items.some(item=>item.id===a.a_item_id));
+ for(const a of unassigned)parts.push(a.a_item_id?'待核对：'+aTitle(a.a_item_id,a.version,true):'A条目尚未确定');
  if(c.outside.length)parts.push(c.outside.includes('needs_review')?'清单外范围待核对':'含A清单外内容');
  return parts.join('；')||((base.a_reference.items||[]).length?'尚未标注A对应':'尚未导入A');
 }
@@ -95,8 +102,8 @@ function details(){const root=$('view-detail');root.replaceChildren();if(!curren
  const source=node('details',null,det,{class:'record-source'});node('summary','本条完整原话与原分',source);explain(source,'材料组',paperId(r)??'未知');for(const s of r.sections||[{text:r.text,section_id:r.anchor}]){explain(source,'原话位置',s.section_id);node('blockquote',s.text,source);}explain(source,'原分',(r.scores||[]).map(s=>s.label+'：'+s.raw_value).join('；')||'未提供');
  for(const c of cs){const entry=d.facets.find(e=>e.facet.facet_id===c.facet_id),f=entry.facet;const section=node('div',null,det,{id:facetAnchor(c.facet_id)});node('h4',f.interpretation,section);node('button','查看原话并修改',section,{type:'button'}).onclick=()=>document.dispatchEvent(new CustomEvent('attention-edit-facet',{detail:{record_id:id,opinion_id:c.opinion_id,facet_id:c.facet_id}}));evidence(section,f.evidence);
  const rationale=node('details',null,section);node('summary','解释依据与表达方式',rationale);explain(rationale,'完整观点',entry.opinion_interpretation||f.interpretation);explain(rationale,'类型 / 核对',name(c.kind)+' / '+name(c.status));for(const [key,title] of Object.entries({object:'对象',direction:'方向',degree:'程度',negation:'否定',reasons:'理由',conditions:'条件',actions:'动作',examples:'例示',alternatives:'备选'}))explain(rationale,title,f.qualifiers?.[key]);explain(rationale,'表达作用',c.expression.function||'未说明');explain(rationale,'套话候选',c.expression.boilerplate_candidate==null?'未判断':c.expression.boilerplate_candidate?'是候选':'非候选');explain(rationale,'主题',c.theme_ids.map(id=>base.theme_definitions[id]?.label||id));
- const aDetail=node('details',null,section,{class:'facet-a'});node('summary','与A对照的范围和理由',aDetail);for(const a of c.a_items)explain(aDetail,'当前对应',aTitle(a.id)+' / '+name(a.kind));
- for(const a of f.a_links||[]){explain(aDetail,'保存的对应',aTitle(a.a_item_id)+' / '+name(a.kind)+' / '+name(a.status));explain(aDetail,'范围',a.scope);explain(aDetail,'依据',a.reason);evidence(aDetail,a.evidence);}
+ const aDetail=node('details',null,section,{class:'facet-a'});node('summary','与A对照的范围和理由',aDetail);for(const a of c.a_items)explain(aDetail,'当前对应',aTitle(a.id,a.version)+' / '+name(a.kind));
+ for(const a of f.a_links||[]){explain(aDetail,'保存的对应',aTitle(a.a_item_id,a.version)+' / '+name(a.kind)+' / '+name(a.status));explain(aDetail,'范围',a.scope);explain(aDetail,'依据',a.reason);evidence(aDetail,a.evidence);}
  for(const a of f.outside||[]){explain(aDetail,'清单外范围',a.scope);explain(aDetail,'依据 / 核对',(a.reason||'未说明')+' / '+name(a.status));evidence(aDetail,a.evidence);}
  }}
  if(current.relations.length)node('h3','B关注之间的联系',root);
