@@ -2,6 +2,7 @@
 (() => {
 'use strict';
 const base=JSON.parse(document.getElementById('attention-summary-data').textContent);
+const positions=JSON.parse(document.getElementById('attention-position-data').textContent);
 const $=id=>document.getElementById(id);
 const labels={withdrawn:'撤回',superseded:'已被替换',working:'未核对',needs_review:'待核对',confirmed:'已核对分析',explicit:'明确对应',partial:'部分对应',related:'内容相关',undetermined:'暂未定',content:'内容关注',disposition:'流程或总体处置',reason:'理由',conditional_fallback:'条件备用动作',alternative:'备选路径',co_occurrence:'相伴表达'};
 Object.assign(labels,{alternative_with_condition:'有条件的备选路径',coexisting_readings:'并存读法',shared_premise:'共同前提',alternative_with_minimum:'有最低动作的备选路径',suggestion_timing:'建议时机',declared_reason_scope:'明示理由范围',listed_ways_not_all_mandatory:'列举路径（非全部必做）',listed_ways_and_explicit_suggestion:'列举路径与明确建议',co_written_scope_unresolved:'共同表述（范围未决）'});
@@ -81,6 +82,7 @@ function selectRecord(id){
 function showSource(c){selectedFacet=c?.facet_id||'';sourceOpen=true;focusReading();sourcePanel.tabIndex=-1;sourcePanel.focus({preventScroll:true});if(window.innerWidth<901)sourcePanel.scrollIntoView({block:'start'});}
 function focusReading(){
  if(!current.ids.includes(selectedRecord))selectedRecord=current.ids[0]||'';
+ window.AttentionPositions.render({recordIds:current.ids,facetIds:current.cs.map(c=>c.facet_id),expressionFilters:Object.fromEntries(Object.entries(picks).map(([k,s])=>[k,s.value])),selectedRecordId:selectedRecord});
  list.replaceChildren();center.replaceChildren();sourcePanel.replaceChildren();
  node('h2','评语列表（'+current.ids.length+'）',list);
  for(const id of current.ids){
@@ -109,11 +111,15 @@ function focusReading(){
  });
  const a=node('section',null,center,{class:'focus-a'});node('h3','与参考方向 A 的对应关系',a);
  for(const c of cs){const f=base.details[c.record_id].facets.find(e=>e.facet.facet_id===c.facet_id).facet;
-  const mappings=(f.a_links||[]).filter(l=>!['withdrawn','superseded'].includes(l.status));
-  const title=mappings.length?mappings.map(l=>name(l.kind)+(c.a_items.some(x=>x.id===l.a_item_id&&x.kind==='needs_review')?'（待核对）':'')+'：'+aTitle(l.a_item_id,l.version,true)).join('；'):aReading(c);
+  let itemIndex=0,unassignedIndex=0;
+  const mappings=(f.a_links||[]).filter(l=>!['withdrawn','superseded'].includes(l.status)).map(l=>({link:l,kind:base.a_reference.items.some(a=>a.id===l.a_item_id)?c.a_items[itemIndex++]?.kind:c.a_unassigned[unassignedIndex++]}));
+  const title=mappings.length?mappings.map(({link:l,kind})=>name(kind||l.kind)+'：'+aTitle(l.a_item_id,l.version,true)).join('；'):aReading(c);
   node(mappings.length?'h4':'p',(f.qualifiers?.object||'关注点 '+(cs.indexOf(c)+1))+' · '+title,a);
-  for(const l of f.a_links||[])if(!['withdrawn','superseded'].includes(l.status)){explain(a,l.scope,l.reason);}
-  for(const l of f.outside||[])if(!['withdrawn','superseded'].includes(l.status)){explain(a,'清单外范围',l.scope);explain(a,'依据',l.reason);}
+  for(const {link:l,kind} of mappings)explain(a,'A关联 · '+name(kind||l.kind)+' / '+name(kind==='needs_review'?'needs_review':l.status),l.scope+' · '+(l.reason||'未说明'));
+  const outsidePositions=positions.placements.filter(p=>p.facet_id===c.facet_id&&p.proposed_kind==null&&['outside','stale'].includes(p.region_id));
+  (f.outside||[]).filter(l=>!['withdrawn','superseded'].includes(l.status)).forEach((l,i)=>{
+   explain(a,'清单外范围 · '+name(outsidePositions[i]?.review_status||l.status),l.scope);explain(a,'依据',l.reason);
+  });
  }
  if(!cs.length)node('p',(base.a_reference.items||[]).length?'尚未标注 A 对应':'尚未导入 A，可先整理 B。',a);
  const actions=node('div',null,center,{class:'focus-actions'});
@@ -144,7 +150,7 @@ const optionHome=document.createComment('distribution disclosure home');$('view-
 function distributionMode(open){
  const options=$('view-options');options.open=open;center.hidden=open;shell.classList.toggle('distribution-open',open);
  distribution.setAttribute('aria-expanded',String(open));
- if(open){center.after(options);$('view-statistics').open=true;}else optionHome.after(options);
+ if(open){center.after(options);$('view-a-positions').open=true;}else optionHome.after(options);
 }
 distribution.onclick=()=>distributionMode(distribution.getAttribute('aria-expanded')!=='true');
 document.querySelector('a[href="#focus-shell"]')?.addEventListener('click',()=>distributionMode(false));
@@ -175,7 +181,6 @@ function refresh(){
  for(const kind of ['content','disposition']){const subset=cs.filter(c=>c.kind===kind);group(name(kind)+'辅助数：'+unique(subset.map(c=>c.opinion_id)).length+'观点 / '+unique(subset.map(c=>c.facet_id)).length+'方面',[[name(kind)+'记录',subset]]);}
  group('关系（单列，不作主题排名）',Object.keys(base.relations).map(type=>[name(type),relations.filter(r=>r.type===type).flatMap(r=>r.endpoints.map(e=>cs.find(c=>c.facet_id===e.facet_id)))]));
  details();focusReading();matrix();graph();
- window.AttentionPositions.render({recordIds:ids, facetIds:cs.map(c=>c.facet_id),expressionFilters:v});
 }
 function details(){const root=$('view-detail');root.replaceChildren();if(!current.ids.length)node('p','当前筛选没有记录；请调整筛选。',root);else if(!current.cs.length)node('p','尚无可读的B解释。可调整筛选，或打开“查看原话与修改”补录；导入材料不等于完成分析。',root);
  for(const id of current.ids){const d=base.details[id],r=d.record,cs=current.cs.filter(c=>c.record_id===id);const det=node('details',null,root,{id:anchor(id)}),heading=node('summary',null,det);

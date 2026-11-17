@@ -66,8 +66,11 @@ class AttentionInputGroups(unittest.TestCase):
                     page.locator('#view-paper').select_option(json.dumps(group, ensure_ascii=False))
                     self.assertEqual(page.locator('#view-detail > details').count(), len(anchors))
                     self.assertIn('0/' + str(len(anchors)), page.locator('#view-hits').inner_text())
-                    for detail in page.locator('#view-detail > details').all():
-                        detail.locator(':scope > summary').click()
+                    for index in range(page.locator('#focus-list button').count()):
+                        page.locator('#focus-list button').nth(index).click()
+                        detail = page.locator('#view-detail > details:not([hidden])')
+                        if detail.get_attribute('open') is None:
+                            detail.locator(':scope > summary').click()
                         detail.locator('.record-source > summary').click()
                         self.assertIn('材料组：' + (group or '未知'), detail.inner_text())
                 context = browser.new_context(java_script_enabled=False, offline=True)

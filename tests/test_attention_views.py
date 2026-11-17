@@ -9,6 +9,54 @@ from reviewproto.attention_render import render
 from test_attention_summary import oracle_state
 
 class AttentionViews(unittest.TestCase):
+    def test_focus_reading_preserves_each_a_link_and_outside_effective_status(self):
+        import copy
+        state = oracle_state()
+        state.update(material_status='current', history=[], relations=[], themes=[])
+        state['opinions'] = state['opinions'][:1]
+        opinion = state['opinions'][0]
+        opinion.update(status='confirmed', interpretation='已核对方面')
+        opinion['facets'] = opinion['facets'][:1]
+        facet = opinion['facets'][0]
+        facet.update(status='confirmed', themes=[], interpretation='已核对方面')
+        facet['a_links'] = facet['a_links'][:1]
+        facet['a_links'][0].update(status='confirmed', scope='已核对对应范围')
+        other = copy.deepcopy(facet['a_links'][0])
+        other.update(status='needs_review', scope='待核对对应范围')
+        facet['a_links'].append(other)
+        facet['outside'] = [dict(scope=scope, reason='分别核对范围', evidence=[], status=status)
+            for scope, status in [('已核对清单外范围', 'confirmed'), ('待核对清单外范围', 'needs_review')]]
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True)
+            for case in ('current', 'a-stale', 'b-stale', 'facet-pending', 'old-version'):
+                with self.subTest(case=case):
+                    saved = copy.deepcopy(state)
+                    if case in ('a-stale', 'b-stale'):
+                        saved.update(material_status='needs_revalidation', a_material_status='current', b_material_status='current')
+                        saved['a_material_status' if case == 'a-stale' else 'b_material_status'] = 'needs_revalidation'
+                    elif case == 'facet-pending':
+                        saved['opinions'][0]['facets'][0]['status'] = 'needs_review'
+                    elif case == 'old-version':
+                        saved['opinions'][0]['facets'][0]['a_links'][0]['version'] = 'old'
+                    path = Path(folder) / (case+'.html')
+                    path.write_text(render(saved), encoding='utf-8')
+                    page.goto(path.as_uri())
+                    entries = page.locator('#focus-reading .focus-a p')
+                    first = entries.filter(has_text='已核对对应范围').inner_text()
+                    self.assertIn('已核对分析' if case == 'current' else '待核对', first)
+                    self.assertIn('待核对', entries.filter(has_text='待核对对应范围').inner_text())
+                    outside = entries.filter(has_text='已核对清单外范围').inner_text()
+                    self.assertIn('待核对' if case in ('a-stale', 'b-stale', 'facet-pending') else '已核对分析', outside)
+                    self.assertIn('待核对', entries.filter(has_text='待核对清单外范围').inner_text())
+                    output = os.environ.get('ATTENTION_REVIEW_FIX_EVIDENCE_DIR')
+                    if output and case in ('current', 'a-stale'):
+                        Path(output).mkdir(parents=True, exist_ok=True)
+                        page.locator('#focus-reading .focus-a').screenshot(path=str(Path(output) / ('focus-link-status-'+case+'.png')))
+            browser.close()
+
     def test_browser_a_source_list_uses_saved_classifications_without_view_filters(self):
         import copy
         state = oracle_state()

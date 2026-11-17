@@ -13,6 +13,60 @@ from test_attention_summary import oracle_state
 
 
 class Positions(unittest.TestCase):
+    def test_focus_distribution_opens_positions_and_marks_all_selected_record_regions(self):
+        from playwright.sync_api import expect
+        state = oracle_state()
+        state.update(material_status='current', history=[], relations=[])
+        state['themes'] = []
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for o in state['opinions']:
+            o['interpretation'] = '合成观点'
+            for f in o['facets']:
+                f['themes'] = []
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
+            path = Path(folder) / 'positions.html'
+            path.write_text(render(state), encoding='utf-8')
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport={'width': 1440, 'height': 1000})
+            page.goto(path.as_uri())
+            page.get_by_role('button', name='关注分布', exact=True).click()
+            expect(page.locator('#view-positions')).to_be_visible()
+            before = page.locator('#view-version').inner_text()
+            self.assertIn('3/4 条记录', page.locator('#view-positions > p').first.inner_text())
+            selected = page.locator('#view-positions [data-position-region][aria-current="true"]')
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'item:A1', 'item:A2', 'item:A3'})
+            for fid in ('f1', 'f2'):
+                self.assertGreater(page.locator('#view-positions a[aria-current="true"][href="#view-facet-'+fid+'"]').count(), 0)
+            output = os.environ.get('ATTENTION_REVIEW_FIX_EVIDENCE_DIR')
+            if output:
+                Path(output).mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(Path(output) / 'focus-distribution-1440.png'), full_page=True)
+            page.locator('#focus-list button').nth(1).click()
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'item:A1', 'item:A4'})
+            expect(page.locator('#view-positions a[aria-current="true"][href="#view-facet-f1"]')).to_have_count(0)
+            expect(page.locator('#view-positions a[aria-current="true"][href="#view-facet-f3"]')).not_to_have_count(0)
+            self.assertEqual(page.locator('#view-version').inner_text(), before)
+            self.assertIn('3/4 条记录', page.locator('#view-positions > p').first.inner_text())
+            page.locator('#focus-list button').nth(2).click()
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'item:A1', 'outside', 'pending', 'disposition'})
+            page.set_viewport_size({'width': 420, 'height': 1000})
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'item:A1', 'outside', 'pending', 'disposition'})
+            if output:
+                page.screenshot(path=str(Path(output) / 'focus-distribution-420.png'), full_page=True)
+            page.locator('#focus-list button').nth(3).click()
+            expect(selected).to_have_count(0)
+            self.assertEqual(page.locator('#view-version').inner_text(), before)
+            open_panel(page, 'view-filters')
+            page.locator('#view-record').select_option('r4')
+            self.assertIn('0/1 条记录', page.locator('#view-positions > p').first.inner_text())
+            expect(selected).to_have_count(0)
+            browser.close()
+
     def test_pending_suggestion_retains_target_without_becoming_confirmed_coverage(self):
         state = oracle_state()
         state['opinions'][0]['facets'][0]['status'] = 'needs_review'

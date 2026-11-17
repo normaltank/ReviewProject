@@ -9,6 +9,7 @@ make('style',`#candidate-position-regions .candidate-region-grid{display:grid;gr
 const statuses={needs_review:'待核',working:'未核对解释',confirmed:'已核对'};
 const kinds={explicit:'明确对应',partial:'部分对应',related:'内容相关',undetermined:'暂未定'};
 let selected='',offset=0,lastSelection={recordIds:[],facetIds:[]},overlay=null;
+make('style','#view-positions [aria-current=true]{outline:2px solid currentColor;outline-offset:2px}',document.head);
 make('style',`#view-positions{margin:1.6rem 0}#attention-views #view-positions svg{min-width:0;width:100%;display:block}#view-positions svg text{font:14px system-ui;fill:#17212e}#view-positions svg a:hover ellipse{fill:#e0eaf1}#view-positions svg a:focus-visible ellipse{stroke:#17212e;stroke-width:3}#view-positions .position-bands{display:flex;flex-wrap:wrap;gap:.5rem}#view-positions .position-bands button{flex:1 1 12rem;text-align:left}#position-drill{border-top:1px solid #c8d0da;margin-top:1rem}#position-drill li{margin:1rem 0}#position-drill small{display:block}#view-positions .position-pending{border:1px dashed #697d90}#view-positions .position-caption{max-width:72ch}`,document.head);
 function metric(ps,N){return uniq(ps.map(p=>p.record_id)).length+'/'+N+' 条记录 · '+uniq(ps.map(p=>p.facet_id)).length+' 个方面';}
 function render(selection=lastSelection){
@@ -26,14 +27,15 @@ function render(selection=lastSelection){
  const columns=window.innerWidth<650?1:2,ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 '+(columns*410)+' '+(Math.ceil(Math.min(4,rs.length-start)/columns)*230));svg.setAttribute('role','group');svg.setAttribute('aria-label','A参考区域与B位置');root.append(svg);
  const sn=(tag,attrs,parent,text)=>{const e=document.createElementNS(ns,tag);for(const [k,v]of Object.entries(attrs))e.setAttribute(k,v);if(text!=null)e.textContent=text;parent.append(e);return e;};
  rs.slice(start,start+4).forEach((r,i)=>{const x=12+(i%columns)*404,y=8+Math.floor(i/columns)*230,matches=ps.filter(p=>p.region_id===r.id),pending=matches.filter(p=>p.review_status==='needs_review');
- const a=sn('a',{href:'#position-drill','data-position-region':r.id,'aria-label':r.item_id+' '+r.label+'；'+metric(matches,ids.size)},svg);
+ const focused=matches.filter(p=>p.record_id===selection.selectedRecordId);
+ const a=sn('a',{href:'#position-drill','data-position-region':r.id,'aria-label':r.item_id+' '+r.label+'；'+metric(matches,ids.size)+(focused.length?'；所选评语 '+uniq(focused.map(p=>p.facet_id)).length+' 个方面':''),...(focused.length?{'aria-current':'true'}:{})},svg);
  sn('ellipse',{cx:x+194,cy:y+109,rx:192,ry:105,fill:'#edf3f7',stroke:'#697d90'},a);
  sn('title',{},a,r.item_id+' · '+r.label+'；'+metric(matches,ids.size));
  sn('text',{x:x+30,y:y+42},a,r.item_id+' · '+r.label.slice(0,18)+(r.label.length>18?'…':''));
  sn('text',{x:x+30,y:y+66},a,metric(matches,ids.size));
  sn('text',{x:x+30,y:y+89},a,'待核 '+uniq(pending.map(p=>p.record_id)).length+' 条记录');
- uniq(matches.map(p=>p.facet_id)).slice(0,3).forEach((fid,j)=>{const p=matches.find(p=>p.facet_id===fid),isPending=p.review_status==='needs_review';
- const token=sn('a',{href:'#view-facet-'+encodeURIComponent(fid),'aria-label':p.label+'；'+(isPending?'待核建议':'保存解释')+'；查看原话'},svg);
+ uniq([...focused,...matches].map(p=>p.facet_id)).slice(0,3).forEach((fid,j)=>{const p=matches.find(p=>p.facet_id===fid),isPending=p.review_status==='needs_review';
+ const token=sn('a',{href:'#view-facet-'+encodeURIComponent(fid),'aria-label':p.label+'；'+(isPending?'待核建议':'保存解释')+'；查看原话',...(p.record_id===selection.selectedRecordId?{'aria-current':'true'}:{})},svg);
  sn('title',{},token,p.label);
  sn('rect',{x:x+54,y:y+94+j*26,width:280,height:25,rx:4,fill:'#fff',stroke:'#315879',...(isPending?{'stroke-dasharray':'4 3'}:{})},token);
  sn('text',{x:x+60,y:y+112+j*26},token,(isPending?'待核 · ':'')+p.label.slice(0,isPending?14:18));});
@@ -43,7 +45,8 @@ function render(selection=lastSelection){
  }
  const bands=make('div',null,root,{class:'position-bands'});
  for(const r of base.regions.filter(r=>r.kind!=='item')){const matches=ps.filter(p=>p.region_id===r.id);if(!matches.length&&r.id!=='pending'&&r.id!=='outside')continue;
- const b=make('button',r.label+' · '+metric(matches,ids.size),bands,{type:'button','data-position-region':r.id});b.onclick=()=>{selected=r.id;offset=0;drill(ps,ids.size);};}
+ const focused=matches.some(p=>p.record_id===selection.selectedRecordId);
+ const b=make('button',r.label+' · '+metric(matches,ids.size),bands,{type:'button','data-position-region':r.id,...(focused?{'aria-current':'true'}:{})});b.onclick=()=>{selected=r.id;offset=0;drill(ps,ids.size);};}
  if(overlay)renderOverlay(ids,selection.expressionFilters||{});
  if(!selected||!base.regions.some(r=>r.id===selected))selected=items[0]?.id||'absent';
  make('div',null,root,{id:'position-drill','aria-live':'polite'});drill(ps,ids.size);
@@ -88,7 +91,7 @@ function drill(ps,N){const d=document.getElementById('position-drill');d.replace
  make('h4',(r?.item_id?r.item_id+' · ':'')+(r?.label||'位置明细'),d);make('p',metric(matches,N)+'；各区域不可相加。同方面在此仅列一次，关联范围逐条保留。',d);
  if(offset>=groups.length)offset=0;
  const ul=make('ul',null,d);
- for(const fid of groups.slice(offset,offset+20)){const entries=matches.filter(p=>p.facet_id===fid),p=entries[0],li=make('li',null,ul);
+ for(const fid of groups.slice(offset,offset+20)){const entries=matches.filter(p=>p.facet_id===fid),p=entries[0],li=make('li',null,ul,p.record_id===lastSelection.selectedRecordId?{'aria-current':'true'}:{});
  make('a',p.label,li,{href:'#view-facet-'+encodeURIComponent(fid)});
  make('small','核对状态：'+(statuses[p.facet_status]||p.facet_status),li);
  for(const e of entries)make('p',(statuses[e.review_status]||e.review_status)+' · '+(kinds[e.proposed_kind]||'位置说明')+' · '+e.scope+' · '+e.reason,li);
