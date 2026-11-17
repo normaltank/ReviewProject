@@ -1,7 +1,7 @@
 from attention_browser import open_reading_records
-"""Ordinary Tk entry -> ordinary Chrome forms -> download/apply/reopen.
+"""Prepared input service -> ordinary Chrome forms -> download/apply/reopen.
 
-Only the OS directory chooser is mocked. All material is synthetic.
+Web input controls are covered by test_web_workbench. All material is synthetic.
 """
 from attention_browser import open_panel, open_editor_tools
 import hashlib
@@ -9,7 +9,6 @@ import json
 import os
 import tempfile
 import time
-import tkinter as tk
 import unittest
 from contextlib import closing
 from pathlib import Path
@@ -17,7 +16,7 @@ from unittest.mock import patch
 
 from playwright.sync_api import sync_playwright
 from reviewproto.attention import AttentionWorkspace
-from reviewproto.attention_input_ui import AttentionInputWindow
+from reviewproto.attention_input import AttentionInput
 from reviewproto.desktop import Controller
 from reviewproto.core import ReviewError
 
@@ -32,9 +31,9 @@ class AttentionReuse(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name)
-        self.root = tk.Tk(); self.root.withdraw(); self.addCleanup(self.root.destroy)
         self.controller = Controller()
-        self.window = AttentionInputWindow(self.root, self.controller)
+        self.draft = AttentionInput()
+        self.build_count = 0
         self.evidence = Path(os.environ['ATTENTION_REUSE_EVIDENCE_DIR']) if os.environ.get('ATTENTION_REUSE_EVIDENCE_DIR') else None
         if self.evidence: self.evidence.mkdir(parents=True, exist_ok=True)
         self.errors, self.http = [], []
@@ -46,35 +45,17 @@ class AttentionReuse(unittest.TestCase):
 
     def enter_b(self, row):
         anchor, group, text, scores = row
-        w = self.window
-        w.anchor.set(anchor); w.locator.set('合成定位：' + anchor); w.paper.set(group)
-        w.quote.insert('1.0', text)
-        for label, value in scores:
-            w.score_label.set(label); w.score_value.set(value); w.add_score_button.invoke()
-        w.save_b_button.invoke()
+        self.draft.add_transcription(anchor,text,'author_visible',
+            [dict(label=label,raw_value=value) for label,value in scores], '合成定位：'+anchor,group)
 
-    def enter_a(self, w, version, parts, items):
-        w.version.set(version)
-        for label in parts:
-            w.part_label.set(label); w.save_part_button.invoke()
-        for part, text, locator in items:
-            w.part_box.current(part); w.item_locator.set(locator); w.a_text.insert('1.0', text); w.save_a_button.invoke()
+    def enter_a(self, unused, version, parts, items):
+        self.draft.set_a({'version':version,'parts':[dict(id='p'+str(i),label=label) for i,label in enumerate(parts)],
+            'items':[dict(id='a'+str(i),part_id='p'+str(part),text=text,locator=locator) for i,(part,text,locator) in enumerate(items)]})
 
     def build(self):
-        with patch('tkinter.filedialog.askdirectory', return_value=str(self.folder)):
-            self.window.build_button.invoke()
-        self.assertIsNotNone(self.controller.attention_path, self.window.status.get())
+        self.build_count += 1
+        self.controller.build_prepared_attention(self.draft,self.folder/('pack-'+str(self.build_count)))
         return self.controller.attention_path
-
-    def tk_shot(self, w, name, tab):
-        if not self.evidence: return
-        from scripts.window_capture import capture_window
-        w.tabs.select(tab)
-        w.preview.yview_moveto(0)
-        for width, height in [(980, 780), (760, 640)]:
-            w.window.geometry(f'{width}x{height}+40+40'); self.root.update()
-            time.sleep(0.2); self.root.update()
-            capture_window(w.window, self.evidence / f'{name}-{width}.png')
 
     def page(self, browser):
         page = browser.new_page(offline=True, accept_downloads=True, viewport={'width':1440, 'height':1000})
@@ -141,10 +122,6 @@ class AttentionReuse(unittest.TestCase):
 
     def test_s1_second_duplicate_and_theme_saved_only_after_apply(self):
         for row in S1: self.enter_b(row)
-        self.window.b_list.selection_set(0); self.window.load_b(); self.root.update()
-        self.tk_shot(self.window, 's1-b', self.window.b_tab)
-        self.window.save_b_button.invoke()
-        self.tk_shot(self.window, 's1-checklist', self.window.review_tab)
         path = self.build(); initial = self.state()
         self.assertEqual([r['text'] for r in initial['records']], [r[2] for r in S1])
         self.assertEqual(initial['records'][0]['scores'], [{'label':'自由原分标签', 'raw_value':' 7 / 9 '}])
@@ -211,12 +188,11 @@ class AttentionReuse(unittest.TestCase):
                 self.save(page, 's1-protected'); page.close()
             finally: browser.close()
         s1_hashes = {str(f.relative_to(s1_path)):hashlib.sha256(f.read_bytes()).hexdigest() for f in s1_path.rglob('*') if f.is_file()}
-        self.window.window.destroy(); self.window = AttentionInputWindow(self.root, self.controller)
+        self.draft = AttentionInput()
         for row in S2: self.enter_b(row)
-        self.enter_a(self.window, 'focus-β-01', ['表达组织','时间','空分组'], [
+        self.enter_a(None, 'focus-β-01', ['表达组织','时间','空分组'], [
             (0,'说明研究对象及其边界。','合成A-首段1'), (0,'区分证据与结论的适用条件。','合成A-首段2'),
             (1,'适用时说明资料时段，不预设统一年限。','合成A-次段1')])
-        self.tk_shot(self.window, 's2-checklist', self.window.review_tab)
         path = self.build(); initial = self.state()
         self.assertEqual([r['text'] for r in initial['records']], [r[2] for r in S2])
         self.assertEqual([r['scores'] for r in initial['records']], [[{'label':label,'raw_value':value} for label,value in row[3]] for row in S2])
@@ -262,10 +238,9 @@ class AttentionReuse(unittest.TestCase):
                 open_reading_records(page)
                 self.web_shots(page,'s2-saved')
                 # Native A-only entry preserves B/opinion identities, then ordinary mapping correction.
-                a = AttentionInputWindow(self.root,self.controller,a_only=True)
-                self.enter_a(a,'focus-β-02',['对象与条件','保留空组'],[(0,'可以说明对象边界。','换版-1'),(0,'必要时限定结论条件。','换版-2')])
-                a.actor.set('合成核对者'); a.reason.set('显式更新A内容及结构')
-                self.tk_shot(a,'s2-a-only',a.review_tab); a.import_a_button.invoke()
+                self.draft = AttentionInput()
+                self.enter_a(None,'focus-β-02',['对象与条件','保留空组'],[(0,'可以说明对象边界。','换版-1'),(0,'必要时限定结论条件。','换版-2')])
+                self.controller.import_prepared_attention_a(self.draft.a_reference,'合成核对者','显式更新A内容及结构')
                 changed = self.state(); self.assertEqual(changed['records'],saved['records'])
                 self.assertEqual(changed['analysis_id'],saved['analysis_id'])
                 self.assertEqual([o['opinion_id'] for o in changed['opinions']],[first_op,second_op])
@@ -290,8 +265,10 @@ class AttentionReuse(unittest.TestCase):
                 # Changed B: same checklist, edit first, delete second, add another; do not reopen old DB after baseline.
                 page.close()
                 old_files = {str(f.relative_to(path)):hashlib.sha256(f.read_bytes()).hexdigest() for f in path.rglob('*') if f.is_file()}
-                w=self.window; w.b_list.selection_set(0); w.load_b(); w.quote.delete('1.0','end'); w.quote.insert('1.0','研究对象已更正；主张仍需条件。'); w.save_b_button.invoke()
-                w.b_list.selection_clear(0,'end'); w.b_list.selection_set(1); w.remove_b_button.invoke()
+                self.draft = AttentionInput()
+                for row in S2: self.enter_b(row)
+                self.draft.records[0]['text']='研究对象已更正；主张仍需条件。'
+                self.draft.remove(1)
                 self.enter_b(('新增检查-丁','练习丁','补充说明数据来源。',[]))
                 newer=self.build(); new=self.state()
                 self.assertNotEqual(newer,path); self.assertNotEqual(new['analysis_id'],corrected['analysis_id'])
@@ -300,7 +277,6 @@ class AttentionReuse(unittest.TestCase):
                 self.assertNotIn('时段-乙',[r['anchor'] for r in new['records']])
                 self.assertEqual(new['records'][0]['text'],'研究对象已更正；主张仍需条件。')
                 self.assertEqual({str(f.relative_to(path)):hashlib.sha256(f.read_bytes()).hexdigest() for f in path.rglob('*') if f.is_file()},old_files)
-                a.import_a_button.invoke(); self.assertIn('E_ATTENTION_TARGET',a.status.get()); self.tk_shot(a,'s2-a-target-error',a.review_tab)
                 self.assertEqual({str(f.relative_to(s1_path)):hashlib.sha256(f.read_bytes()).hexdigest() for f in s1_path.rglob('*') if f.is_file()}, s1_hashes)
                 self.report.update(s1_unchanged=True, analysis_id=corrected['analysis_id'], changed_b_analysis=new['analysis_id'], N=3, scores=5, old_package_hashes=old_files, old_package_unchanged=True, new_opinions=0)
             finally: browser.close()

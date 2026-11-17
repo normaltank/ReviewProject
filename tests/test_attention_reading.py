@@ -11,7 +11,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from reviewproto.attention import AttentionWorkspace
-from reviewproto.attention_candidate_ui import CandidateSession
+from reviewproto.attention_candidate_service import CandidateSession
 from reviewproto.attention_candidates import ReplayProvider
 from reviewproto.desktop import Controller
 from test_attention_candidate_ui import prepare
