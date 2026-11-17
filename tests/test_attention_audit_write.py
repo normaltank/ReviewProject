@@ -9,7 +9,7 @@ from unittest.mock import patch
 from reviewproto.attention_candidates import _call
 from reviewproto.attention_provider import ReplayProvider
 from reviewproto.core import ReviewError
-from reviewproto.store import atomic, encoded
+from reviewproto.local_io import atomic, encoded
 
 
 class FakeProvider(ReplayProvider):

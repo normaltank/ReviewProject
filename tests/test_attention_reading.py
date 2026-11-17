@@ -1,3 +1,4 @@
+from attention_browser import open_panel
 """Read, trace and correct synthetic results through the ordinary offline page."""
 import os
 import copy
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
+from reviewproto.attention import AttentionWorkspace
 from reviewproto.attention_candidate_ui import CandidateSession
 from reviewproto.attention_candidates import ReplayProvider
 from reviewproto.desktop import Controller
@@ -150,7 +152,7 @@ class AttentionReading(unittest.TestCase):
                 apply(); page.reload(); view(0, 0)
                 browser.close()
 
-    def test_candidate_snapshot_can_collapse_without_hiding_unstaged_changes(self):
+    def test_candidate_snapshot_is_read_only(self):
         with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
             pack = Path(tmp) / 'pack'
             _, response = prepare(pack)
@@ -158,16 +160,15 @@ class AttentionReading(unittest.TestCase):
             session.generate('synthetic-draft', ReplayProvider([response]))
             browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
             page = browser.new_page(offline=True)
-            page.on('dialog', lambda d: d.accept())
+            errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
             page.goto(session.preview('synthetic-draft').as_uri())
             page.locator('#candidate-saved > summary').click()
-            page.locator('#attention-editor > summary').click()
-            page.locator('#interpretation').fill('尚未暂存的合成编辑')
-            page.locator('#candidate-saved > summary').click()
-            self.assertTrue(page.locator('#page-draft').is_visible())
-            self.assertIn('未暂存', page.locator('#page-draft').inner_text())
-            page.locator('#candidate-saved > summary').click()
-            self.assertEqual(page.locator('#interpretation').input_value(), '尚未暂存的合成编辑')
+            self.assertEqual(page.locator('#attention-editor').count(),0)
+            self.assertEqual(page.locator('#save').count(),0)
+            self.assertEqual(page.locator('#attention-session').count(),0)
+            self.assertEqual(page.get_by_role('button',name='查看原话并修改').count(),0)
+            self.assertTrue(page.get_by_role('link',name='查看当前已保存结果（编辑请从桌面打开）').is_visible())
+            self.assertFalse(errors,errors)
             browser.close()
 
     def test_partial_stale_history_and_unknown_requests_stay_visible_before_details(self):
@@ -258,16 +259,18 @@ class AttentionReading(unittest.TestCase):
             page.get_by_role('button', name='查看原话并修改').first.click()
             self.assertTrue(page.locator('#attention-editor').evaluate('(e)=>e.open'))
             self.assertEqual(page.locator('#facet').input_value(), fid)
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('合成核对者'); page.locator('#reason').fill('保留条件')
             page.locator('#interpretation').fill('如有记录才补充图例')
             page.locator('#attention-editor > summary').click()
-            self.assertIn('未暂存', page.locator('#page-draft').inner_text())
+            self.assertIn('尚未保存', page.locator('#page-draft').inner_text())
             page.get_by_role('button', name='查看原话并修改').first.click()
             self.assertEqual(page.locator('#interpretation').input_value(), '如有记录才补充图例')
-            self.assertIn('请先暂存修改', page.locator('#message').inner_text())
+            self.assertIn('已定位保存方面', page.locator('#message').inner_text())
             page.locator('#stage').click()
             self.assertIn('尚未保存的修改', page.locator('#page-draft').inner_text())
             before = (pack / 'attention-state.json').read_bytes()
+            open_panel(page, 'editor-export')
             with page.expect_download() as download:
                 page.locator('#download').click()
             patch = Path(tmp) / 'draft.json'; download.value.save_as(patch)
@@ -275,7 +278,8 @@ class AttentionReading(unittest.TestCase):
             self.assertIn('尚未保存的修改', page.locator('#page-draft').inner_text())
             self.assertIn('已保存修订 1', page.locator('#revision').inner_text())
             self.assertIn('标明图例', page.locator('#view-detail').inner_text())
-            self.assertEqual(controller.apply_attention(patch)['revision'], 2)
+            with closing(AttentionWorkspace(pack)) as ws:
+                self.assertEqual(ws.apply(input_path=patch)['revision'], 2)
             self.assertEqual(controller.recover_attention()['revision'], 2)
             page.goto((pack / 'attention.html').as_uri() + '#view-facet-' + fid)
             page.reload()

@@ -5,7 +5,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from .core import require, ReviewError, digest
-from .store import encoded
+from .local_io import encoded
 
 class ReplayProvider:
     mode = 'replay'

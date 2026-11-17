@@ -91,6 +91,7 @@ class AttentionReuse(unittest.TestCase):
 
     def audit(self, page, reason='按给定原话保存工作解释'):
         open_editor_tools(page)
+        open_panel(page, 'editor-audit')
         page.locator('#actor').fill('合成核对者'); page.locator('#reason').fill(reason)
 
     def opinion(self, page, interpretation, passage=1):
@@ -108,11 +109,15 @@ class AttentionReuse(unittest.TestCase):
     def save(self, page, name):
         before = self.state()
         self.assertTrue(page.locator('#download').is_enabled(), page.locator('#message').inner_text() + page.locator('#draft').inner_text())
+        open_panel(page, 'editor-export')
         with page.expect_download() as download: page.locator('#download').click()
         file = self.folder / (name + '.json'); download.value.save_as(file)
         self.assertEqual(self.state(), before, 'Download must not change saved state')
         self.assertIn('已保存修订 ' + str(before['revision']), page.get_by_role('region', name='当前关注概览').inner_text())
-        self.controller.apply_attention(file); self.controller.recover_attention(); page.reload()
+        with closing(AttentionWorkspace(self.controller.attention_path)) as workspace:
+            applied = workspace.apply(input_path=file)
+        self.controller.recover_attention()
+        page.reload()
         open_panel(page, 'view-statistics')
         open_panel(page, 'view-filters')
         open_panel(page, 'view-extra-views')
@@ -164,6 +169,7 @@ class AttentionReuse(unittest.TestCase):
                 self.audit(page, '绑定失效拒收新的未应用纠正')
                 page.locator('#opinion').select_option(index=1)
                 page.locator('#interpretation').fill('待保存的合成纠正'); page.locator('#stage').click()
+                open_panel(page, 'editor-export')
                 with page.expect_download() as d: page.locator('#download').click()
                 draft = self.folder / 'pending-correction.json'; d.value.save_as(draft)
                 # Exact-byte B binding loss/recovery on this independent synthetic package.
@@ -176,7 +182,9 @@ class AttentionReuse(unittest.TestCase):
                 self.assertIn('来源失效', page.get_by_role('region', name='当前关注概览').inner_text())
                 self.assertIn(S1[0][2], page.locator('#source').text_content())
                 before = self.state()
-                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION'): self.controller.apply_attention(draft)
+                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION'):
+                    with closing(AttentionWorkspace(self.controller.attention_path)) as workspace:
+                        applied = workspace.apply(input_path=draft)
                 self.assertEqual(self.state()['revision'], before['revision'])
                 self.web_shots(page, 's1-stale')
                 source.write_bytes(original); self.controller.recover_attention(); page.reload()
@@ -223,7 +231,7 @@ class AttentionReuse(unittest.TestCase):
                 self.theme(page, '条件说明')
                 page.locator('#a-item').select_option(initial['a_reference']['items'][0]['id']); page.locator('#a-scope').fill('研究对象')
                 page.locator('#a-reason').fill('对象表述对应首条关注'); page.locator('#a-save').click()
-                self.assertIn('已暂存对应。下载修改文件后，回本机窗口保存。', page.locator('#message').inner_text())
+                self.assertIn('已保留对应修改，点击保存修改。', page.locator('#message').inner_text())
                 self.assertIn('尚未保存的修改', page.locator('#page-draft').inner_text())
                 second_op, second_f = self.opinion(page, '不能补材料时可缩小主张', 2)
                 page.locator('#conditions').fill('如果不能补充材料'); page.locator('#actions').fill('可以缩小主张')

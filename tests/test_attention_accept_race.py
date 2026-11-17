@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 from reviewproto.attention import AttentionWorkspace
 from reviewproto import attention_candidates as c
-from reviewproto.store import atomic, encoded
+from reviewproto.local_io import atomic, encoded
 from reviewproto.core import digest
 from test_attention_candidate_ui import prepare
 

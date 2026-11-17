@@ -3,7 +3,7 @@ import ctypes
 import os
 from pathlib import Path
 from .core import require, ReviewError
-from .store import atomic
+from .local_io import atomic
 
 ENTROPY = b'ReviewProject/DeepSeek/API/1'
 

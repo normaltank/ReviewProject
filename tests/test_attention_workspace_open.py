@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from reviewproto.attention import AttentionWorkspace
-from reviewproto.store import PRIVATE_IGNORE
+from reviewproto.local_io import PRIVATE_IGNORE
 
 
 class WorkspaceOpenTests(unittest.TestCase):

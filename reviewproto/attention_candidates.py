@@ -10,8 +10,7 @@ import os
 import time
 from itertools import islice
 from .core import ReviewError, require, digest
-from .store import encoded, atomic, now
-from .batch import checked_local, read_json, bounded
+from .local_io import encoded, atomic, now, checked_local, read_json, bounded
 from .attention_model import apply_objects, normalize_facet, text
 from .attention_provider import ReplayProvider, LocalProvider
 from . import attention_semantic as semantic

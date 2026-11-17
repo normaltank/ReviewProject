@@ -8,7 +8,7 @@ const qualifierLabels={object:'对象',direction:'方向',degree:'程度',negati
 const qualifierKeys = ['object','direction','degree','negation','reasons','conditions','actions','examples','alternatives'];
 const statusNames = {working:'未核对解释',needs_review:'待核对',confirmed:'已核对分析',withdrawn:'撤回',superseded:'已被替换'};
 let evidence = null, facetEvidence = [], selectedChanged = false, endpoints = [], relationEvidence = [], dirty = false, rich = false;
-const write = (id,text) => { el(id).textContent = text; if(id==='draft'){el('page-draft').textContent=dirtyGroups.size?'有尚未暂存的修改。请展开修改区，先暂存再下载。':edits.size||themeEdits.size||relationEdits.size?'有尚未保存的修改。下载修改文件后，回本机窗口保存。':'';el('page-draft').dataset.pending='true';} };
+const write = (id,text) => { el(id).textContent = text; if(id==='draft'){el('page-draft').textContent=dirtyGroups.size?'有尚未保存的修改。点击保存修改。':edits.size||themeEdits.size||relationEdits.size?'有尚未保存的修改。点击保存修改。':'';el('page-draft').dataset.pending='true';} };
 const option = (select,text,value) => {const o=document.createElement('option');o.textContent=text;o.value=value;select.append(o);};
 const record = () => state.records.find(r=>r.record_id===el('record').value);
 const section = () => record().sections.find(s=>s.section_id===el('section').value);
@@ -28,10 +28,10 @@ function showEvidence(ev, changed=false) {
 function notice(text='修改尚未保存到分析包。', group='facet') {
  dirtyGroups.delete(group);dirtyGroups.delete('audit');dirty=dirtyGroups.size>0;
  write('draft','待保存修改：'+edits.size+'项观点、'+themeEdits.size+'项主题、'+relationEdits.size+'项关系；已保存修订仍为 '+state.revision);
- if(dirty)write('draft',el('draft').textContent+'；仍有其他表单未暂存。');el('download').disabled=dirty;write('message',text);
+ if(dirty)write('draft',el('draft').textContent+'；仍有其他表单未暂存。');el('download').disabled=false;write('message',text);
 }
 function auditReady() {
- if(!el('actor').value.trim()||!el('reason').value.trim()){write('message','请填写修改者和修改理由，再暂存修改。');return false;}return state.material_status==='current';
+ if(!el('actor').value.trim()||!el('reason').value.trim()){write('message','请填写修改者和修改理由，再暂存修改。');return false;}if(state.material_status!=='current'){write('message','来源待核，不能保存修改；请保留草稿并核对来源。');return false;}return true;
 }
 function cleanOpinion(op) {
  const out={opinion_id:op.opinion_id,record_id:op.record_id,interpretation:op.interpretation,status:op.status,facets:clone(op.facets),replaces:clone(op.replaces||[])};
@@ -180,14 +180,58 @@ el('relation-stage').onclick=()=>{
  if(old?.legacy_aliases)r.legacy_aliases=clone(old.legacy_aliases);
  relationEdits.set(r.relation_id,r);rich=true;refreshRelations(r.relation_id);notice(undefined,'relation');
 };
+function collectForms() {
+ if(!dirtyGroups.size)return true;
+ // Staging a facet refreshes related controls; retain every other form first.
+ const ids=['a-link','a-kind','a-item','a-scope','a-reason','a-status','member-reason'];
+ const held=Object.fromEntries(ids.map(id=>[id,el(id).value]));
+ if(dirtyGroups.has('facet')){
+  if(!stageFacet())return false;
+  for(const id of ids)el(id).value=held[id];
+ }
+ for(const [group,button] of [['theme','theme-stage'],['a','a-save'],['member','member-add'],['relation','relation-stage']]){
+  if(dirtyGroups.has(group)){el(button).onclick();if(dirtyGroups.has(group))return false;}
+ }
+ if(!auditReady())return false;
+ dirtyGroups.delete('audit');dirty=dirtyGroups.size>0;
+ return !dirty;
+}
+function draftPatch() {
+ return {schema:'attention-patch/2',analysis_id:state.analysis_id,base_revision:state.revision,
+ actor:el('actor').value,reason:el('reason').value,edits:[...edits.values()],themes:[...themeEdits.values()],relations:[...relationEdits.values()]};
+}
+let retryPatch=null,saving=false;
 el('download').onclick=()=>{
- if(!auditReady()||dirty)return;
- const simple=!rich&&themeEdits.size===0&&relationEdits.size===0&&[...edits.values()].every(o=>o.facets.length===1&&!o.replaces.length);
- const patch={schema:simple?'attention-patch/1':'attention-patch/2',analysis_id:state.analysis_id,base_revision:state.revision,actor:el('actor').value,reason:el('reason').value,edits:[...edits.values()].map(o=>simple?{opinion_id:o.opinion_id,record_id:o.record_id,facet_id:o.facets[0].facet_id,evidence:o.facets[0].evidence,interpretation:o.facets[0].interpretation,status:o.facets[0].status}:o)};
- if(!simple){patch.themes=[...themeEdits.values()];patch.relations=[...relationEdits.values()];}
+ if(!retryPatch&&!collectForms())return;
+ const patch=retryPatch||draftPatch();
  const url=URL.createObjectURL(new Blob([JSON.stringify(patch,null,2)],{type:'application/json'})),a=document.createElement('a');
  a.href=url;a.download='attention-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
- write('message','已下载修改文件，尚未保存到分析。请在本机窗口保存后重开。');
+ write('message','已导出草稿；导出不会保存到分析包。');
+};
+el('download').disabled=false;
+el('save').onclick=async()=>{
+ const sessionNode=el('attention-session');if(!sessionNode||saving)return;
+ if(!retryPatch&&!collectForms())return;
+ const patch=retryPatch||draftPatch();
+ if(!patch.edits.length&&!patch.themes.length&&!patch.relations.length){write('message','没有需要保存的修改。');return;}
+ retryPatch=clone(patch);saving=true;el('save').disabled=true;
+ // Keep the exact request available for idempotent retry if the response is lost.
+ const controls=[...el('attention-editor').querySelectorAll('input,textarea,select,button')].filter(n=>!['save','download'].includes(n.id));
+ const disabled=controls.map(n=>n.disabled);controls.forEach(n=>n.disabled=true);
+ write('message','正在保存修改…');
+ try {
+  const response=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json','X-Attention-Token':JSON.parse(sessionNode.textContent).token},body:JSON.stringify(retryPatch)});
+  const result=await response.json();
+  if(!response.ok){
+   if(result.error!=='E_ATTENTION_OUTPUT_RECOVER'){retryPatch=null;controls.forEach((n,i)=>n.disabled=disabled[i]);}
+   const help=result.error==='E_ATTENTION_CONFLICT'?'其他页面已保存新修订。请先导出本页草稿，再重开当前结果核对。':result.error==='E_ATTENTION_OUTPUT_RECOVER'?'修改可能已提交，输出未完成。请再次点击保存，安全重试原请求；草稿仍保留。':'保存未完成。请核对来源或导出草稿后重开当前结果。';
+   write('message',result.error+'：'+help);return;
+  }
+  edits.clear();themeEdits.clear();relationEdits.clear();dirtyGroups.clear();dirty=false;retryPatch=null;
+  write('message','已保存修订 '+result.revision+'，正在更新结果。');
+  location.reload();
+ } catch(error){write('message','连接中断，尚未确认保存；草稿已保留。请恢复桌面会话后再点保存，或导出草稿。重复原请求不会新增修订。');}
+ finally{saving=false;el('save').disabled=false;el('download').disabled=false;}
 };
 write('revision','已保存修订 '+state.revision+' · '+state.records.length+' 条评语记录');
 write('material',state.material_status==='current'?(state.a_reference.items.length?'':'尚未导入A：目前可先阅读和整理B。'):'来源已变化或不可读：保留旧快照，待重新核对；禁止继续应用。');
@@ -214,9 +258,9 @@ for(const r of state.relations)paragraph('saved-relations',r.type+' · '+r.endpo
 for(const o of state.opinions)for(const f of o.facets)for(const [field,links] of [['a_links',f.a_links],['outside',f.outside]])for(const l of links)paragraph(active(o)&&!['withdrawn','superseded'].includes(f.status)&&!['withdrawn','superseded'].includes(l.status)?'saved':'saved-archive',f.interpretation+' · '+(field==='outside'?'清单外':kindNames[l.kind]+' / '+(l.a_item_id||'条目未定')+' / '+l.version)+' · '+l.scope+' · '+l.reason+' · '+statusNames[l.status]+' · 原话：'+l.evidence.map(e=>e.quote).join(' / '));
 if(!state.history.length)write('history','尚无修改修订。');
 state.history.forEach(h=>paragraph('history','修订 '+h.revision+' · '+h.actor+' · '+h.reason));
-el('record').onchange=chooseRecord;el('section').onchange=chooseSection;el('opinion').onchange=chooseOpinion;el('facet').onchange=chooseFacet;el('theme').onchange=chooseTheme;el('relation').onchange=chooseRelation;
+
 chooseRecord();refreshThemes();refreshRelations();
-for(const id of ['interpretation','status','facet-kind','actor','reason',...qualifierKeys,'function','boilerplate','theme-label','theme-definition','theme-parents','member-reason','relation-type','relation-role','relation-direction','relation-scope','relation-reading','relation-ambiguity','relation-status'])el(id).addEventListener('input',()=>{dirtyGroups.add(['actor','reason'].includes(id)?'audit':id.startsWith('theme-')?'theme':id.startsWith('relation-')?'relation':id==='member-reason'?'member':'facet');dirty=true;write('draft','表单有未暂存的更改；已保存修订仍为 '+state.revision);el('download').disabled=true;});
+for(const id of ['interpretation','status','facet-kind','actor','reason',...qualifierKeys,'function','boilerplate','theme-label','theme-definition','theme-parents','member-reason','relation-type','relation-role','relation-direction','relation-scope','relation-reading','relation-ambiguity','relation-status'])el(id).addEventListener('input',()=>{dirtyGroups.add(['actor','reason'].includes(id)?'audit':id.startsWith('theme-')?'theme':id.startsWith('relation-')?'relation':id==='member-reason'?'member':'facet');dirty=true;write('draft','表单有未暂存的更改；已保存修订仍为 '+state.revision);el('download').disabled=false;});
 window.addEventListener('beforeunload',e=>{if(edits.size||themeEdits.size||relationEdits.size||dirty){e.preventDefault();e.returnValue='';}});
 
 function refreshALinks(selected='') {
@@ -241,18 +285,20 @@ function editALink(remove=false){
  if(!el('a-scope').value.trim()||!el('a-reason').value.trim()||!evidence||(!['outside','undetermined'].includes(kind)&&!item)){write('message','请填写范围、理由、原话证据，并为明确/部分/相关对应选择A条目。');return;}
  const link={scope:el('a-scope').value,reason:el('a-reason').value,evidence:clone([evidence]),status:el('a-status').value};
  if(kind!=='outside')Object.assign(link,{a_item_id:item||null,version:state.a_reference.version,kind});
- if(field)facet[field].splice(Number(index),1);facet[kind==='outside'?'outside':'a_links'].push(link);
+ const destination=kind==='outside'?'outside':'a_links';
+ if(field===destination)facet[field][Number(index)]=link;
+ else {if(field)facet[field].splice(Number(index),1);facet[destination].push(link);}
  }
- edits.set(op.opinion_id,result);rich=true;refreshALinks();notice('已暂存对应。下载修改文件后，回本机窗口保存。','a');
+ edits.set(op.opinion_id,result);rich=true;refreshALinks();notice('已保留对应修改，点击保存修改。','a');
 }
-el('a-link').onchange=chooseALink;el('a-item').onchange=showAItem;el('a-kind').onchange=showAItem;
+el('a-item').onchange=showAItem;el('a-kind').onchange=showAItem;
 el('a-save').onclick=()=>editALink();el('a-remove').onclick=()=>editALink(true);
-for(const id of ['a-kind','a-item','a-scope','a-reason','a-status'])el(id).addEventListener('input',()=>{dirtyGroups.add('a');dirty=true;el('download').disabled=true;write('draft','关联表单有未暂存的更改。');});
+for(const id of ['a-kind','a-item','a-scope','a-reason','a-status'])el(id).addEventListener('input',()=>{dirtyGroups.add('a');dirty=true;el('download').disabled=false;write('draft','关联表单有未暂存的更改。');});
 // Saved position navigation never overwrites unstaged form changes.
 document.addEventListener('attention-edit-facet', event=>{
  const target=event.detail;
  window.AttentionReading.reveal(el('attention-editor'));
- if(dirtyGroups.size){write('message','当前表单有未暂存的更改。请先暂存修改，再从位置明细重试定位。');el('message').scrollIntoView({block:'center'});return;}
+ if(!collectForms())return;
  const op=allOpinions().find(o=>o.opinion_id===target.opinion_id&&o.record_id===target.record_id&&active(o));
  const f=op?.facets.find(f=>f.facet_id===target.facet_id&&!['withdrawn','superseded'].includes(f.status));
  if(!f||!state.records.some(r=>r.record_id===target.record_id)){write('message','该保存对象已不可编辑，请恢复并重开页面核对。');return;}
@@ -260,5 +306,24 @@ document.addEventListener('attention-edit-facet', event=>{
  const sec=f.evidence?.[0]?.section_id;
  if(sec&&record().sections.some(s=>s.section_id===sec)){el('section').value=sec;chooseSection();}
  el('opinion').value=op.opinion_id;chooseOpinion();el('facet').value=f.facet_id;chooseFacet();
- write('message','已定位保存方面；修改后仍需暂存修改、应用并重开。');el('source').scrollIntoView({block:'center'});el('source').focus();
+ write('message','已定位保存方面；修改后点击保存修改。');el('source').scrollIntoView({block:'center'});el('source').focus();
 });
+
+// Every context switch follows the same collect-or-block rule.
+for(const [id,choose] of [['record',chooseRecord],['section',chooseSection],['opinion',chooseOpinion],['facet',chooseFacet],['theme',chooseTheme],['relation',chooseRelation],['a-link',chooseALink]]){
+ const node=el(id);let previous=node.value;
+ node.addEventListener('focus',()=>{previous=node.value;});
+ node.onchange=()=>{
+  let next=node.value;node.value=previous;
+  // Converting a link removes it from its old list. Keep the requested later
+  // item selected even though its index changes while collecting the form.
+  const [field,index]=previous.split(':'),[nextField,nextIndex]=next.split(':');
+  const moved=id==='a-link'&&dirtyGroups.has('a')&&field&&field!==(el('a-kind').value==='outside'?'outside':'a_links');
+  if(!collectForms())return;
+  if(moved&&nextField===field&&Number(nextIndex)>Number(index))next=field+':'+(Number(nextIndex)-1);
+  node.value=next;choose();previous=node.value;
+ };
+}
+for(const [id,group] of [['passage','facet'],['capture','facet'],['evidence-add','facet'],['endpoint-add','relation'],['endpoint-remove','relation'],['relation-evidence','relation']]){
+ el(id).addEventListener(id==='passage'?'change':'click',()=>{dirtyGroups.add(group);dirty=true;write('draft','有尚未保存的修改。');});
+}

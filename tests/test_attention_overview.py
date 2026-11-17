@@ -41,9 +41,11 @@ class AttentionOverview(unittest.TestCase):
                         self.assertIn('A未导入', overview.inner_text())
                     page.locator('#passage').select_option(index=1)
                     page.locator('#interpretation').fill('收束范围的工作解释')
+                    open_panel(page, 'editor-audit')
                     page.locator('#actor').fill('合成核对者')
                     page.locator('#reason').fill('保存观点')
                     page.locator('#stage').click()
+                    open_panel(page, 'editor-export')
                     with page.expect_download() as download:
                         page.locator('#download').click()
                     patch = Path(folder) / f'draft-{count}.json'

@@ -40,8 +40,8 @@ class CandidateSession:
             current = ws.state()
             if current['material_status'] != 'current':
                 run['validity'] = 'needs_revalidation'
-            from .batch import read_json, checked_local
-            from .store import encoded
+            from .local_io import read_json, checked_local
+            from .local_io import encoded
             from .core import digest
             receipt = checked_local(self.path / 'candidate-runs' / run_id / 'acceptance.json')
             if receipt.is_file():
@@ -49,7 +49,7 @@ class CandidateSession:
                 applied = next((h for h in current['history'] if h['fingerprint'] == fingerprint), None)
                 run['accepted_revision'] = applied['revision'] if applied else None
         target = self.path / 'candidate-runs' / run_id / 'preview.html'
-        from .store import atomic
+        from .local_io import atomic
         atomic(target, render_candidate_preview(run).encode('utf-8'))
         return target
 
@@ -409,9 +409,9 @@ class AttentionCandidateWindow:
                 elif action in {'accept', 'saved'}:
                     if action == 'accept':
                         self.accepted_run_id = self.run_id
-                        self._launch(self.target_path / 'attention.html', '分析已保存并打开，内容仍待核对。')
+                        self._launch_current('分析已保存并打开，内容仍待核对。')
                     else:
-                        self._launch(self.target_path / 'attention.html', '已打开保存的分析结果。')
+                        self._launch_current('已打开保存的分析结果。')
                     current = getattr(self.controller, 'attention_path', None)
                     if self.on_result and current is not None and Path(current).absolute() == self.target_path:
                         self.on_result(dict(kind='attention', path=self.target_path, revision=result['revision'], material_status=result['material_status']))
@@ -437,6 +437,13 @@ class AttentionCandidateWindow:
         else:
             import webbrowser
             require(webbrowser.open(path.as_uri()), 'E_BROWSER_OPEN')
+
+    def _launch_current(self, message):
+        try:
+            self.controller.open_attention_report(self.target_path)
+            self.status.set(message)
+        except Exception:
+            self.status.set('分析保存状态不变，浏览器未能打开。请重新点击查看结果。')
 
     def _launch(self, path, message):
         try:

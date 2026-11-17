@@ -1,3 +1,4 @@
+from contextlib import closing
 from attention_browser import open_panel, open_editor_tools
 import copy
 import tempfile
@@ -143,12 +144,9 @@ class AttentionEditing(unittest.TestCase):
                 failed.migrate_working_draft(badfile, actor='合成', reason='原子拒收验证')
             with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_EMPTY'):
                 failed.state()
-        from reviewproto.desktop import Controller
-        controller = Controller()
-        result = controller.migrate_attention(source, self.root / 'controller-migration', '合成编辑', '普通本机入口')
-        self.assertEqual(result['revision'], 1)
-        self.assertEqual(result['kind'], 'attention')
-        self.assertIsNone(controller.path)
+        with closing(AttentionWorkspace(self.root / 'reopened-migration')) as workspace:
+            result = workspace.migrate_working_draft(source, actor='合成编辑', reason='公开迁入入口')
+            self.assertEqual(result['revision'], 1)
         source.write_text('{}', encoding='utf-8')
         self.assertEqual(target.recover()['material_status'], 'needs_revalidation')
 
@@ -222,17 +220,22 @@ class AttentionEditing(unittest.TestCase):
                     page.locator('#function').fill('')
                     page.locator('#boilerplate').select_option('unknown')
                     page.locator('#facet-kind').select_option('content')
+                    open_panel(page, 'editor-audit')
                     page.locator('#actor').fill('合成浏览器编辑')
                     page.locator('#reason').fill('清除限定与表达判断')
                     page.locator('#stage').click()
+                    open_panel(page, 'editor-export')
                     with page.expect_download() as download:
+                        open_panel(page, 'editor-export')
                         page.locator('#download').focus(); page.keyboard.press('Enter')
                     patchfile = self.root / (name + '-clear.json')
                     download.value.save_as(patchfile)
                     patch = json.loads(patchfile.read_text(encoding='utf-8'))
                     self.assertEqual(patch['schema'], 'attention-patch/2')
                     controller = Controller(); controller.open_attention(path)
-                    controller.apply_attention(patchfile); controller.recover_attention()
+                    with closing(AttentionWorkspace(controller.attention_path)) as workspace:
+                        applied = workspace.apply(input_path=patchfile)
+                    controller.recover_attention()
                     after = target.state()
                     saved = after['opinions'][0]['facets'][0]
                     self.assertEqual(after['revision'], 2)
@@ -275,6 +278,7 @@ class AttentionEditing(unittest.TestCase):
             page.locator('#degree').fill('基本')
             page.locator('#function').fill('总体肯定')
             page.locator('#boilerplate').select_option('true')
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('合成编辑'); page.locator('#reason').fill('保留不同判断与备用动作')
             page.locator('#stage').click()
             page.locator('#facet').select_option('')
@@ -307,15 +311,20 @@ class AttentionEditing(unittest.TestCase):
             for width in (1440, 420):
                 page.set_viewport_size({'width': width, 'height': 1000})
                 self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'))
+            open_panel(page, 'editor-export')
             page.locator('#download').focus(); page.keyboard.press('Enter')
             # A second keyboard download is observed explicitly to save the file.
+            open_panel(page, 'editor-export')
             with page.expect_download() as download:
+                open_panel(page, 'editor-export')
                 page.locator('#download').focus(); page.keyboard.press('Enter')
             patchfile = self.root / 'rich-draft.json'; download.value.save_as(patchfile)
             patch = json.loads(patchfile.read_text(encoding='utf-8'))
             self.assertEqual(patch['schema'], 'attention-patch/2')
             controller = Controller(); controller.open_attention(self.root / 'analysis')
-            controller.apply_attention(patchfile); controller.recover_attention()
+            with closing(AttentionWorkspace(controller.attention_path)) as workspace:
+                applied = workspace.apply(input_path=patchfile)
+            controller.recover_attention()
             page.reload()
             open_editor_tools(page)
             open_panel(page, 'reading-history')
@@ -332,6 +341,7 @@ class AttentionEditing(unittest.TestCase):
                 page.get_by_text('全部保存关系与沿革（当前筛选的角色/范围见上方明细）', exact=True).click()
             self.assertIn('局部否定', page.locator('#saved-relations').inner_text())
             before = self.ws.state()
+            open_panel(page, 'editor-audit')
             page.locator('#actor').fill('合成编辑'); page.locator('#reason').fill('修正主题范围和关系范围')
             page.locator('#theme').select_option(index=1)
             page.locator('#theme-label').fill('表达与证据承载')
@@ -340,10 +350,15 @@ class AttentionEditing(unittest.TestCase):
             page.locator('#relation').select_option(index=1)
             page.locator('#relation-scope').fill('仅总体表达与局部证据，修正工作范围')
             page.locator('#relation-stage').click()
+            open_panel(page, 'editor-export')
             with page.expect_download() as download:
+                open_panel(page, 'editor-export')
                 page.locator('#download').focus(); page.keyboard.press('Enter')
             download.value.save_as(patchfile)
-            controller.apply_attention(patchfile); controller.recover_attention(); page.reload()
+            with closing(AttentionWorkspace(controller.attention_path)) as workspace:
+                applied = workspace.apply(input_path=patchfile)
+            controller.recover_attention()
+            page.reload()
             open_editor_tools(page)
             open_panel(page, 'reading-history')
             after = self.ws.state()

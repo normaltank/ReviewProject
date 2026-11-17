@@ -12,7 +12,7 @@ from reviewproto.attention import AttentionWorkspace
 from reviewproto.attention_api_provider import DeepSeekProvider
 from reviewproto.attention_candidates import generate
 from reviewproto.core import digest
-from reviewproto.store import encoded
+from reviewproto.local_io import encoded
 
 USAGE={'prompt_tokens':10,'completion_tokens':20,'total_tokens':30}
 B={'opinions':[{'summary':'说明已完成','facets':[{'ref':'f1','focus':'单位已经说明',

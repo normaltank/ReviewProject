@@ -146,13 +146,12 @@ class CandidateSafetyTests(unittest.TestCase):
 
     def test_record_batches_continue_after_oversize_and_keep_all_sections(self):
         import json
-        from reviewproto.store import Workspace, encoded
+        from reviewproto.local_io import encoded
+        from legacy_source_fixture import create_legacy_workspace
         root=Path(self.temp.name)
         src_input=root/'source.json'
         src_input.write_text(json.dumps({'scores':[], 'sections':[{'section_id':'one','label':'评审意见','text':'说明图例。'},{'section_id':'two','label':'评审意见','text':'列出单位。'}]},ensure_ascii=False),encoding='utf-8')
-        src=Workspace(root/'source')
-        try: src.run(src_input,'synthetic','json')
-        finally: src.close()
+        create_legacy_workspace(root/'source', data=src_input.read_bytes())
         w=AttentionWorkspace(root/'merged')
         try:
             s=w.build({'schema':'attention-input/1','records':[{'anchor':'large','text':'长'*20000,'visibility':'author_visible'}]+[{'kind':'workspace','workspace':'source','section_id':sid} for sid in ('one','two')],'a_reference':{'version':'none','items':[]}},base=root)
