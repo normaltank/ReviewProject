@@ -27,6 +27,24 @@ def prepare(path):
 
 
 class CandidateWorkflow(unittest.TestCase):
+    def test_scope_and_original_are_readable_before_explicit_analysis(self):
+        import tkinter as tk
+        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
+        from reviewproto.desktop import Controller
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'analysis'; prepare(path)
+            controller = Controller(); controller.open_attention(path)
+            root = tk.Tk(); root.withdraw(); self.addCleanup(root.destroy)
+            window = AttentionCandidateWindow(root, controller)
+            root.update()
+            self.assertIn('1 / 1', window.scope.get())
+            self.assertIn('若有记录，请标明图例。', window.original.get('1.0', 'end'))
+            window.record_list.selection_clear(0, 'end')
+            window.record_list.event_generate('<<ListboxSelect>>'); root.update()
+            self.assertIn('0 / 1', window.scope.get())
+            self.assertTrue(window.generate_button.instate(['disabled']))
+            self.assertFalse(window.busy)
+
     def test_analysis_shows_next_actions_and_saves_without_audit_form_detour(self):
         import tkinter as tk
         import time

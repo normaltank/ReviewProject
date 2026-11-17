@@ -6,6 +6,43 @@ from unittest.mock import patch
 
 
 class AttentionInputTk(unittest.TestCase):
+    def doCleanups(self):
+        result = super().doCleanups()
+        # Dispose destroyed Tcl variables on the UI thread before the following
+        # candidate test starts its background worker.
+        import gc
+        gc.collect()
+        return result
+
+    def test_optional_scores_keep_original_draft_and_keyboard_fields_reachable(self):
+        import tkinter as tk
+        from reviewproto.attention_input_ui import AttentionInputWindow
+        from reviewproto.desktop import Controller
+        root = tk.Tk(); root.withdraw(); self.addCleanup(root.destroy)
+        window = AttentionInputWindow(root, Controller())
+        window.window.geometry('760x640')
+        original = ' 若不能增加样本，请保留结论范围。\n原始换行 '
+        window.quote.insert('1.0', original)
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+        button = next(w for w in descendants(window.window) if w.winfo_class() == 'TButton'
+                      and w.cget('text') == '原分（如有）…')
+        button.invoke(); root.update()
+        field = next(w for w in descendants(window.window) if w.winfo_class() == 'TEntry'
+                     and str(w.cget('textvariable')) == str(window.score_value))
+        # FocusIn is the same native event raised when keyboard traversal reaches
+        # the field; it must reveal lower fields without moving the footer.
+        field.event_generate('<FocusIn>'); root.update()
+        self.assertGreaterEqual(field.winfo_rooty(), window.tabs.winfo_rooty())
+        self.assertLess(field.winfo_rooty() + field.winfo_height(), window.build_button.winfo_rooty())
+        self.assertEqual(window.quote.get('1.0', 'end-1c'), original)
+        window.score_label.set('自由原分'); window.score_value.set(' 4 / 5 ')
+        window.add_score_button.invoke(); window.save_b_button.invoke()
+        self.assertEqual(window.draft.records[0]['scores'], [{'label': '自由原分', 'raw_value': ' 4 / 5 '}])
+        self.assertEqual(window.draft.records[0]['text'], original)
+
     def test_a_target_stays_visible_after_saving_reviewing_and_current_package_changes(self):
         import tkinter as tk
         from reviewproto.attention_input_ui import AttentionInputWindow
@@ -147,6 +184,9 @@ class AttentionInputTk(unittest.TestCase):
                         self.assertTrue(any(w.cget('text') == '分析评语' for w in visible), entry.status.get())
                         self.assertTrue(any(w.cget('text') == '查看并修改结果' for w in visible))
                         self.assertFalse(any(w.cget('text') == '显式启动本项目已安装模型' for w in visible))
+                        next(w for w in visible if w.cget('text') == '材料与恢复…').invoke()
+                        root.update()
+                        visible = [w for w in descendants(root) if w.winfo_class() == 'TButton' and w.winfo_ismapped()]
                         change_a = next(w for w in visible if w.cget('text') == '修改A参照（可选）')
                         change_a.invoke(); root.update()
                         self.assertTrue(input_windows[-1].a_only)
