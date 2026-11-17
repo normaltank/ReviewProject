@@ -31,6 +31,8 @@ T6在受控目录逐记录核对原话原分、A18、全部方面去向及9关�
 
 本轮延续focused路径，[Issue36](https://github.com/normaltank/ReviewProject/issues/36)与[PR37](https://github.com/normaltank/ReviewProject/pull/37)补齐原A对照请求遗漏的已有部分名称，具体边界见[A语境规格](specs/b-attention-a-context.md)。名称只辅助理解，不新增要求或排除跨部分的实际交集；未分组与无A保持。`1130139`完整检查444项零失败/错误/跳过，固定两轴审查无发现。新冻结5B三组A输入的独立盲首评两版均3通过、2部分；基线40次API，修订臂回放同一B后仅22次实际A调用，合计62次、用量已知，按本次时段估算约0.0326美元而非账单。没有证明语义提升；共同的确定排除/必要条件附加解释问题见[后续核对](https://github.com/normaltank/ReviewProject/issues/38)，不改写首评或混入本轮输入修复。最终文档、CI、main与本地入口状态以工作项为准。
 
+CI曾在旧跨进程测试等待子进程预校验处超时，同产品/测试版本后续CI也通过；这些终态均保留。验收集中返修仅将解释器/导入就绪等待与原10秒预校验窗口分开，增加子进程退出诊断并保持全部唯一收据/历史断言；同一子进程导入前延迟12秒的受控红测已转绿。该测试修改不改变已验证的生产B/A路径，不追加模型调用；最终完整工程检查及CI仍须对应最终版本。
+
 最新费用与工具决定见[当前名单](research/attention-tools.md)：只保留已授权DS Flash费用，Gemini Decisions/MAXQDA退出实施，LLooM/LLMCode保留方法参考。[Issue34](https://github.com/normaltank/ReviewProject/issues/34)的记录级DS对照已形成不采用结论：少请求未带来费用/质量优势，原型留在隔离分支，不进入main运行路径。main仅收拢名单和依据，具体交付/CI终态见工作项。现有默认仍有待核边界，不能称任意新输入的正确率保证。结果阅读层由[PR33](https://github.com/normaltank/ReviewProject/pull/33)交付，操作见[阅读说明](ATTENTION_READING.md)。
 
 本轮[父任务#26](https://github.com/normaltank/ReviewProject/issues/26)与[PR31](https://github.com/normaltank/ReviewProject/pull/31)补齐可变A/B的实际候选路径；规格及依赖见[内容与位置规格](specs/b-attention-candidates.md)和[施工计划](plans/b-attention-candidates-construction.md)。C1—C3及集中返修经独立merger串行集成，候选代码头为`247d26bcb466b3060ca35b1f5974d89ed411fbff`。先分析全部所选普通B分区，再独立对照当批A；无A可先分析，不强填清单外。普通操作见[候选生成与核对](ATTENTION_CANDIDATES.md)。
