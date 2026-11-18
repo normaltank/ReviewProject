@@ -12,6 +12,8 @@ ReviewProject 读取每批 B 评语，整理关注内容及关系，对照当批
 
 交付工作见 [#53](https://github.com/normaltank/ReviewProject/issues/53) 和 [PR #56](https://github.com/normaltank/ReviewProject/pull/56)。关注图规格、试用包内容和验证方式见[网页与试用交付](specs/web-workbench-trial.md)。待办见[项目清单](../PROJECT_TODO.md)，CI 和审查证据记录到对应提交与工作项。
 
+工程包已用虚构凭据完成隔离解压，核对实际 EXE 的两种材料结构、保存、重开、导出及关闭。正式试用 ZIP 按用户当前要求暂停。
+
 ## 续接
 
 - 新建合成示例或载入自己的 A、B，按[验证说明](TESTING.md)走一遍读图、纠正和保存。
