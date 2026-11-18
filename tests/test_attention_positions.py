@@ -188,6 +188,76 @@ class Positions(unittest.TestCase):
                         page.close()
             browser.close()
 
+    def test_sample_map_keeps_all_five_a_parts_at_desktop_and_narrow_widths(self):
+        from contextlib import closing
+        from playwright.sync_api import expect
+        from reviewproto.attention import AttentionWorkspace
+        from reviewproto.workbench_sample import create_sample
+
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'sample'
+            create_sample(path)
+            with closing(AttentionWorkspace(path)) as ws:
+                part_labels = {part['id']: part['label'] for part in ws.state()['a_reference']['parts']}
+            self.assertEqual(len(part_labels),5)
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            for width, height in ((1366,768), (420,768)):
+                page = browser.new_page(offline=True, viewport=dict(width=width, height=height))
+                page.goto((path/'attention.html').as_uri())
+                chart = page.locator('#attention-map')
+                expect(chart.locator('[data-position-region^="part:"]')).to_have_count(5)
+                for part_id, part_label in part_labels.items():
+                    region = chart.locator(f'[data-position-region="part:{part_id}"]')
+                    expect(region.locator('text').first).to_have_text(part_label)
+                self.assertEqual(svg_text_collisions(chart), [])
+                expect(chart).to_contain_text('尚无条目')
+                expect(chart).to_contain_text('0/2 当前对应')
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+                if evidence:
+                    Path(evidence).mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(Path(evidence)/f'positions-example-5-parts-{width}.png'))
+                if width == 1366:
+                    with page.expect_download() as download:
+                        page.locator('#export-map-svg').click()
+                    from PIL import Image
+                    from xml.etree import ElementTree
+                    exported = ElementTree.parse(download.value.path()).getroot()
+                    for part_id in part_labels:
+                        self.assertIsNotNone(exported.find(f'.//*[@data-position-region="part:{part_id}"]'))
+                    with page.expect_download() as download:
+                        page.locator('#export-map-png').click()
+                    with Image.open(download.value.path()) as png:
+                        self.assertEqual(png.size, (int(exported.get('width')), int(exported.get('height'))))
+                page.locator('#map-a-toggle').press('Space')
+                expect(chart.locator('[data-position-region^="part:"]')).to_have_count(0)
+                expect(chart).to_contain_text('图表可读性')
+                page.close()
+            page = browser.new_page(offline=True, viewport=dict(width=1366, height=768))
+            for count in (0, 1, 2, 4):
+                with self.subTest(a_parts=count):
+                    path = Path(folder)/f'input-{count}'
+                    with closing(AttentionWorkspace(path)) as ws:
+                        ws.build({
+                            'schema': 'attention-input/1',
+                            'records': [dict(anchor='合成录入', text='需说明来源', visibility='author_visible')],
+                            'a_reference': {
+                                'version': '合成A' if count else 'none',
+                                'parts': [dict(id=f'p{i}', label=f'自定部分{i}') for i in range(count)],
+                                'items': [dict(id=f'a{i}', part_id=f'p{i}', text=f'合成条文{i}', locator='合成')
+                                          for i in range(count)],
+                            },
+                        })
+                    page.goto((path/'attention.html').as_uri())
+                    chart = page.locator('#attention-map')
+                    expect(chart.locator('[data-position-region^="part:"]')).to_have_count(count)
+                    if count == 0:
+                        expect(page.locator('#map-a-toggle')).to_be_disabled()
+                    else:
+                        for index in range(count):
+                            expect(chart.locator(f'[data-position-region="part:p{index}"]')).to_contain_text(f'自定部分{index}')
+            browser.close()
+
     def test_dense_parts_keep_keyboard_targets_and_full_export_after_focusing(self):
         from playwright.sync_api import expect
         state = oracle_state()
@@ -222,6 +292,7 @@ class Positions(unittest.TestCase):
             for width in (1366, 320):
                 page.set_viewport_size({'width': width, 'height': 768})
                 expect(chart).to_contain_text('15 个部分')
+                expect(chart.locator('[data-position-region^="part:"]')).to_have_count(15)
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                 bounds = chart.locator('svg').evaluate("""(svg) => {
                     const width = svg.viewBox.baseVal.width;
@@ -240,6 +311,7 @@ class Positions(unittest.TestCase):
             pick.select_option('part:P1')
             expect(pick).to_be_focused()
             expect(page.locator('#map-scope')).to_contain_text('数据与方法')
+            expect(chart.locator('[data-position-region^="part:"]')).to_have_count(1)
             expect(page.locator('#position-drill summary').filter(has_text='完整条文 dense-0')).to_have_count(0)
             mark = chart.locator('[data-map-record="r2"][data-map-region="part:P1"]')
             mark.press('Enter')

@@ -49,7 +49,7 @@ function model(value){
 }
 function lines(text,limit){const chars=Array.from(text||''),result=[];for(let i=0;i<chars.length;i+=limit)result.push(chars.slice(i,i+limit).join(''));return result.length?result:[''];}
 function fullIndex(width, exporting=false){
- const narrow=width<620, pad=22, gap=26, hasA=showA&&summary.a_reference.items.length>0;
+ const narrow=width<620, pad=22, gap=26, hasA=groups.some(g=>g.kind==='item');
  const leftWidth=hasA&&!narrow?Math.round(width*.62):width;
  const rightWidth=hasA&&!narrow?width-leftWidth-gap:width;
  let ly=exporting?112:28,ry=ly,part;
@@ -150,9 +150,9 @@ function overview(width, exporting=false, index=groups){
  svg('rect',{width:'100%',height:'100%',fill:'#17191a'},s);
  if(exporting){svg('text',{x:18,y:27,fill:'#e4e7e8','font-size':19},s,'B关注分布');svg('text',{x:18,y:51,fill:'#b0b7b9'},s,'当前筛选 · 分母 '+selection.recordIds.length+' 条评语记录 · 保存修订 '+summary.revision);svg('text',{x:18,y:73,fill:'#b0b7b9'},s,'A版本 '+(summary.a_version||'未导入')+' · 单位：记录并集；同源投影不可相加');}
  function activate(row,region,record){document.dispatchEvent(new CustomEvent('attention-map-select',{detail:{record_id:record.record_id,facet_ids:record.facets,region_id:region,theme_id:row.theme,cluster_records:[...row.records.values()].map(r=>({record_id:r.record_id,facet_ids:r.facets}))}}));}
- function cluster(row,x,y,region,maxWidth=180){
+ function cluster(row,x,y,region,maxWidth=180,parent=s){
   const selected=selection.selectedRecordId;
-  const g=svg('g',{'data-map-theme':row.theme},s),title=label(row.theme),titleLines=lines(title,Math.max(6,Math.floor(maxWidth/14))).slice(0,2);
+  const g=svg('g',{'data-map-theme':row.theme},parent),title=label(row.theme),titleLines=lines(title,Math.max(6,Math.floor(maxWidth/14))).slice(0,2);
   svg('title',{},g,title);
   if(titleLines.join('').length<title.length)titleLines[titleLines.length-1]=short(titleLines.at(-1),Array.from(titleLines.at(-1)).length-1);
   titleLines.forEach((t,i)=>svg('text',{x,y:y+i*18,'text-anchor':'middle',fill:'#e4e7e8'},g,t));
@@ -170,71 +170,71 @@ function overview(width, exporting=false, index=groups){
  }
  let end=top;
  if(hasA){
-  const aggregate=parts.length>3||(parts.length>1&&leftWidth<350);
-  const plotted=aggregate?[{id:'part:overview',label:parts.length+' 个A部分 · 合并概览',groups:index.filter(g=>g.kind==='item')}]:parts;
-  for(const part of plotted){
+  for(const part of parts){
    part.rows=combinedRows(part.groups).sort((a,b)=>Number(b.records.has(selection.selectedRecordId))-Number(a.records.has(selection.selectedRecordId))||b.records.size-a.records.size||label(a.theme).localeCompare(label(b.theme)));
   }
-  const compact=radius>=170&&plotted.every(part=>Array.from(part.label).length<=7&&
+  const compact=parts.length<=3&&radius>=170&&parts.every(part=>Array.from(part.label).length<=7&&
     part.rows.length<=1&&part.rows.every(row=>row.records.size<=4&&Array.from(label(row.theme)).length<=7));
-  const useBands=!aggregate&&(plotted.length===1?plotted[0].rows.length>1:!compact);
-  const split=plotted.length>1&&!useBands;
-  const subtitle='本版A工作参照'+(aggregate||useBands||parts.length===1?' · '+parts.length+' 个部分':'');
-  svg('text',{x:cx,y:top-22,'text-anchor':'middle',fill:'#b0b7b9'},s,subtitle);
-  const n=plotted.length,background=svg('g',{},s);
-  if(!split&&!useBands)svg('circle',{cx,cy,r:radius,fill:'#1d2223',stroke:'#454c4f'},background);
-  let bandTop=top;
-  plotted.forEach((part,i)=>{
+  const split=compact&&parts.length>1;
+  svg('text',{x:cx,y:top-22,'text-anchor':'middle',fill:'#b0b7b9'},s,'本版A工作参照 · '+parts.length+' 个部分');
+  const background=svg('g',{},s);
+  if(compact&&!split)svg('circle',{cx,cy,r:radius,fill:'#1d2223',stroke:'#454c4f'},background);
+  const plotWidth=leftWidth-24;
+  const minRegionWidth=parts.some(part=>Array.from(part.label).length>12)?211:150;
+  const regionColumns=parts.length<=3||width<620?1:Math.min(3,Math.max(1,Math.floor(plotWidth/minRegionWidth)));
+  let rowTop=top,rowBottom=top,rowRegions=[];
+  parts.forEach((part,i)=>{
    const {rows}=part;
    const region=svg('g',{'data-position-region':part.id,...(rows.some(r=>r.records.has(selection.selectedRecordId))?{'aria-current':'true'}:{})},s);
    svg('title',{},region,part.label);
-   const empty=part.groups.every(g=>g.empty)?'尚无条目':'0 当前对应';
-   function showMore(x,y,slots){
-    const more=svg('a',{href:'#map-theme-select','aria-label':part.label+' · 查看其余 '+(rows.length-slots)+' 个主题'},region);
-    svg('text',{x,y,'text-anchor':'middle',fill:'#d5e8e2','font-size':12},more,'另 '+(rows.length-slots)+' 主题');
-    if(!exporting)bindMapLink(more,[part.id,'themes'],()=>document.getElementById('map-theme-select').focus());
-   }
-   if(useBands){
-    const bandWidth=leftWidth-38,pad=16,contentWidth=bandWidth-pad*2;
+   const empty=part.groups.every(g=>g.empty)?'尚无条目':'0/'+selection.recordIds.length+' 当前对应';
+   if(!compact){
+    const column=i%regionColumns,columnsInRow=Math.min(regionColumns,parts.length-i+column);
+    const regionWidth=plotWidth/columnsInRow,x=12+column*regionWidth,pad=12,contentWidth=regionWidth-pad*2;
     const title=lines(part.label,Math.floor(contentWidth/13));
-    title.forEach((text,j)=>svg('text',{x:18+pad,y:bandTop+28+j*19,fill:'#b0b7b9','font-size':13},region,text));
-    let y=bandTop+33+title.length*19;
+    title.forEach((line,j)=>svg('text',{x:x+pad,y:rowTop+22+j*19,fill:'#b0b7b9','font-size':13},region,line));
+    let y=rowTop+21+title.length*19;
     const columns=Math.max(1,Math.min(rows.length,Math.floor(contentWidth/146)));
     const columnWidth=contentWidth/columns,slots=columns*2;
     const shown=rows.slice(0,slots);
     for(let start=0;start<shown.length;start+=columns){
      let bottom=y;
      shown.slice(start,start+columns).forEach((row,col)=>{
-      const x=18+pad+(col+.5)*columnWidth;
-      bottom=Math.max(bottom,cluster(row,x,y,part.id,columnWidth-10));
+      const center=x+pad+(col+.5)*columnWidth;
+      bottom=Math.max(bottom,cluster(row,center,y,part.id,columnWidth-10,region));
      });
      y=bottom;
     }
-    if(!rows.length){svg('text',{x:18+pad,y,fill:'#b0b7b9','font-size':12},region,empty);y+=18;}
-    if(rows.length>slots){showMore(cx,y,slots);y+=20;}
-    svg('rect',{x:18,y:bandTop,width:bandWidth,height:y-bandTop,rx:14,fill:'#1d2223',stroke:'#454c4f'},background);
-    bandTop=y+14;
+    if(!rows.length){svg('text',{x:x+pad,y,fill:'#b0b7b9','font-size':12},region,empty);y+=15;}
+    if(rows.length>slots){
+     const more=svg('a',{href:'#map-theme-select','aria-label':part.label+' · 查看其余 '+(rows.length-slots)+' 个主题'},region);
+     svg('text',{x:x+pad,y,fill:'#d5e8e2','font-size':12},more,'另 '+(rows.length-slots)+' 主题');
+     if(!exporting)bindMapLink(more,[part.id,'themes'],()=>document.getElementById('map-theme-select').focus());
+     y+=15;
+    }
+    rowRegions.push({region,x});
+    rowBottom=Math.max(rowBottom,y);
+    if(rowRegions.length===columnsInRow){
+     for(const area of rowRegions)area.region.prepend(svg('rect',{
+      x:area.x,y:rowTop,width:regionWidth,height:rowBottom-rowTop,fill:'#1d2223',stroke:'#454c4f'}));
+     rowRegions=[];
+     rowTop=rowBottom;
+    }
     return;
    }
-   const start=-Math.PI/2+i*2*Math.PI/n,finish=start+2*Math.PI/n,mid=(start+finish)/2;
+   const n=parts.length,start=-Math.PI/2+i*2*Math.PI/n,finish=start+2*Math.PI/n,mid=(start+finish)/2;
    if(split)svg('path',{d:'M '+cx+' '+cy+' L '+(cx+radius*Math.cos(start))+' '+(cy+radius*Math.sin(start))+' A '+radius+' '+radius+' 0 '+(finish-start>Math.PI?1:0)+' 1 '+(cx+radius*Math.cos(finish))+' '+(cy+radius*Math.sin(finish))+' Z',fill:'#1d2223',stroke:'#454c4f'},background);
-   const lx=split?cx+Math.cos(mid)*radius*.54:cx;
-   const ly=split?cy+(n===3?(Math.sin(mid)>0?39:-74):-52):top+42;
-   const lineLimit=split?8:Math.max(10,Math.floor((radius*1.55)/14));
-   const partLabel=aggregate?'合并显示 A 条目中的主题':part.label;
-   lines(short(partLabel,lineLimit*2),lineLimit+1).slice(0,2).forEach((text,j)=>svg('text',{x:lx,y:ly+j*17,'text-anchor':'middle',fill:'#b0b7b9','font-size':13},region,text));
-   const ry=split?ly+31:top+92;
-   const slots=aggregate&&radius>=166&&rows.length>1?2:1;
-   let lastY=ry;
-   rows.slice(0,slots).forEach((row,j)=>{
-    const x=lx+(slots===2?(j-.5)*radius:0);
-    lastY=Math.max(lastY,cluster(row,x,ry,part.id,slots===2?radius-10:split?116:Math.min(200,leftWidth-36)));
-   });
-   if(!rows.length)svg('text',{x:lx,y:ry,'text-anchor':'middle',fill:'#b0b7b9','font-size':12},region,empty);
-   if(rows.length>slots)showMore(lx,lastY-7,slots);
+   const x=split?cx+Math.cos(mid)*radius*.54:cx;
+   const titleY=split?cy+(n===3?(Math.sin(mid)>0?39:-74):-52):top+42;
+   svg('text',{x,y:titleY,'text-anchor':'middle',fill:'#b0b7b9','font-size':13},region,part.label);
+   const clusterY=titleY+(split?31:50);
+   if(rows.length)cluster(rows[0],x,clusterY,part.id,116,region);
+   else svg('text',{x,y:clusterY,'text-anchor':'middle',fill:'#b0b7b9','font-size':12},region,empty);
   });
-  if(useBands)end=bandTop;
-  else{svg('circle',{cx,cy,r:radius,fill:'none',stroke:'#697376','pointer-events':'none'},s);end=cy+radius+28;}
+  if(compact){
+   svg('circle',{cx,cy,r:radius,fill:'none',stroke:'#697376','pointer-events':'none'},s);
+   end=cy+radius+28;
+  }else end=rowBottom+12;
  }
  let otherY=sideBySide?top:hasA?end+24:top;
  for(const group of index.filter(g=>g.kind!=='item')){
@@ -282,7 +282,7 @@ function render(value,root){
  root.replaceChildren();
  html('h3','B关注分布',root);
  const controls=html('div',null,root,{class:'map-controls'}),aLabel=html('label',null,controls),toggle=html('input',null,aLabel,{type:'checkbox',id:'map-a-toggle'});
- toggle.checked=showA;toggle.disabled=!summary.a_reference.items.length;
+ toggle.checked=showA;toggle.disabled=!summary.a_reference.items.length&&!summary.a_reference.parts?.length;
  html('span','显示A工作参照',aLabel);
  toggle.onchange=()=>{showA=toggle.checked;render(selection,root);};
  const partChoices=partGroups(groups);

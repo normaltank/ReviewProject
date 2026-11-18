@@ -13,13 +13,19 @@ def create_sample(destination):
             '为试用虚构的材料，不是真实评语','纯合成示例（非真实材料）')
     draft.set_a({'version':'合成示例A-v1（非金标）','parts':[
         {'id':'illustration','label':'图表说明'},{'id':'scope','label':'材料范围'},
-        {'id':'empty','label':'保留的空部分'}], 'items':[
+        {'id':'robustness','label':'稳健性检验'},{'id':'ethics','label':'研究伦理'},
+        {'id':'limitations','label':'研究局限'}], 'items':[
         {'id':'legend','part_id':'illustration','text':'说明图表中符号的含义。','locator':'合成A第一条'},
-        {'id':'sample','part_id':'scope','text':'说明样本及适用范围。','locator':'合成A第二条'}]})
+        {'id':'sample','part_id':'scope','text':'说明样本及适用范围。','locator':'合成A第二条'},
+        {'id':'sensitivity','part_id':'robustness','text':'说明更换分析设定后结论是否变化。','locator':'合成A第三条'},
+        {'id':'participants','part_id':'ethics','text':'如涉及研究参与者，说明知情同意与隐私保护。','locator':'合成A第四条'}]})
     state=build_prepared(draft,destination)
     themes=[{'theme_id':key,'label':label,'definition':definition,'parent_ids':[],'status':'working'}
         for key,label,definition in [('figure','图表可读性','图例与符号说明'),
             ('range','样本范围','材料及样本覆盖的边界'),('writing','表达组织','行文清楚程度')]]
+    a_reasons={
+        'legend':'A关注图表符号说明，补充图例是同一范围内的建议。',
+        'sample':'A关注样本及适用范围，此建议同样涉及样本覆盖边界。'}
     opinions=[]
     for index,(record_index,quote,reading,theme,a_id) in enumerate([
         (0,'若图表保留，请补充图例。','保留图表时补充图例','figure','legend'),
@@ -37,10 +43,10 @@ def create_sample(destination):
             'expression':{'function':'肯定' if theme=='writing' else '建议','boilerplate_candidate':False}}
         if a_id:
             facet['a_links']=[{'a_item_id':a_id,'version':state['a_reference']['version'],
-                'kind':'explicit','scope':reading,'reason':'示范A直接列出图例或样本范围说明',
+                'kind':'explicit','scope':reading,'reason':a_reasons[a_id],
                 'evidence':evidence,'status':'working'}]
         else:
-            facet['outside']=[{'scope':'论述清楚程度','reason':'此合成A只列图例与样本范围，没有明示表达清楚程度；不等于不关注。',
+            facet['outside']=[{'scope':'论述清楚程度','reason':'本版合成A未明示论述是否清楚。',
                 'evidence':evidence,'status':'working'}]
         opinions.append({'opinion_id':'sample-opinion-'+str(index),'record_id':record['record_id'],
             'interpretation':reading,'status':'working','facets':[facet]})

@@ -76,7 +76,8 @@ class WebWorkbenchTests(unittest.TestCase):
             self.assertEqual(len(state['records']),2)
             self.assertEqual(len(state['themes']),3)
             self.assertEqual(len(state['opinions']),3)
-            self.assertEqual(len(state['a_reference']['items']),2)
+            self.assertEqual(len(state['a_reference']['parts']),5)
+            self.assertEqual(len(state['a_reference']['items']),4)
             self.assertEqual(post(app,'/api/home',{})['jobs'],[])
             self.assertIn('非专业金标',state['history'][-1]['reason'])
             from copy import deepcopy
