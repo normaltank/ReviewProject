@@ -34,6 +34,10 @@ LICENSE_PACKAGES = (
     "pyinstaller", "python-docx", "lxml", "typing_extensions",
     "jsonschema", "attrs", "referencing", "rpds-py", "jsonschema-specifications",
 )
+ADAPTER_FILES = (
+    "attention_candidates.py", "attention_api_provider.py",
+    "attention_provider.py", "attention_semantic.py",
+)
 
 
 def sha(path):
@@ -63,6 +67,19 @@ def trial_config(key_file):
         config = staging / "trial-config.json"
         write_json(config, {"deepseek_api_key": key})
         yield config
+
+
+@contextmanager
+def adapter_manifest():
+    """Hash the exact source adapters without distributing their source files."""
+    with tempfile.TemporaryDirectory(prefix="ReviewProject-adapter-staging-") as temporary:
+        staging = Path(temporary).resolve()
+        if staging.is_relative_to(ROOT):
+            raise SystemExit("Adapter staging must be outside the source tree")
+        manifest = staging / "adapter-hashes.json"
+        write_json(manifest, {"schema": "attention-adapter-hashes/1",
+                             "files": {name: sha(ROOT / "reviewproto" / name) for name in ADAPTER_FILES}})
+        yield manifest
 
 
 def collect_licenses(target):
@@ -163,7 +180,8 @@ def main(argv=None):
     for module in EXCLUDED:
         command.extend(["--exclude-module", module])
     command.append(str(entry))
-    with trial_config(args.trial_key_file) as config:
+    with trial_config(args.trial_key_file) as config, adapter_manifest() as adapters:
+        command[-1:-1] = ["--add-data", str(adapters) + ":reviewproto"]
         if config is not None:
             command[-1:-1] = ["--add-data", str(config) + ":reviewproto"]
         with (work / "build.log").open("w", encoding="utf-8") as log:
@@ -175,6 +193,7 @@ def main(argv=None):
         "commit": commit, "python": platform.python_version(), "architecture": "Windows-x64",
         "packages": versions, "resource_allowlist": list(RESOURCES), "excluded_modules": list(EXCLUDED),
         "embedded_trial_credential": args.trial_key_file is not None,
+        "generated_resources": ["adapter-hashes.json"] + (["trial-config.json"] if args.trial_key_file else []),
         "examples": "Explicit synthetic example is created by the Web workbench; no user data is copied.",
     })
     audit_bundle(bundle, work)
