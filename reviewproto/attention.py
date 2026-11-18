@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from .core import ReviewError, digest, require
 from .local_io import atomic, encoded, now, PRIVATE_IGNORE, read_input, load_json, bounded, checked_local, read_json
-from .legacy_source import read_source_workspace
+from .legacy_source import read_source_workspace, section_identity
 
 SCHEMA = 'attention/1'
 
@@ -23,9 +23,15 @@ def _records(payload, base):
         if item.get('kind') == 'workspace':
             path = checked_local(base / item['workspace'])
             source = read_source_workspace(path)
+            expected = item.get('source_selection')
+            if expected is not None:
+                require(isinstance(expected, dict) and expected.get('source_id') == source['source']['source_id'] and
+                        expected.get('revision') == source['revision'], 'E_ATTENTION_REVALIDATION')
             selected = [s for s in source['sections'] if s['section_id'] == item['section_id']]
             require(len(selected) == 1, 'E_ATTENTION_SECTION')
             section = selected[0]
+            if expected is not None:
+                require(expected == section_identity(source, section), 'E_ATTENTION_REVALIDATION')
             require(section['visibility'] in {'author_visible', 'visibility_unknown'}, 'E_ATTENTION_PRIVATE')
             record = {'anchor': item['section_id'], 'text': section['text'], 'visibility': section['visibility'], 'scores': source['scores'], 'locator': section['locator'], 'kind': 'workspace', 'source_id': source['source']['source_id']}
             binding = {'kind': 'workspace', 'path': str(path), 'section_id': item['section_id'], 'revision': source['revision'], 'source_id': source['source']['source_id'], 'fingerprint': digest(encoded(record))}

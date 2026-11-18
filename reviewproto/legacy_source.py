@@ -5,7 +5,7 @@ import sqlite3
 
 from .core import SCHEMA, ReviewError, digest, parse_docx, require
 from .intake import parse_structured
-from .local_io import checked_local, load_json, read_input
+from .local_io import checked_local, encoded, load_json, read_input
 
 APPLICATION_ID = 0x52565031
 SOURCE_FILES = {
@@ -13,6 +13,11 @@ SOURCE_FILES = {
     'structured_json': 'source.json',
     'structured_csv': 'source.csv',
 }
+
+
+def section_identity(state, section):
+    return {'source_id': state['source']['source_id'], 'revision': state['revision'],
+            'section_id': section['section_id'], 'section_fingerprint': digest(encoded(section))}
 
 
 def read_source_workspace(path):

@@ -10,7 +10,7 @@ from pathlib import Path
 from .attention import AttentionWorkspace
 from .attention_a import validate_reference
 from .local_io import bounded, checked_local, encoded
-from .legacy_source import read_source_workspace
+from .legacy_source import read_source_workspace, section_identity
 from .core import require
 
 
@@ -30,12 +30,15 @@ class AttentionInput:
     @staticmethod
     def workspace_options(path):
         state = read_source_workspace(path)
-        return [copy.deepcopy(s) for s in state['sections']
+        return [dict(copy.deepcopy(s), source_selection=section_identity(state, s)) for s in state['sections']
                 if s['visibility'] in {'author_visible', 'visibility_unknown'}]
 
-    def add_workspace(self, path, section_id, paper_id=''):
+    def add_workspace(self, path, section_id, paper_id='', *, expected=None):
         path = checked_local(path)
         state = read_source_workspace(path)
+        if expected is not None:
+            require(isinstance(expected, dict) and expected.get('source_id') == state['source']['source_id'] and
+                    expected.get('revision') == state['revision'], 'E_ATTENTION_REVALIDATION')
         selected = next((s for s in state['sections'] if s['section_id'] == section_id), None)
         require(selected is not None, 'E_ATTENTION_SECTION')
         require(selected['visibility'] in {'author_visible', 'visibility_unknown'}, 'E_ATTENTION_PRIVATE')
@@ -43,7 +46,9 @@ class AttentionInput:
         if any(r.get('workspace') == str(path) for r in self.records):
             require(self.workspace_checks.get(str(path)) == check, 'E_ATTENTION_REVALIDATION')
         self.workspace_checks[str(path)] = check
-        record = dict(kind='workspace', workspace=str(path), section_id=section_id)
+        identity = section_identity(state, selected)
+        require(expected is None or expected == identity, 'E_ATTENTION_REVALIDATION')
+        record = dict(kind='workspace', workspace=str(path), section_id=section_id, source_selection=identity)
         if paper_id:
             record['paper_id'] = nonempty(paper_id)
         self.records.append(record)

@@ -22,12 +22,7 @@ class CandidateSession:
     def generate(self, run_id, provider, record_ids=None, context_chars=24000):
         # Called on worker: create, use and close its connection on this thread.
         with closing(AttentionWorkspace(self.path)) as ws:
-            current = ws.state()
-            require(current['analysis_id'] == self.snapshot['analysis_id'] and
-                    current['revision'] == self.snapshot['revision'] and
-                    current['input_fingerprint'] == self.snapshot['input_fingerprint'],
-                    'E_ATTENTION_TARGET')
-            return generate(ws, run_id, provider, record_ids, context_chars)
+            return generate(ws, run_id, provider, record_ids, context_chars, target=self.snapshot)
 
     def preview(self, run_id):
         with closing(AttentionWorkspace(self.path)) as ws:

@@ -29,6 +29,40 @@ def prepare(path):
 class CandidateWorkflow(unittest.TestCase):
 
 
+    def test_generation_checks_the_actual_snapshot_and_frozen_fingerprints(self):
+        from unittest.mock import patch
+        from reviewproto import attention_candidates as candidates
+        from reviewproto.attention_candidate_service import CandidateSession
+        from reviewproto.attention_input import import_prepared_a
+        from reviewproto.core import ReviewError
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / 'pack'
+            state, response = prepare(path)
+            session = CandidateSession(path)
+            hashes = candidates._adapter_hashes()
+            manifest = root / 'adapter-hashes.json'
+            manifest.write_text(json.dumps({'schema': 'attention-adapter-hashes/1', 'files': hashes}))
+            with patch.object(candidates.sys, 'frozen', True, create=True), patch.object(
+                    candidates, '__file__', str(root / 'attention_candidates.py')):
+                run = session.generate('frozen', ReplayProvider([response]))
+                self.assertEqual(run['adapter_hash'], hashes['attention_candidates.py'])
+                self.assertEqual(run['provider_adapter_hash'], hashes['attention_provider.py'])
+                self.assertEqual(run['semantic_adapter_hash'], hashes['attention_semantic.py'])
+                manifest.unlink()
+                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_ADAPTER_HASHES'):
+                    session.generate('missing-manifest', ReplayProvider([]))
+            with closing(AttentionWorkspace(path)) as ws:
+                import_prepared_a(ws, {'version': 'new', 'items': [
+                    {'id': 'a', 'text': '合成新A', 'locator': '第一项'}]}, '测试', '变更A')
+            provider = ReplayProvider([])
+            with patch.object(provider, 'complete') as complete:
+                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_TARGET'):
+                    session.generate('stale', provider)
+                complete.assert_not_called()
+            self.assertFalse((path / 'candidate-runs' / 'stale').exists())
+            self.assertEqual(run['snapshot']['revision'], state['revision'])
+
     def test_new_candidate_sessions_generate_and_preview_preserve_formal_file_bytes(self):
         from reviewproto.attention_candidate_service import CandidateSession
         with tempfile.TemporaryDirectory() as tmp:
