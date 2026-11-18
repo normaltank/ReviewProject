@@ -10,7 +10,7 @@ API_HINTS = {
     'E_ATTENTION_JSON_FORMAT': 'E_ATTENTION_JSON_FORMAT: invalid JSON draft retained; inspect format repair and unprocessed source scopes.',
     'E_ATTENTION_SCHEMA_FORMAT': 'E_ATTENTION_SCHEMA_FORMAT: schema-invalid draft retained; inspect format repair and unprocessed source scopes.',
     'E_ATTENTION_API_MODEL': 'Use --provider deepseek --model deepseek-flash (4.1 Flash / 1017). Pro is disabled.',
-    'E_DEEPSEEK_CREDENTIAL_MISSING': 'Set DEEPSEEK_API_KEY or explicitly save an API key in the desktop model settings.',
+    'E_DEEPSEEK_CREDENTIAL_MISSING': 'Set DEEPSEEK_API_KEY or save a personal API key in the browser workbench.',
     'E_DEEPSEEK_CREDENTIAL_STORE': 'Re-save the API key as the current Windows user or set DEEPSEEK_API_KEY.'}
 
 
