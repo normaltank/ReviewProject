@@ -34,6 +34,10 @@ LICENSE_PACKAGES = (
     "pyinstaller", "python-docx", "lxml", "typing_extensions",
     "jsonschema", "attrs", "referencing", "rpds-py", "jsonschema-specifications",
 )
+ADAPTER_FILES = (
+    "attention_candidates.py", "attention_api_provider.py",
+    "attention_provider.py", "attention_semantic.py",
+)
 
 
 def sha(path):
@@ -63,6 +67,19 @@ def trial_config(key_file):
         config = staging / "trial-config.json"
         write_json(config, {"deepseek_api_key": key})
         yield config
+
+
+@contextmanager
+def adapter_manifest():
+    """Hash the exact source adapters without distributing their source files."""
+    with tempfile.TemporaryDirectory(prefix="ReviewProject-adapter-staging-") as temporary:
+        staging = Path(temporary).resolve()
+        if staging.is_relative_to(ROOT):
+            raise SystemExit("Adapter staging must be outside the source tree")
+        manifest = staging / "adapter-hashes.json"
+        write_json(manifest, {"schema": "attention-adapter-hashes/1",
+                             "files": {name: sha(ROOT / "reviewproto" / name) for name in ADAPTER_FILES}})
+        yield manifest
 
 
 def collect_licenses(target):
@@ -105,10 +122,12 @@ def collect_licenses(target):
 
 def audit_bundle(bundle, work):
     """Accept only analyzed runtime outputs and explicit release additions."""
-    toc = (work / "pyinstaller" / "ReviewProject" / "Analysis-00.toc").read_text(encoding="utf-8")
-    for forbidden in ("'tkinter", "'_tkinter", "'reviewproto.desktop'", "'reviewproto.native_ui'"):
-        if forbidden in toc:
-            raise RuntimeError("Retired UI reached module graph: " + forbidden)
+    analysis = ast.literal_eval((work / "pyinstaller" / "ReviewProject" / "Analysis-00.toc").read_text(encoding="utf-8"))
+    # Index 5 contains the exclusion configuration, not collected modules.
+    modules = {name for name, source, kind in analysis[14]}
+    for forbidden in EXCLUDED:
+        if any(name == forbidden or name.startswith(forbidden + ".") for name in modules):
+            raise RuntimeError("Excluded module reached module graph: " + forbidden)
     collected = ast.literal_eval((work / "pyinstaller" / "ReviewProject" / "COLLECT-00.toc").read_text(encoding="utf-8"))
     runtime = {name.replace("\\", "/") for name, source, kind in collected[0]}
     for path in bundle.rglob("*"):
@@ -119,7 +138,8 @@ def audit_bundle(bundle, work):
         names = {p.lower() for p in relative.parts}
         if names & {".git", ".tools", ".venv", "tests", "worktrees", "credentials", "afeedback", "bfeedback"}:
             raise RuntimeError("Forbidden directory in bundle: " + str(relative))
-        if path.name.startswith(".env") or path.suffix.lower() in {".sqlite3", ".db", ".dpapi", ".log", ".docx"}:
+        library_template = normalized == "_internal/docx/templates/default.docx"
+        if path.name.startswith(".env") or path.suffix.lower() in {".sqlite3", ".db", ".dpapi", ".log"} or (path.suffix.lower() == ".docx" and not library_template):
             raise RuntimeError("User/development data in bundle: " + str(relative))
         if any(part.lower().startswith(("tcl", "tk8")) for part in relative.parts):
             raise RuntimeError("Tk runtime in bundle: " + str(relative))
@@ -160,7 +180,8 @@ def main(argv=None):
     for module in EXCLUDED:
         command.extend(["--exclude-module", module])
     command.append(str(entry))
-    with trial_config(args.trial_key_file) as config:
+    with trial_config(args.trial_key_file) as config, adapter_manifest() as adapters:
+        command[-1:-1] = ["--add-data", str(adapters) + ":reviewproto"]
         if config is not None:
             command[-1:-1] = ["--add-data", str(config) + ":reviewproto"]
         with (work / "build.log").open("w", encoding="utf-8") as log:
@@ -172,6 +193,7 @@ def main(argv=None):
         "commit": commit, "python": platform.python_version(), "architecture": "Windows-x64",
         "packages": versions, "resource_allowlist": list(RESOURCES), "excluded_modules": list(EXCLUDED),
         "embedded_trial_credential": args.trial_key_file is not None,
+        "generated_resources": ["adapter-hashes.json"] + (["trial-config.json"] if args.trial_key_file else []),
         "examples": "Explicit synthetic example is created by the Web workbench; no user data is copied.",
     })
     audit_bundle(bundle, work)
