@@ -593,9 +593,10 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000, 
     _save(path,run)
     return copy.deepcopy(run)
 
-def preview(workspace,run_id):
+def preview(workspace,run_id,*,state=None):
     run=read_json(checked_local(_path(workspace,run_id)/'run.json'))
-    state=workspace.state()
+    if state is None:
+        state=workspace.state()
     require(run.get('schema')==PROTOCOL and run['analysis_id']==state['analysis_id'],'E_ATTENTION_RUN')
     run['validity']='current' if state['material_status']=='current' and run['binding']==_binding(state) else 'needs_revalidation'
     return run

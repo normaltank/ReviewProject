@@ -1,16 +1,33 @@
 <!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>评语分析 · 工作台</title><link rel="stylesheet" href="/workbench.css">
-<body><header><a href="/workbench" class="brand">评语分析</a><nav aria-label="工作台导航"><button id="show-home">打开分析</button><button id="show-current" hidden>当前分析</button><button id="show-input">录入材料</button><button id="stop">关闭工作台</button></nav></header>
+<body><header><h1 class="brand">评语分析</h1><nav aria-label="工作台导航"><button id="show-home">打开分析</button><button id="show-current" hidden>当前分析</button><button id="show-input" disabled>录入材料</button><button id="stop">关闭工作台</button></nav></header>
 <main><p id="notice" role="status" aria-live="polite">正在读取本机工作台…</p>
-<section id="home"><h1>从这批评语开始</h1><p class="intro">保留原话，整理B关注；按需加入A参照。你可以先人工阅读，也可以明确启动分析服务。</p>
+<section id="home" aria-label="打开或建立分析">
 <div class="opening"><div><h2>打开已有分析</h2><label>分析目录<input id="open-path" placeholder="选择或填写本机分析目录"></label><div class="actions"><button id="browse">浏览本机目录</button><button id="open" class="primary">打开分析</button></div><div id="browser" hidden><p id="browse-path"></p><button id="parent">上一级</button><button id="choose-path">使用此目录</button><div id="directories"></div></div><h3>最近打开</h3><div id="recent"></div></div>
-<div><h2>建立自己的分析</h2><p>录入任意数量B原话与原分。A可以稍后补充。</p><button id="new">新建分析</button><h3>先体验合成示例</h3><p>两条虚构评语，带已保存的示范关注图。可直接阅读、纠正和保存；非专业金标，不调用模型。</p><button id="sample">建立合成示例</button></div></div></section>
+<div><h2>新建分析</h2><button id="new" disabled>录入B原话和可选A</button><h3>合成示例</h3><p>两条虚构评语，可查看关注图并练习修改。</p><button id="sample">建立合成示例</button></div></div></section>
 <section id="input" hidden><h1>录入本批材料</h1><p>编辑的是输入草稿。建立分析后，原话固定；更正B请另建分析，旧分析保留。</p><label>新分析目录<input id="destination" placeholder="填写新的空目录"></label>
 <h2>B评语</h2><div id="records"></div><button id="add-b">加入一条B</button>
 <details><summary>从已有普通来源工作区选择</summary><label>来源工作区目录<input id="source-path"></label><button id="source-load">读取普通分区</button><div id="source-sections"></div></details>
 <h2>A参照 <small>可选</small></h2><label>A版本名称<input id="a-version" value="A-v1"></label><div id="parts"></div><button id="add-part">加入A部分</button><div id="items"></div><button id="add-a">加入A条目</button>
 <div class="actions sticky"><button id="save-draft">保存输入草稿</button><button id="create" class="primary">建立分析</button></div></section>
-<section id="project" hidden><div class="project-heading"><div><h1 id="project-title">当前分析</h1><p id="project-meta"></p></div><a id="result" class="primary button" href="/">进入关注图与逐条阅读</a></div><p id="project-path" class="path"></p><h2>选择分析范围</h2><p>未配置服务时，可以直接进入阅读并人工整理。只有点击“开始分析”才调用DeepSeek。</p><div class="actions"><button id="all-records">全选</button><button id="no-records">清空选择</button></div><div id="scope"></div>
-<p id="configuration-status" role="status">正在读取分析配置…</p><details><summary>分析设置 · DeepSeek 4.1 Flash / 1017</summary><p>个人密钥保存在当前Windows用户的本机凭据层，优先于试用配置；密钥不加入分析包，此页不回显。</p><label>API密钥<input id="api-key" type="password" autocomplete="off"></label><button id="save-key">保存本机密钥</button></details>
-<div class="actions"><button id="generate" class="primary">开始分析</button><button id="refresh">刷新保存状态</button></div><h2>分析任务与待保存结果</h2><div id="jobs"></div><h3>本包候选历史</h3><button id="load-runs">读取候选历史</button><div id="runs"></div>
-<details><summary>更换本包A参照</summary><p>在“录入材料”中准备新的A版本与条目，再点此操作。B与已有观点保留；旧对应将待核。</p><button id="import-a">显式采用草稿中的A版本</button></details></section>
+<section id="project" hidden>
+  <div class="project-heading"><div><h2 id="project-title">当前分析</h2><p id="project-meta" class="muted"></p></div><a id="result" class="primary button" href="/">关注图与逐条阅读</a></div>
+  <p id="project-path" class="path"></p>
+  <section aria-labelledby="scope-title">
+    <div class="project-heading"><h3 id="scope-title">选择本次分析的B原话</h3><div class="actions"><button id="all-records">全选</button><button id="no-records">清空选择</button></div></div>
+    <div id="scope" tabindex="0" aria-labelledby="scope-title"></div>
+    <div class="analysis-action"><button id="generate" class="primary" aria-describedby="send-scope">开始分析</button><p id="send-scope">所选原话与当前 A 条文会发送给 DeepSeek</p></div>
+    <details id="configuration"><summary>分析设置 · DeepSeek 4.1 Flash / 1017</summary><p id="configuration-status" role="status"></p><p>个人密钥保存在当前 Windows 用户的本机凭据层，优先于试用配置。</p><label>API密钥<input id="api-key" type="password" autocomplete="off"></label><button id="save-key">保存本机密钥</button></details>
+  </section>
+  <h3 id="jobs-title" hidden>分析任务</h3><div id="jobs"></div>
+  <details id="candidate-history"><summary>本包候选历史</summary><button id="load-runs">刷新候选历史</button><div id="runs"></div></details>
+  <details><summary>维护当前分析</summary>
+    <div class="actions"><button id="refresh">刷新保存状态</button><button id="recover">恢复已保存视图</button></div>
+    <p>更换A后，B原话与已有观点保留，旧对应转为待核。</p>
+    <button id="import-a">核对草稿中的A版本</button>
+    <section id="a-confirmation" hidden>
+      <p id="a-target"></p><p id="a-change"></p><ol id="a-confirm-items"></ol>
+      <div class="actions"><button id="confirm-a" class="primary">采用此A版本</button><button id="cancel-a">取消</button></div>
+    </section>
+  </details>
+</section>
 </main><script id="workbench-session" type="application/json">{"token":"__WORKBENCH_TOKEN__"}</script><script src="/workbench.js"></script></body></html>

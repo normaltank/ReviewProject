@@ -111,12 +111,89 @@ class WebWorkbenchTests(unittest.TestCase):
                 self.assertEqual(app.state(next(iter(app.projects.values())))['opinions'],[])
                 page.locator('#jobs a').first.click()
                 expect(page.locator('#candidate-preview')).to_contain_text('结果尚未保存')
-                page.go_back();page.locator('#project:not([hidden])').wait_for()
+                page.get_by_role('link',name='返回工作台核对候选').click()
+                page.locator('#project:not([hidden])').wait_for()
                 page.locator('#runs button').first.click()
                 expect(page.locator('#project-meta')).to_contain_text('保存修订 1')
+                expect(page.locator('#runs')).to_contain_text('已接收')
+                expect(page.locator('#runs button')).to_have_count(0)
                 with page.expect_navigation(wait_until='load'):page.locator('#result').click()
                 self.assertIn('有条件地补充图例',page.content())
                 browser.close()
+
+    def test_workspace_selection_keeps_raw_quote_and_group_and_rejects_replacement(self):
+        from legacy_source_fixture import create_legacy_workspace
+        with tempfile.TemporaryDirectory() as tmp, Workbench(Path(tmp)/'data') as app:
+            root = Path(tmp)
+            source = root / 'source'
+            payload = {'scores': [], 'sections': [
+                {'section_id': 'ordinary', 'label': '评审意见', 'text': '选中的原话。'}]}
+            create_legacy_workspace(source, payload)
+            selected = post(app, '/api/source', {'path': str(source)})['sections'][0]
+            self.assertEqual(selected['text'], '选中的原话。')
+            inputs = {'path': str(root/'pack'), 'records': [
+                {'kind': 'workspace', 'workspace': str(source), 'section_id': 'ordinary',
+                 'source_selection': selected['source_selection'], 'paper_id': '材料甲'}],
+                'a_reference': {'version': '未完A', 'parts': [{'id': 'p', 'label': ''}], 'items': []}}
+            post(app, '/api/draft', inputs)
+            self.assertEqual(post(app, '/api/home', {})['draft'], inputs)
+            built = post(app, '/api/create', inputs)
+            self.assertEqual(built['state']['records'][0]['paper_id'], '材料甲')
+            self.assertEqual(built['state']['a_reference']['items'], [])
+            source.rename(root/'saved-source')
+            payload['sections'][0]['text'] = '同路径不同原话。'
+            create_legacy_workspace(source, payload)
+            inputs['path'] = str(root/'replacement')
+            with self.assertRaises(urllib.error.HTTPError) as rejected:
+                post(app, '/api/create', inputs)
+            self.assertEqual(json.load(rejected.exception)['error'], 'E_ATTENTION_REVALIDATION')
+            self.assertFalse((root/'replacement').exists())
+
+    def test_save_requires_current_patch_and_stop_waits_for_transaction_and_response(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from copy import deepcopy
+        entered, release = threading.Event(), threading.Event()
+        with tempfile.TemporaryDirectory() as tmp, Workbench(Path(tmp)/'data') as app:
+            state = post(app, '/api/sample', {})
+            token = app.project(state['id'])['token']
+            change = deepcopy(state['state']['opinions'][0])
+            edit = {key: change[key] for key in ('opinion_id', 'record_id', 'interpretation', 'status', 'facets')}
+            edit['interpretation'] = '此次保存仍须完成'
+            body = {'schema': 'attention-patch/2', 'analysis_id': state['state']['analysis_id'],
+                    'base_revision': state['state']['revision'], 'actor': '合成', 'reason': '停机回归',
+                    'edits': [edit]}
+            with self.assertRaises(urllib.error.HTTPError) as unauthorized:
+                post(app, '/save', body)
+            self.assertEqual(unauthorized.exception.code, 403)
+            with self.assertRaises(urllib.error.HTTPError) as old_format:
+                post(app, '/save', {**body, 'schema': 'attention-patch/1'}, token)
+            self.assertEqual(old_format.exception.code, 400)
+            with self.assertRaises(urllib.error.HTTPError) as wrong_analysis:
+                post(app, '/save', {**body, 'analysis_id': 'another'}, token)
+            self.assertEqual(wrong_analysis.exception.code, 400)
+            result = Path(state['path']) / 'attention.html'
+            result.unlink()
+            post(app, '/api/recover', {'id': state['id']})
+            self.assertTrue(result.is_file())
+            original = AttentionWorkspace.apply
+            def held_apply(ws, payload):
+                entered.set()
+                if not release.wait(5):
+                    raise AssertionError('Test failed to release the save')
+                return original(ws, payload)
+            with patch.object(AttentionWorkspace, 'apply', held_apply), ThreadPoolExecutor(max_workers=2) as pool:
+                saved = pool.submit(post, app, '/save', body, token)
+                try:
+                    self.assertTrue(entered.wait(3))
+                    stopped = pool.submit(post, app, '/api/stop', {})
+                    self.assertFalse(app.closed.wait(.15))
+                    self.assertFalse(stopped.done())
+                finally:
+                    release.set()
+                self.assertEqual(saved.result(5), {'revision': state['state']['revision']+1})
+                self.assertEqual(stopped.result(5), {'status': 'stopping'})
+            self.assertTrue(app.closed.wait(5))
+            self.assertEqual(app.state(app.project(state['id']))['opinions'][0]['interpretation'], '此次保存仍须完成')
 
     def test_no_browser_launcher_reports_actual_port_and_exits_on_stop(self):
         import subprocess,sys,re
@@ -160,7 +237,7 @@ class WebWorkbenchTests(unittest.TestCase):
             page.locator('#items').get_by_label('原文定位').fill('合成A第1段')
             page.locator('#save-draft').click()
             page.get_by_text('输入草稿已保存在本机。尚未建立分析。',exact=True).wait_for()
-            page.reload();page.get_by_text('工作台已就绪。材料与结果保留在本机。',exact=True).wait_for();page.locator('#show-input').click()
+            page.reload();page.locator('#show-input').click()
             self.assertEqual(page.locator('#records textarea').count(),2)
             page.locator('#create').click();page.locator('#project:not([hidden])').wait_for()
             p=next(iter(app.projects.values()));state=app.state(p)
@@ -185,6 +262,44 @@ class WebWorkbenchTests(unittest.TestCase):
                 if evidence:page.screenshot(path=str(Path(evidence)/('workbench-home-'+str(width)+'.png')),full_page=True)
             self.assertEqual(errors,[])
             browser.close()
+    def test_headless_partial_a_survives_home_and_explicit_replacement_shows_target(self):
+        from playwright.sync_api import sync_playwright, expect
+        with tempfile.TemporaryDirectory() as tmp, Workbench(Path(tmp)/'data') as app, sync_playwright() as pw:
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(viewport={'width': 1366, 'height': 768})
+            page.goto(app.url)
+            page.locator('#new').click()
+            page.locator('#destination').fill(str(Path(tmp)/'target'))
+            page.locator('#records textarea').fill('合成原话')
+            page.locator('#a-version').fill('尚未完成的A')
+            page.locator('#add-part').click()
+            page.locator('#parts input').fill('尚未填写条文的部分')
+            page.locator('#save-draft').click()
+            expect(page.locator('#notice')).to_contain_text('输入草稿已保存')
+            page.reload()
+            page.locator('#show-input').click()
+            expect(page.locator('#a-version')).to_have_value('尚未完成的A')
+            expect(page.locator('#parts input')).to_have_value('尚未填写条文的部分')
+            page.locator('#a-version').fill('未保存的新版本')
+            page.locator('#show-home').click()
+            page.locator('#show-input').click()
+            expect(page.locator('#a-version')).to_have_value('未保存的新版本')
+            page.locator('#create').click()
+            expect(page.locator('#project-meta')).to_contain_text('尚未提供A参照')
+            page.locator('#show-input').click()
+            page.locator('#add-a').click()
+            page.locator('#items textarea').fill('合成A新条目')
+            page.locator('#items').get_by_label('原文定位').fill('合成第1段')
+            page.locator('#show-current').click()
+            page.get_by_text('维护当前分析', exact=True).click()
+            page.locator('#import-a').click()
+            expect(page.locator('#a-target')).to_contain_text('target')
+            expect(page.locator('#a-confirm-items')).to_contain_text('合成A新条目')
+            expect(page.locator('#project-meta')).to_contain_text('尚未提供A参照')
+            page.locator('#confirm-a').click()
+            expect(page.locator('#project-meta')).to_contain_text('未保存的新版本')
+            browser.close()
+
     def test_create_reopen_preserves_input_and_rejects_foreign_origin(self):
         with tempfile.TemporaryDirectory() as tmp, Workbench(Path(tmp)/'data') as app:
             def post(route, data, origin=None):

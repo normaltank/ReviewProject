@@ -24,12 +24,11 @@ class CandidateSession:
         with closing(AttentionWorkspace(self.path)) as ws:
             return generate(ws, run_id, provider, record_ids, context_chars, target=self.snapshot)
 
-    def preview(self, run_id):
+    def inspect(self, run_id):
         with closing(AttentionWorkspace(self.path)) as ws:
-            run = preview(ws, run_id)
             current = ws.state()
-            if current['material_status'] != 'current':
-                run['validity'] = 'needs_revalidation'
+            require(current['analysis_id'] == self.snapshot['analysis_id'], 'E_ATTENTION_TARGET')
+            run = preview(ws, run_id, state=current)
             from .local_io import read_json, checked_local
             from .local_io import encoded
             from .core import digest
@@ -38,6 +37,10 @@ class CandidateSession:
                 fingerprint = digest(encoded(read_json(receipt)))
                 applied = next((h for h in current['history'] if h['fingerprint'] == fingerprint), None)
                 run['accepted_revision'] = applied['revision'] if applied else None
+        return run
+
+    def preview(self, run_id):
+        run = self.inspect(run_id)
         target = self.path / 'candidate-runs' / run_id / 'preview.html'
         from .local_io import atomic
         atomic(target, render_candidate_preview(run).encode('utf-8'))

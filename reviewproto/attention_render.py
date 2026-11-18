@@ -1,4 +1,5 @@
 """Recoverable trusted-editor HTML projection, no remote requests."""
+import html
 import json
 from pathlib import Path
 from .attention_summary import summarize
@@ -28,8 +29,9 @@ def render(state, session=None):
     if session:
         context = json.dumps(session, ensure_ascii=True).replace('<', '\\u003c')
         page = page.replace("connect-src 'none'", "connect-src 'self'")
-        if session.get('workbench_url') == '/workbench':
-            page = page.replace('<nav aria-label="结果页导航">', '<nav aria-label="结果页导航"><a href="/workbench">返回工作台</a>', 1)
+        if session.get('workbench_url'):
+            url = html.escape(session['workbench_url'], quote=True)
+            page = page.replace('<nav aria-label="结果页导航">', '<nav aria-label="结果页导航"><a href="' + url + '">返回工作台</a>', 1)
         page = page.replace('<script id="attention-data"', '<script id="attention-session" type="application/json">' + context + '</script><script id="attention-data"', 1)
     page = page.replace('修改后下载修改文件，回本机窗口保存，再重开查看。', '修改后点击“保存修改”。保存成功后更新当前结果。' if session else '这是静态导出页；可导出草稿，不能直接保存。请从桌面打开当前结果继续编辑。')
     page = page.replace('<button id="stage"', '<button id="save" type="button"' + ('' if session else ' disabled') + '>保存修改</button><button id="stage"')

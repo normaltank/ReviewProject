@@ -2,8 +2,7 @@
 from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit, parse_qs
-import json
+from urllib.parse import urlsplit, parse_qs, urlencode
 import secrets
 import threading
 import uuid
@@ -11,7 +10,7 @@ import uuid
 from .attention import AttentionWorkspace
 from .attention_input import AttentionInput, build_prepared, import_prepared_a
 from .attention_candidate_service import CandidateSession
-from .attention_candidates import preview
+from .attention_candidate_render import render_candidate_preview
 from .attention_api_provider import DeepSeekProvider
 from .attention_render import render
 from .local_io import checked_local, load_json, atomic, encoded
@@ -28,6 +27,10 @@ class Workbench:
         self.closed=threading.Event()
         app=self
         class Handler(BaseHTTPRequestHandler):
+            def setup(self):
+                self.request.settimeout(10)
+                super().setup()
+
             def log_message(self,*args): pass
             def respond(self,status,payload,kind='application/json'):
                 raw=payload.encode('utf-8') if isinstance(payload,str) else encoded(payload)
@@ -54,45 +57,71 @@ class Workbench:
                         from .credential import credential_status
                         return self.respond(200,credential_status())
                     if route.path in ('/result','/preview'):
-                        project=app.project(query.get('id',[''])[0])
-                        if route.path=='/result':
-                            state=app.state(project)
-                            return self.respond(200,render(state,session={'token':project['token'],'workbench_url':'/workbench'}),'text/html')
-                        run=query.get('run',[''])[0]
-                        session=CandidateSession(project['path']); require(run in session.runs(),'E_ATTENTION_RUN')
-                        html=session.preview(run).read_text(encoding='utf-8')
-                        return self.respond(200,html.replace('<body>','<body><nav><a href="/workbench">返回工作台核对并接收候选</a></nav>',1),'text/html')
+                        key = query.get('id', [''])[0]
+                        with app.lock:
+                            require(not app.stopping, 'E_WORKBENCH_STOPPING')
+                            project = app.project(key)
+                            if route.path == '/result':
+                                session = {'token': project['token'], 'workbench_url': '/workbench?' + urlencode({'project': key})}
+                                html = render(app.state(project), session=session)
+                            else:
+                                run = query.get('run', [''])[0]
+                                session = app.candidate_session(project)
+                                require(run in session.runs(), 'E_ATTENTION_RUN')
+                                html = render_candidate_preview(session.inspect(run),
+                                    workbench_url='/workbench?' + urlencode({'project': key, 'run': run}),
+                                    result_url='/result?' + urlencode({'id': key}))
+                        return self.respond(200, html, 'text/html')
                     return self.respond(404,{'error':'E_NOT_FOUND'})
                 except Exception as exc: self.failure(exc)
             def failure(self,exc):
                 code=str(exc) if isinstance(exc,ReviewError) else 'E_WORKBENCH_REQUEST'
                 self.respond(409,{'error':code})
             def do_POST(self):
-                token=self.headers.get('X-Attention-Token','')
-                if (self.headers.get('Host')!=app.authority or self.headers.get('Origin')!=app.origin or
-                    not (secrets.compare_digest(token,app.token) or self.path=='/save' and
-                         any(secrets.compare_digest(token,p['token']) for p in app.projects.values()))):
-                    return self.respond(403,{'error':'E_ATTENTION_SESSION'})
+                self.close_connection = True
+                if self.headers.get('Host') != app.authority or self.headers.get('Origin') != app.origin:
+                    return self.respond(403, {'error': 'E_ATTENTION_SESSION'})
+                token = self.headers.get('X-Attention-Token', '')
+                with app.lock:
+                    project = next((p for p in app.projects.values() if secrets.compare_digest(token, p['token'])), None) if self.path == '/save' else None
+                authorized = project is not None if self.path == '/save' else secrets.compare_digest(token, app.token)
+                if not authorized:
+                    return self.respond(403, {'error': 'E_ATTENTION_SESSION'})
                 try:
-                    size=int(self.headers.get('Content-Length','0'))
-                    require(0<size<=10_000_000 and not self.headers.get('Transfer-Encoding') and
-                            self.headers.get('Content-Type','').split(';')[0]=='application/json','E_ATTENTION_REQUEST')
-                    self.connection.settimeout(10)
-                    payload=load_json(self.rfile.read(size)); require(isinstance(payload,dict),'E_ATTENTION_REQUEST')
-                    if self.path=='/save':
-                        project=next(p for p in app.projects.values() if secrets.compare_digest(token,p['token']))
-                        with closing(AttentionWorkspace(project['path'])) as ws:
-                            require(ws.state()['analysis_id']==project['analysis_id'],'E_ATTENTION_TARGET')
-                            state=ws.apply(payload)
-                        return self.respond(200,{'revision':state['revision']})
-                    if self.path=='/api/stop':
-                        require(not any(j['status']=='running' for j in app.jobs.values()),'E_WORKBENCH_BUSY')
-                        self.respond(200,{'status':'stopping'})
-                        threading.Thread(target=app.close,daemon=True).start(); return
-                    with app.lock: result=app.action(self.path,payload)
-                    self.respond(200,result)
-                except Exception as exc: self.failure(exc)
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if not (0 < size <= 10_000_000 and not self.headers.get('Transfer-Encoding') and
+                            self.headers.get('Content-Type', '').split(';')[0] == 'application/json'):
+                        raise ValueError('request')
+                    payload = load_json(self.rfile.read(size))
+                    if not isinstance(payload, dict) or (project and
+                            (payload.get('schema') != 'attention-patch/2' or payload.get('analysis_id') != project['analysis_id'])):
+                        raise ValueError('request')
+                except (ValueError, OSError, ReviewError):
+                    return self.respond(400, {'error': 'E_ATTENTION_REQUEST'})
+                try:
+                    with app.lock:
+                        require(not app.stopping, 'E_WORKBENCH_STOPPING')
+                        if project:
+                            with closing(AttentionWorkspace(project['path'])) as ws:
+                                require(ws.state()['analysis_id'] == project['analysis_id'], 'E_ATTENTION_TARGET')
+                                result = {'revision': ws.apply(payload)['revision']}
+                        elif self.path == '/api/stop':
+                            require(not any(j['status'] == 'running' for j in app.jobs.values()), 'E_WORKBENCH_BUSY')
+                            app.stopping = True
+                            result = {'status': 'stopping'}
+                        else:
+                            result = app.action(self.path, payload)
+                    try:
+                        self.respond(200, result)
+                    finally:
+                        if self.path == '/api/stop':
+                            threading.Thread(target=app.finish_close, daemon=False).start()
+                except Exception as exc:
+                    if self.path == '/save' and not isinstance(exc, ReviewError):
+                        return self.respond(500, {'error': 'E_ATTENTION_SAVE'})
+                    self.failure(exc)
         self.server=ThreadingHTTPServer(('127.0.0.1',port),Handler)
+        self.server.daemon_threads = False
         self.authority='127.0.0.1:'+str(self.server.server_port); self.origin='http://'+self.authority; self.url=self.origin+'/'
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True); self.thread.start()
 
@@ -121,10 +150,13 @@ class Workbench:
     def draft(self,payload):
         draft=AttentionInput()
         for index,record in enumerate(payload.get('records',[])):
-            if record.get('kind')=='workspace': draft.add_workspace(record['workspace'],record['section_id'],record.get('paper_id',''))
+            if record.get('kind') == 'workspace':
+                require(isinstance(record.get('source_selection'), dict), 'E_ATTENTION_REVALIDATION')
+                draft.add_workspace(record['workspace'], record['section_id'], record.get('paper_id', ''),
+                                    expected=record['source_selection'])
             else: draft.add_transcription(record.get('anchor') or 'B'+str(index+1),record['text'],record.get('visibility','author_visible'),
                 record.get('scores',[]),record.get('locator') or '网页录入 '+str(index+1),record.get('paper_id',''))
-        if payload.get('a_reference'): draft.set_a(payload['a_reference'])
+        if payload.get('a_reference', {}).get('items'): draft.set_a(payload['a_reference'])
         return draft
 
     def action(self,route,payload):
@@ -141,7 +173,9 @@ class Workbench:
             path=checked_local(payload.get('path') or self.data_dir)
             return {'path':str(path),'parent':str(path.parent),'directories':sorted(str(p) for p in path.iterdir() if p.is_dir()),
                     'analysis':(path/'attention.sqlite3').is_file()}
-        if route=='/api/source': return {'sections':AttentionInput.workspace_options(payload['path'])}
+        if route=='/api/source':
+            path = checked_local(payload['path'])
+            return {'path': str(path), 'sections': AttentionInput.workspace_options(path)}
         if route=='/api/sample':
             from .workbench_sample import create_sample
             path=self.data_dir/('synthetic-example-'+uuid.uuid4().hex)
@@ -156,22 +190,31 @@ class Workbench:
         project=self.project(payload.get('id'))
         self.state(project)  # Detect a directory replaced by a different package.
         if route=='/api/state': return self.open(project['path'])
+        if route=='/api/recover':
+            with closing(AttentionWorkspace(project['path'])) as ws:
+                require(ws.state()['analysis_id'] == project['analysis_id'], 'E_ATTENTION_TARGET')
+                ws.recover()
+            return self.open(project['path'])
         if route=='/api/import-a':
             with closing(AttentionWorkspace(project['path'])) as ws:
+                require(ws.state()['analysis_id'] == project['analysis_id'] == payload.get('analysis_id'),
+                        'E_ATTENTION_TARGET')
                 import_prepared_a(ws,payload['a_reference'],payload.get('actor','网页使用者'),payload.get('reason','显式更换A参照'))
             return self.open(project['path'])
-        if route=='/api/runs': return {'runs':CandidateSession(project['path']).runs()}
+        if route=='/api/runs':
+            session = self.candidate_session(project)
+            return {'runs': [self.candidate_status(session, run) for run in session.runs()]}
         if route=='/api/preview':
-            session=CandidateSession(project['path']); require(payload['run'] in session.runs(),'E_ATTENTION_RUN')
-            with closing(AttentionWorkspace(project['path'])) as ws: run=preview(ws,payload['run'])
+            session=self.candidate_session(project); require(payload['run'] in session.runs(),'E_ATTENTION_RUN')
+            run = session.inspect(payload['run'])
             return {'run':run,'url':'/preview?id='+payload['id']+'&run='+payload['run']}
         if route=='/api/accept':
-            session=CandidateSession(project['path']); require(payload['run'] in session.runs(),'E_ATTENTION_RUN')
+            session=self.candidate_session(project); require(payload['run'] in session.runs(),'E_ATTENTION_RUN')
             session.accept(payload['run'],actor=payload.get('actor','网页使用者'),reason=payload.get('reason','核对待保存结果后显式接收'))
             return self.open(project['path'])
         if route=='/api/generate':
             require(not any(j['project']==payload['id'] and j['status']=='running' for j in self.jobs.values()),'E_WORKBENCH_BUSY')
-            session=CandidateSession(project['path'])
+            session=self.candidate_session(project)
             provider=self.provider_factory() if self.provider_factory else DeepSeekProvider()
             if not self.provider_factory:
                 from .credential import load_deepseek_key
@@ -184,13 +227,37 @@ class Workbench:
                 try:
                     result=session.generate(run,provider,payload.get('records'))
                     with self.lock:
-                        job.update(status=result['status'],phase='待核对，尚未保存',
+                        job.update(status=result['status'],
                             completed_records=len(result.get('coverage',[])),requests=len(result.get('calls',[])))
                 except Exception as exc:
                     with self.lock: job.update(status='failed',phase='分析未完成，保留已产生的候选记录',error=str(exc) if isinstance(exc,ReviewError) else 'E_WORKBENCH_JOB')
             job['thread']=threading.Thread(target=worker,daemon=False); job['thread'].start()
             return self.job_status(job)
         raise ReviewError('E_NOT_FOUND')
+
+    def candidate_session(self, project):
+        session = CandidateSession(project['path'])
+        require(session.snapshot['analysis_id'] == project['analysis_id'], 'E_ATTENTION_TARGET')
+        return session
+
+    def candidate_status(self, session, run_id):
+        try:
+            run = session.inspect(run_id)
+        except (OSError, ValueError, ReviewError, TypeError, KeyError):
+            return {'run': run_id, 'state': 'unavailable', 'preview': False}
+        active = any(job['run'] == run_id and job['status'] == 'running' for job in self.jobs.values())
+        if active:
+            state = 'running'
+        elif run.get('accepted_revision') is not None:
+            state = 'accepted'
+        elif run['validity'] != 'current':
+            state = 'stale'
+        elif run['status'] in {'complete', 'partial'} and run['patch']['edits']:
+            state = run['status']
+        else:
+            state = 'interrupted' if run['status'] == 'running' else run['status']
+        return {'run': run_id, 'state': state, 'preview': True,
+                'accepted_revision': run.get('accepted_revision'), 'revision': run['snapshot']['revision']}
 
     def job_status(self,job):
         result={k:v for k,v in job.items() if k!='thread'}
@@ -199,12 +266,24 @@ class Workbench:
             try:
                 run=load_json(path.read_bytes()); result['completed_records']=len(run.get('coverage',[])); result['requests']=len(run.get('calls',[]))
             except (ValueError,OSError): pass
+        if job['status'] != 'running':
+            try:
+                session = self.candidate_session(self.project(job['project']))
+                result['candidate'] = self.candidate_status(session, job['run'])
+            except (OSError, ReviewError):
+                result['candidate'] = {'run': job['run'], 'state': 'unavailable', 'preview': False}
         return result
 
     def close(self):
         with self.lock:
-            if self.stopping: return
-            self.stopping=True
+            already_stopping = self.stopping
+            self.stopping = True
+        if already_stopping:
+            self.closed.wait()
+        else:
+            self.finish_close()
+
+    def finish_close(self):
         try:
             self.server.shutdown(); self.server.server_close(); self.thread.join()
             for job in self.jobs.values(): job['thread'].join()
