@@ -121,7 +121,8 @@ def audit_bundle(bundle, work):
         names = {p.lower() for p in relative.parts}
         if names & {".git", ".tools", ".venv", "tests", "worktrees", "credentials", "afeedback", "bfeedback"}:
             raise RuntimeError("Forbidden directory in bundle: " + str(relative))
-        if path.name.startswith(".env") or path.suffix.lower() in {".sqlite3", ".db", ".dpapi", ".log", ".docx"}:
+        library_template = normalized == "_internal/docx/templates/default.docx"
+        if path.name.startswith(".env") or path.suffix.lower() in {".sqlite3", ".db", ".dpapi", ".log"} or (path.suffix.lower() == ".docx" and not library_template):
             raise RuntimeError("User/development data in bundle: " + str(relative))
         if any(part.lower().startswith(("tcl", "tk8")) for part in relative.parts):
             raise RuntimeError("Tk runtime in bundle: " + str(relative))
