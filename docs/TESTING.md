@@ -1,6 +1,6 @@
 # 合成回归检查
 
-在Windows、PowerShell 7和Python 3.12环境中运行。检查覆盖当前CLI、`AttentionWorkspace`事务、历史来源只读、补丁/恢复及实际浏览器往返，不读取真实材料，不需要模型、密钥或运行中的模型服务。
+源码回归在 Windows、PowerShell 7 与 Python 3.12 环境中运行。检查覆盖 CLI、`AttentionWorkspace`、历史来源只读、补丁恢复、实际网页录入/保存/导出往返，不读取真实材料，不需要模型、密钥或运行中的模型服务。
 
 ```powershell
 python -m pip install -r requirements.txt playwright==1.47.0

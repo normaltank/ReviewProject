@@ -1,6 +1,6 @@
 # 数据与标注契约
 
-当前产品是可变A/B的关注分析，目标以[业务规格](specs/b-attention-distribution.md)为准。具体对象、补丁、修订和恢复见[关注分析契约](ATTENTION_CONTRACT.md)。原先0.5.0中的单来源审核、framework及batch写入接口已按[改革规格](specs/project-reform.md)退役；旧契约保留在Git历史，不再作为当前运行说明。
+当前产品是可变A/B的关注分析，目标以[业务规格](specs/b-attention-distribution.md)为准。具体对象、补丁、修订和恢复见[关注分析契约](ATTENTION_CONTRACT.md)。旧数据读取与当前写入通过独立适配层衔接。
 
 ## 权限与材料
 
@@ -8,7 +8,7 @@
 
 只选择普通意见分区。`author_visible`与`visibility_unknown`保留原值；后者不等于允许公开或外发。`internal_only`不得进入当前关注分析。论文及原分按需帮助理解，不自动生成论文专业复审任务。
 
-模型模式与发送范围由使用者显式选择。关注候选的DeepSeek API边界和凭据存储见[候选说明](ATTENTION_CANDIDATES.md#deepseek-api配置)。密钥不进入运行配置、补丁、HTML或仓库。历史调用授权、预算及实验结论不自动授予新的材料使用或付费调用权限。
+仅在使用者明确开始模型分析后发送所选普通评语原话及本次 A。原分、来源路径、身份字段与未选分区留在本机。个人凭据由本机加密存储，用户授权的私有试用包可带共享凭据。凭据不进入分析包、日志、补丁、HTML 或 Git。操作见[使用指南](USER_GUIDE.md#开始分析与核对)。
 
 ## 原话、原分与定位
 
