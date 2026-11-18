@@ -125,6 +125,89 @@ class Positions(unittest.TestCase):
             self.assertEqual(errors, [])
             browser.close()
 
+    def test_dense_parts_keep_keyboard_targets_and_full_export_after_focusing(self):
+        from playwright.sync_api import expect
+        state = oracle_state()
+        state.update(material_status='current', history=[], bindings=[])
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for o in state['opinions']:
+            o['interpretation'] = '合成观点'
+            for f in o['facets']:
+                for item in f['outside']:
+                    item.update(evidence=[], reason='合成范围依据')
+        for relation in state['relations']:
+            relation.update(evidence=[])
+        state['themes'][1]['label'] = '样本来源'
+        parts = state['a_reference']['parts']
+        items = state['a_reference']['items']
+        part, item = parts[0], items[0]
+        for number in range(15-len(parts)):
+            ident = 'dense-'+str(number)
+            parts.append(dict(id=ident, label='合成第'+str(number)+'部分：'+'来源范围风险条件和限定'*5))
+            items.append(dict(item, id='item-'+ident, part_id=ident, text='完整条文 '+ident))
+        part['label'] = '数据与方法：'+'来源与限定条文'*6
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'dense.html'
+            path.write_text(render(state), encoding='utf-8')
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport={'width': 1366, 'height': 768})
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(path.as_uri())
+            chart = page.locator('#attention-map')
+            for width in (1366, 320):
+                page.set_viewport_size({'width': width, 'height': 768})
+                expect(chart).to_contain_text('15 个部分')
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                bounds = chart.locator('svg').evaluate("""(svg) => {
+                    const width = svg.viewBox.baseVal.width;
+                    return [...svg.querySelectorAll('text')].every(t => {
+                        const r = t.getBBox(); return r.x >= 0 && r.x + r.width <= width + 1;
+                    });
+                }""")
+                self.assertTrue(bounds, f'SVG text clips at {width}px')
+                pairs = chart.locator('svg').evaluate("""(svg) => {
+                    const labels = [...svg.querySelectorAll('text')].map(t => [t.textContent, t.getBBox()]);
+                    return labels.flatMap(([text,a],i) => labels.slice(i+1).flatMap(([other,b]) =>
+                        Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x)>2 &&
+                        Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y)>2 ? [[text,other]] : []));
+                }""")
+                self.assertEqual(pairs, [], f'SVG labels overlap at {width}px')
+                evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+                if evidence:
+                    Path(evidence).mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(Path(evidence)/f'positions-dense-{width}.png'))
+            pick = page.locator('#map-part-select')
+            pick.focus()
+            pick.select_option('part:P1')
+            expect(pick).to_be_focused()
+            expect(page.locator('#map-scope')).to_contain_text('数据与方法')
+            expect(page.locator('#position-drill summary').filter(has_text='完整条文 dense-0')).to_have_count(0)
+            mark = chart.locator('[data-map-record="r2"][data-map-region="part:P1"]')
+            mark.press('Enter')
+            expect(mark).to_be_focused()
+            expect(chart.locator('[data-map-record="r2"][aria-current="true"]').first).to_be_visible()
+            toggle = page.locator('#map-a-toggle')
+            toggle.press('Space')
+            expect(toggle).not_to_be_checked()
+            expect(toggle).to_be_focused()
+            toggle.press('Space')
+            expect(toggle).to_be_checked()
+            theme = page.locator('#map-theme-select')
+            theme.focus()
+            theme.select_option('T1')
+            expect(theme).to_be_focused()
+            expect(page.locator('#map-scope')).to_contain_text('视图聚焦')
+            with page.expect_download() as download:
+                page.get_by_role('button', name='导出 SVG', exact=True).click()
+            exported = Path(download.value.path()).read_text(encoding='utf-8')
+            self.assertIn('15 个部分', exported)
+            self.assertIn('完整条文 dense-', exported)
+            self.assertIn('当前筛选 · 分母 4', exported)
+            self.assertEqual(errors, [])
+            browser.close()
+
     def test_focus_distribution_opens_positions_and_marks_all_selected_record_regions(self):
         from playwright.sync_api import expect
         state = oracle_state()
