@@ -8,6 +8,8 @@ import json
 import re
 import os
 import time
+import sys
+from pathlib import Path
 from itertools import islice
 from .core import ReviewError, require, digest
 from .local_io import encoded, atomic, now, checked_local, read_json, bounded
@@ -398,9 +400,31 @@ def _source_a_mapping(path,run,selected,reference,provider,context_chars):
     return {'mappings':[{'facet_id':facet['facet_id'],'a_links':links,'outside':outside}]}
 
 
-def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
+_ADAPTER_FILES = frozenset({'attention_candidates.py', 'attention_api_provider.py',
+                            'attention_provider.py', 'attention_semantic.py'})
+
+
+def _adapter_hashes():
+    directory = Path(__file__).parent
+    if not getattr(sys, 'frozen', False):
+        return {name: digest((directory / name).read_bytes()) for name in _ADAPTER_FILES}
+    try:
+        manifest = read_json(directory / 'adapter-hashes.json')
+        files = manifest['files']
+        require(set(manifest) == {'schema', 'files'} and manifest['schema'] == 'attention-adapter-hashes/1' and
+                set(files) == _ADAPTER_FILES and
+                all(isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value) for value in files.values()),
+                'E_ATTENTION_ADAPTER_HASHES')
+        return files
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, ReviewError):
+        raise ReviewError('E_ATTENTION_ADAPTER_HASHES') from None
+
+
+def generate(workspace, run_id, provider, record_ids=None, context_chars=24000, *, target=None):
     """Snapshot all sections of selected records; never mutate formal analysis."""
     state=workspace.state()
+    if target is not None:
+        require(_binding(state) == _binding(target), 'E_ATTENTION_TARGET')
     compact=provider.mode != 'replay' or provider.config.get('protocol') != 'attention-canonical-replay/1'
     source_bound=provider.mode != 'replay' or provider.config.get('protocol') in {'attention-semantic/3','attention-semantic/4','attention-semantic/5'}
     focused=provider.mode != 'replay' or provider.config.get('protocol') in {'attention-semantic/4','attention-semantic/5'}
@@ -420,12 +444,14 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
         require(provider.config['max_tokens']>=profile.get('max_tokens',1),'E_ATTENTION_CAPACITY_PROFILE')
     ids=[r['record_id'] for r in state['records']] if record_ids is None else list(record_ids)
     require(ids and len(ids)==len(set(ids)) and set(ids)<={r['record_id'] for r in state['records']},'E_ATTENTION_RECORD')
+    hashes = _adapter_hashes()
+    provider_file = 'attention_api_provider.py' if provider.mode == 'remote_api' else 'attention_provider.py'
     path=_path(workspace,run_id)
     require(not path.exists(),'E_ATTENTION_RUN_EXISTS')
     path.mkdir(parents=True)
     records=[copy.deepcopy(r) for r in state['records'] if r['record_id'] in ids]
     patch={'schema':'attention-patch/2','analysis_id':state['analysis_id'],'base_revision':state['revision'],'actor':'candidate-preview','reason':'machine candidates pending review','edits':[],'themes':[],'relations':[]}
-    run={'schema':PROTOCOL,'run_id':run_id,'created_at':now(),'analysis_id':state['analysis_id'],'binding':_binding(state),'snapshot':state,'record_ids':ids,'mode':provider.mode,'provider_config':copy.deepcopy(provider.config),'context_chars':context_chars,'prompt_hashes':{'b':digest(b_prompt.encode()),'a':digest(a_prompt.encode())},'schema_hashes':{'b':digest(encoded(b_schema)),'a':digest(encoded(a_schema))},'adapter_hash':digest(__import__('pathlib').Path(__file__).read_bytes()),'provider_adapter_hash':digest(__import__('pathlib').Path(__file__).with_name('attention_api_provider.py' if provider.mode=='remote_api' else 'attention_provider.py').read_bytes()),'calls':[],'errors':[],'rejected':[],'unprocessed':[],'patch':patch,'status':'running','intermediate_protocol':semantic.PROTOCOL if compact else 'attention-canonical-replay/1','semantic_adapter_hash':digest(__import__('pathlib').Path(semantic.__file__).read_bytes()),'grounding_adapter':'literal-or-explicit-passage/3','approval':'needs_review','limitations':['Themes are generated per record; cross-record theme consolidation requires manual review.','Processing status does not establish semantic accuracy or approval.']}
+    run={'schema':PROTOCOL,'run_id':run_id,'created_at':now(),'analysis_id':state['analysis_id'],'binding':_binding(state),'snapshot':state,'record_ids':ids,'mode':provider.mode,'provider_config':copy.deepcopy(provider.config),'context_chars':context_chars,'prompt_hashes':{'b':digest(b_prompt.encode()),'a':digest(a_prompt.encode())},'schema_hashes':{'b':digest(encoded(b_schema)),'a':digest(encoded(a_schema))},'adapter_hash':hashes['attention_candidates.py'],'provider_adapter_hash':hashes[provider_file],'calls':[],'errors':[],'rejected':[],'unprocessed':[],'patch':patch,'status':'running','intermediate_protocol':semantic.PROTOCOL if compact else 'attention-canonical-replay/1','semantic_adapter_hash':hashes['attention_semantic.py'],'grounding_adapter':'literal-or-explicit-passage/3','approval':'needs_review','limitations':['Themes are generated per record; cross-record theme consolidation requires manual review.','Processing status does not establish semantic accuracy or approval.']}
     _save(path,run)
     # Avoid identity metadata, paths, scores and all of A in B requests.
     aggregate=patch
@@ -567,9 +593,10 @@ def generate(workspace, run_id, provider, record_ids=None, context_chars=24000):
     _save(path,run)
     return copy.deepcopy(run)
 
-def preview(workspace,run_id):
+def preview(workspace,run_id,*,state=None):
     run=read_json(checked_local(_path(workspace,run_id)/'run.json'))
-    state=workspace.state()
+    if state is None:
+        state=workspace.state()
     require(run.get('schema')==PROTOCOL and run['analysis_id']==state['analysis_id'],'E_ATTENTION_RUN')
     run['validity']='current' if state['material_status']=='current' and run['binding']==_binding(state) else 'needs_revalidation'
     return run

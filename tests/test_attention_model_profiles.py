@@ -41,7 +41,7 @@ class ModelProfiles(unittest.TestCase):
     def test_missing_installation_is_actionable_without_claiming_ownership(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        from reviewproto.attention_candidate_ui import CandidateModelService, candidate_message
+        from reviewproto.attention_candidate_service import CandidateModelService, candidate_message
         with tempfile.TemporaryDirectory() as tmp, patch('reviewproto.desktop.run_powershell') as command:
             command.return_value=SimpleNamespace(returncode=1,stdout=b'',stderr=b'E_MODEL_MISSING')
             service=CandidateModelService()
@@ -58,41 +58,11 @@ class ModelProfiles(unittest.TestCase):
             self.assertEqual(run['status'],'complete',run['errors'])
             self.assertTrue(all(body['max_tokens']==512 for path,body in requests if path=='/v1/chat/completions'))
 
-    def test_ordinary_tk_selects_9b_for_generation_and_start(self):
-        import tkinter as tk
-        from unittest.mock import patch
-        from test_attention_candidate_ui import prepare
-        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
-        from reviewproto.desktop import Controller
-        with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)/'pack'; prepare(path)
-            controller=Controller();controller.open_attention(path)
-            root=tk.Tk()
-            try:
-                window=AttentionCandidateWindow(root,controller)
-                window.provider.set('local');window.change_provider()
-                self.assertIn(NINE, window.model_selector['values'])
-                window.model_selector.current(list(window.model_selector['values']).index(NINE))
-                self.assertEqual(window.model.get(),NINE)
-                captured=[]
-                # Capture the ordinary button's submitted operation, without a worker or model request.
-                with patch.object(window,'submit',side_effect=lambda action,worker:captured.append((action,worker))), patch.object(window.session,'generate') as generate_call:
-                    window.generate_button.invoke()
-                    captured.pop()[1]()
-                    self.assertEqual(generate_call.call_args.args[1].config['profile_id'],NINE)
-                    with patch.object(window.service,'start') as start:
-                        window.start_button.invoke();captured.pop()[1]()
-                        self.assertEqual(start.call_args.args[-1],NINE)
-                window.window.destroy()
-            finally:
-                root.destroy()
-                import gc
-                gc.collect()
 
     def test_service_rejects_9b_receipt_with_wrong_profile_and_keeps_new_failed_launch(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        from reviewproto.attention_candidate_ui import CandidateModelService
+        from reviewproto.attention_candidate_service import CandidateModelService
         from reviewproto.desktop import ROOT
         from reviewproto.local_model_profiles import profile
         p = profile(NINE)

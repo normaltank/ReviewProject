@@ -10,7 +10,7 @@ API_HINTS = {
     'E_ATTENTION_JSON_FORMAT': 'E_ATTENTION_JSON_FORMAT: invalid JSON draft retained; inspect format repair and unprocessed source scopes.',
     'E_ATTENTION_SCHEMA_FORMAT': 'E_ATTENTION_SCHEMA_FORMAT: schema-invalid draft retained; inspect format repair and unprocessed source scopes.',
     'E_ATTENTION_API_MODEL': 'Use --provider deepseek --model deepseek-flash (4.1 Flash / 1017). Pro is disabled.',
-    'E_DEEPSEEK_CREDENTIAL_MISSING': 'Set DEEPSEEK_API_KEY or explicitly save an API key in the desktop model settings.',
+    'E_DEEPSEEK_CREDENTIAL_MISSING': 'Set DEEPSEEK_API_KEY or save a personal API key in the browser workbench.',
     'E_DEEPSEEK_CREDENTIAL_STORE': 'Re-save the API key as the current Windows user or set DEEPSEEK_API_KEY.'}
 
 
@@ -25,6 +25,7 @@ def main(argv=None):
         parser = SafeParser(prog="python -m reviewproto", description="Local trusted-editor attention analysis; no author export.")
         sub = parser.add_subparsers(dest="command", required=True)
         sub.add_parser("desktop")
+        sub.add_parser("workbench")
         for command in ('attention-build', 'attention-apply', 'attention-recover', 'attention-migrate', 'attention-import-a'):
             item = sub.add_parser(command)
             item.add_argument('--workspace', required=True)
@@ -98,7 +99,7 @@ def main(argv=None):
                 result = workspace.recover()
             print('OK ' + args.command + ' revision=' + str(result['revision']) + ' material=' + result['material_status'])
             return 0
-        if args.command == "desktop":
+        if args.command in {"desktop", "workbench"}:
             from .desktop import main as desktop_main
             return desktop_main()
     except Exception as error:

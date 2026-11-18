@@ -1,3 +1,4 @@
+from attention_browser import select_reading_record
 """Saved-position behavior, using the independent four-record oracle."""
 from attention_browser import open_panel
 import copy
@@ -5,6 +6,7 @@ import unittest
 import os
 import tempfile
 from pathlib import Path
+from struct import unpack
 from playwright.sync_api import sync_playwright
 from reviewproto.attention_render import render
 from reviewproto.attention_summary import summarize
@@ -12,7 +14,475 @@ from reviewproto.attention_positions import project_positions
 from test_attention_summary import oracle_state
 
 
+def png_size(path):
+    with Path(path).open('rb') as file:
+        header = file.read(33)
+    # PNG starts with its eight-byte signature and a 13-byte IHDR chunk, plus CRC.
+    if len(header) != 33 or header[:16] != b'\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR':
+        raise AssertionError('Browser export does not have a valid PNG header')
+    return unpack('>II', header[16:24])
+
+
+def svg_text_collisions(chart):
+    return chart.locator('svg').evaluate("""(svg) => {
+        const labels = [...svg.querySelectorAll('text')].map(t => [t.textContent, t.getBBox()]);
+        return labels.flatMap(([text,a],i) => labels.slice(i+1).flatMap(([other,b]) =>
+            Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x)>2 &&
+            Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y)>2 ? [[text,other]] : []));
+    }""")
+
+
 class Positions(unittest.TestCase):
+    def test_map_preserves_multi_aspect_unicode_ranges_optional_a_and_empty_scopes(self):
+        from contextlib import closing
+        from reviewproto.attention import AttentionWorkspace
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
+            with closing(AttentionWorkspace(Path(folder) / 'pack')) as ws:
+                state = ws.build(dict(schema='attention-input/1', records=[
+                    dict(anchor='内部来源甲', text='😀无需扩大样本。若不能补证，无需扩大样本。', paper_id='甲组', visibility='author_visible'),
+                    dict(anchor='内部来源乙', text='无需扩大样本。', paper_id='乙组', visibility='author_visible'),
+                    dict(anchor='待处理来源', text='请说明研究局限。', visibility='author_visible')],
+                    a_reference=dict(version='合成参照二版', parts=[dict(id='method', label='数据与方法'), dict(id='empty', label='空部分')],
+                        items=[dict(id='source', part_id='method', text='必要时说明材料来源及其限制，不强制扩大样本。', locator='合成原文')])) )
+                r1, r2, r3 = state['records']
+                quote = '无需扩大样本。'
+                start = r1['text'].rindex(quote)
+                ev = dict(source_id=r1['source_id'], section_id=r1['anchor'], start=start, end=start+len(quote), quote=quote)
+                def link(kind):
+                    return dict(a_item_id='source', version='合成参照二版', kind=kind, scope='样本规模的局部交集',
+                                reason='只解释样本规模，不扩大到材料来源的全部范围', evidence=[ev], status='working')
+                f = dict(facet_id='f', interpretation='无需扩大样本，保留否定', evidence=[ev], status='working',
+                    qualifiers=dict(conditions='若不能补证', negation='无需扩大样本'), expression=dict(function='具体建议', boilerplate_candidate=False),
+                    themes=[dict(theme_id=t, evidence=[ev], reason='样本规模范围', status='working') for t in ('parent','child')],
+                    a_links=[link('explicit'),link('related')],
+                    outside=[dict(scope='另一局部范围', reason='本版未明示这一局部', evidence=[ev], status='working')])
+                f2 = copy.deepcopy(f); f2.update(facet_id='f2', interpretation='第二个有条件方面', a_links=[link('partial')], outside=[])
+                ws.apply(dict(schema='attention-patch/2', analysis_id=state['analysis_id'], base_revision=0,
+                    actor='合成核对者', reason='保留复合范围',
+                    themes=[dict(theme_id='parent', label='方法', definition='父组', parent_ids=[], status='working'),
+                            dict(theme_id='child', label='样本规模', definition='仅样本多少', parent_ids=['parent'], status='working')],
+                    edits=[dict(opinion_id='o', record_id=r1['record_id'], interpretation='复合观点', status='working', facets=[f,f2]),
+                           dict(opinion_id='other', record_id=r2['record_id'], interpretation='其他表达', status='working',
+                                facets=[dict(facet_id='other', interpretation='另一种表达', evidence=[dict(source_id=r2['source_id'], section_id=r2['anchor'], start=0, end=len(quote), quote=quote)],
+                                             expression=dict(function='其他表达', boilerplate_candidate=None), status='working')])]))
+                ws.recover()
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport=dict(width=1440,height=900))
+            errors=[]; page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto((Path(folder)/'pack'/'attention.html').as_uri())
+            marker=page.locator('[data-map-region="part:method"][data-map-record="'+r1['record_id']+'"]')
+            self.assertEqual(marker.count(), 1)
+            marker.click()
+            reading=page.locator('#focus-reading')
+            for text in ('第二个有条件方面','若不能补证','无需扩大样本','明确对应','内容相关','部分对应','本版未明示这一局部','必要时说明材料来源及其限制，不强制扩大样本。'):
+                self.assertIn(text, reading.inner_text())
+            self.assertEqual(reading.locator('.focus-quote mark').all_text_contents(), [quote])
+            # The repeated earlier quote and the astral codepoint stay outside the mark.
+            self.assertEqual(reading.locator('.focus-quote blockquote').inner_text(), r1['text'])
+            self.assertEqual(page.locator('[data-map-theme="parent"]').count(),0)
+            self.assertIn('空部分', page.locator('#attention-map').inner_text())
+            self.assertIn('尚无条目', page.locator('#attention-map').inner_text())
+            page.locator('#map-a-toggle').uncheck()
+            self.assertEqual(page.locator('#attention-map [data-map-record="'+r1['record_id']+'"]').count(),1)
+            self.assertIn('未归主题内容',page.locator('#attention-map').inner_text())
+            self.assertIn('未处理记录',page.locator('#attention-map').inner_text())
+            with page.expect_download() as download:
+                page.get_by_role('button', name='导出 PNG', exact=True).click()
+            width, height = png_size(download.value.path())
+            self.assertEqual(width, 1100)
+            self.assertGreater(height, 200)
+            open_panel(page,'view-filters')
+            page.locator('#view-record').select_option(r1['record_id'])
+            page.locator('#view-function').select_option('其他表达')
+            self.assertIn('零命中；分母仍为 1',page.locator('#attention-map').inner_text())
+            page.locator('#view-paper').select_option('"乙组"')
+            self.assertIn('N=0',page.locator('#attention-map').inner_text())
+            with page.expect_download() as download:
+                page.get_by_role('button', name='导出 SVG', exact=True).click()
+            self.assertIn('N=0',Path(download.value.path()).read_text(encoding='utf-8'))
+            self.assertEqual(errors,[])
+            browser.close()
+
+    def test_map_is_default_and_exports_all_filtered_record_projections(self):
+        state = oracle_state()
+        state.update(material_status='current', history=[], bindings=[])
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for o in state['opinions']:
+            o['interpretation'] = '合成观点'
+            for f in o['facets']:
+                for item in f['outside']:
+                    item.update(evidence=[], reason='合成范围依据')
+        for relation in state['relations']:
+            relation.update(evidence=[])
+        state['themes'][1]['label'] = '样本来源'
+        state['themes'][2]['label'] = '结论范围'
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
+            path = Path(folder) / 'map.html'
+            path.write_text(render(state), encoding='utf-8')
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport=dict(width=1366, height=768))
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(path.as_uri())
+            self.assertTrue(page.locator('#attention-map').is_visible())
+            self.assertIn('当前范围 4 条记录（分母）', page.locator('#view-version').inner_text())
+            self.assertEqual(page.locator('#map-scope').inner_text(), '当前筛选 · 3/4 条记录有解释')
+            # ROOT is an aggregate parent, never another peer cluster.
+            self.assertEqual(page.locator('[data-map-theme="ROOT"]').count(), 0)
+            mixed = page.locator('[data-map-record="r2"][data-map-region="part:P1"]')
+            self.assertEqual(mixed.count(), 1)
+            self.assertIn('明确对应', mixed.get_attribute('aria-label'))
+            self.assertIn('内容相关', mixed.get_attribute('aria-label'))
+            mixed.click()
+            self.assertIn('合成原话', page.locator('#focus-reading').inner_text())
+            self.assertGreater(page.locator('[data-map-record="r2"][aria-current="true"]').count(), 1)
+            with page.expect_download() as download:
+                page.get_by_role('button', name='导出 SVG', exact=True).click()
+            exported = Path(download.value.path()).read_text(encoding='utf-8')
+            for text in ('分母 4', 'synthetic-A', '修订 7', '样本来源', '结论范围', '未处理'):
+                self.assertIn(text, exported)
+            self.assertEqual(errors, [])
+            browser.close()
+
+    def test_map_and_export_legend_use_the_actual_record_shapes(self):
+        from playwright.sync_api import expect
+        from xml.etree import ElementTree
+
+        state = oracle_state()
+        state.update(material_status='current', history=[], bindings=[])
+        for record in state['records']:
+            record.update(anchor=record['record_id'], sections=[
+                dict(section_id=record['record_id'], text=record['text'], locator={})])
+        for opinion in state['opinions']:
+            opinion['interpretation'] = '合成观点'
+            for facet in opinion['facets']:
+                for outside in facet['outside']:
+                    outside.update(evidence=[], reason='合成范围依据')
+        for relation in state['relations']:
+            relation.update(evidence=[])
+        cases = (
+            ('r1', 'part:P1', 'item:A1', 'explicit', 'circle', False),
+            ('r2', 'part:P1', 'item:A1', 'related', 'circle', False),
+            ('r3', 'outside', 'outside', 'outside', 'polygon', False),
+            ('r3', 'pending', 'pending', 'pending', 'rect', True),
+        )
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'legend.html'
+            path.write_text(render(state), encoding='utf-8')
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport=dict(width=1366, height=768))
+            page.goto(path.as_uri())
+            chart = page.locator('#attention-map')
+            legend = chart.locator('[data-map-legend]')
+            expect(legend).to_contain_text('明确对应')
+            expect(legend).to_contain_text('部分、相关或混合')
+            expect(legend).to_contain_text('本版A未明示')
+            expect(legend).to_contain_text('对应未定')
+            expect(legend).to_contain_text('含待核')
+            for record, region, _, kind, tag, dashed in cases:
+                symbol = chart.locator(f'[data-map-record="{record}"][data-map-region="{region}"] [data-map-glyph]')
+                expect(symbol).to_have_attribute('data-map-glyph', kind)
+                self.assertEqual(symbol.evaluate('e=>e.localName'), tag)
+                self.assertEqual(symbol.get_attribute('stroke-dasharray') is not None, dashed)
+                legend_icon = legend.locator(f'[data-map-glyph="{kind}"]')
+                self.assertEqual(legend_icon.evaluate('e=>e.localName'), tag)
+                self.assertEqual(symbol.get_attribute('fill'), legend_icon.get_attribute('fill'))
+            expect(legend.locator('[data-map-glyph="review"]')).to_have_attribute('stroke-dasharray', '2 2')
+            outside = chart.locator('[data-map-record="r3"][data-map-region="outside"]')
+            outside.hover()
+            self.assertEqual(outside.locator('polygon').evaluate('e=>getComputedStyle(e).stroke'), 'rgb(255, 255, 255)')
+            outside.press('Enter')
+            expect(outside).to_be_focused()
+            expect(outside).to_have_attribute('aria-current', 'true')
+            self.assertEqual(outside.locator('polygon').evaluate('e=>getComputedStyle(e).strokeWidth'), '3px')
+            self.assertGreater(chart.locator('[data-map-record="r3"][aria-current="true"]').count(), 1)
+
+            with page.expect_download() as download:
+                page.locator('#export-map-svg').click()
+            root = ElementTree.parse(download.value.path()).getroot()
+            icons = [{entry.get('data-map-glyph') for entry in legend.iter() if entry.get('data-map-glyph')}
+                     for legend in root.findall('.//*[@data-map-legend]')]
+            self.assertEqual(len(icons), 2)
+            self.assertEqual(icons[0], icons[1])
+            for record, _, index_region, kind, tag, _ in cases:
+                links = [link for link in root.findall(f'.//*[@data-map-record="{record}"]')
+                         if link.get('data-map-region') == index_region]
+                self.assertTrue(any(entry.tag.endswith('}'+tag) and entry.get('data-map-glyph') == kind
+                                    for link in links for entry in link))
+
+            page.set_viewport_size(dict(width=320, height=768))
+            page.wait_for_function('Number(document.querySelector("#attention-map svg").getAttribute("width"))<320')
+            self.assertEqual(svg_text_collisions(chart), [])
+            self.assertTrue(legend.evaluate("""g=>[...g.querySelectorAll('text')].every(t=>{
+                const b=t.getBBox();return b.x>=0&&b.x+b.width<=g.ownerSVGElement.viewBox.baseVal.width;
+            })"""))
+            evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+            if evidence:
+                Path(evidence).mkdir(parents=True, exist_ok=True)
+                legend.scroll_into_view_if_needed()
+                page.screenshot(path=str(Path(evidence)/'positions-legend-320.png'))
+            page.locator('#map-a-toggle').press('Space')
+            expect(legend).to_contain_text('评语记录')
+            expect(legend.locator('[data-map-glyph="explicit"],[data-map-glyph="outside"]')).to_have_count(0)
+            browser.close()
+
+    def test_two_and_three_a_parts_keep_long_labels_and_shared_theme_markers_visible(self):
+        from playwright.sync_api import expect
+        state = oracle_state()
+        state.update(material_status='current', history=[], bindings=[])
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for o in state['opinions']:
+            o['interpretation'] = '合成观点'
+            for f in o['facets']:
+                for item in f['outside']:
+                    item.update(evidence=[], reason='合成范围依据')
+        for relation in state['relations']:
+            relation.update(evidence=[])
+        state['themes'][1]['label'] = '完整描述材料及样本的来源与边界'
+        state['themes'][2]['label'] = '必要时给出结论适用的条件与范围'
+        parts, items = state['a_reference']['parts'], state['a_reference']['items']
+        parts[0]['label'] = '材料与方法中需保留的具体限定'
+        parts[1]['label'] = '结果与结论中仍需核对的范围'
+        links = state['opinions'][0]['facets'][1]['a_links']
+        links.append(dict(links[0], a_item_id='A1'))
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'parts.html'
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            for count in (2, 3):
+                if count == 3:
+                    parts.append(dict(id='P3', label='引言与研究问题所依据的定义'))
+                    items.append(dict(items[0], id='A5', text='保留相关证据', part_id='P3'))
+                    links.append(dict(links[0], a_item_id='A5'))
+                path.write_text(render(state), encoding='utf-8')
+                for width, height in ((1366, 768), (1440, 900), (420, 768)):
+                    with self.subTest(a_parts=count, viewport=(width, height)):
+                        page = browser.new_page(offline=True, viewport=dict(width=width, height=height))
+                        page.goto(path.as_uri())
+                        page.evaluate('document.fonts.ready')
+                        chart = page.locator('#attention-map')
+                        self.assertEqual(svg_text_collisions(chart), [])
+                        for part in parts:
+                            expect(chart).to_contain_text(part['label'])
+                        marks = chart.locator('[data-map-region="part:P1"][data-map-record="r1"]')
+                        expect(marks).to_have_count(2)
+                        evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+                        if evidence:
+                            Path(evidence).mkdir(parents=True, exist_ok=True)
+                            page.screenshot(path=str(Path(evidence)/f'positions-{count}-parts-{width}.png'))
+                        chart.locator('[data-map-region="part:P1"][data-map-record="r2"]').press('Enter')
+                        selected_marks = chart.locator('[data-map-region="part:P1"][data-map-record="r1"][aria-current="true"]')
+                        expect(selected_marks).to_have_count(0)
+                        second_theme = chart.locator('[data-map-theme="T2"] [data-map-region="part:P1"][data-map-record="r1"]')
+                        second_theme.press('Enter')
+                        expect(second_theme).to_be_focused()
+                        expect(selected_marks).to_have_count(2)
+                        page.close()
+            browser.close()
+
+    def test_sample_map_keeps_all_five_a_parts_at_desktop_and_narrow_widths(self):
+        from contextlib import closing
+        from playwright.sync_api import expect
+        from reviewproto.attention import AttentionWorkspace
+        from reviewproto.workbench_sample import create_sample
+
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'sample'
+            create_sample(path)
+            with closing(AttentionWorkspace(path)) as ws:
+                part_labels = {part['id']: part['label'] for part in ws.state()['a_reference']['parts']}
+            self.assertEqual(len(part_labels),5)
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            for width, height in ((1366,768), (420,768)):
+                page = browser.new_page(offline=True, viewport=dict(width=width, height=height))
+                page.goto((path/'attention.html').as_uri())
+                chart = page.locator('#attention-map')
+                expect(chart.locator('[data-position-region^="part:"]')).to_have_count(5)
+                for part_id, part_label in part_labels.items():
+                    region = chart.locator(f'[data-position-region="part:{part_id}"]')
+                    expect(region.locator('text').first).to_have_text(part_label)
+                self.assertEqual(svg_text_collisions(chart), [])
+                expect(chart).to_contain_text('尚无条目')
+                expect(chart).to_contain_text('0/2 当前对应')
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+                if evidence:
+                    Path(evidence).mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(Path(evidence)/f'positions-example-5-parts-{width}.png'))
+                if width == 1366:
+                    with page.expect_download() as download:
+                        page.locator('#export-map-svg').click()
+                    from xml.etree import ElementTree
+                    exported = ElementTree.parse(download.value.path()).getroot()
+                    for part_id in part_labels:
+                        self.assertIsNotNone(exported.find(f'.//*[@data-position-region="part:{part_id}"]'))
+                    with page.expect_download() as download:
+                        page.locator('#export-map-png').click()
+                    self.assertEqual(png_size(download.value.path()),
+                                     (int(exported.get('width')), int(exported.get('height'))))
+                page.locator('#map-a-toggle').press('Space')
+                expect(chart.locator('[data-position-region^="part:"]')).to_have_count(0)
+                expect(chart).to_contain_text('图表可读性')
+                page.close()
+            page = browser.new_page(offline=True, viewport=dict(width=1366, height=768))
+            for count in (0, 1, 2, 4):
+                with self.subTest(a_parts=count):
+                    path = Path(folder)/f'input-{count}'
+                    with closing(AttentionWorkspace(path)) as ws:
+                        ws.build({
+                            'schema': 'attention-input/1',
+                            'records': [dict(anchor='合成录入', text='需说明来源', visibility='author_visible')],
+                            'a_reference': {
+                                'version': '合成A' if count else 'none',
+                                'parts': [dict(id=f'p{i}', label=f'自定部分{i}') for i in range(count)],
+                                'items': [dict(id=f'a{i}', part_id=f'p{i}', text=f'合成条文{i}', locator='合成')
+                                          for i in range(count)],
+                            },
+                        })
+                    page.goto((path/'attention.html').as_uri())
+                    chart = page.locator('#attention-map')
+                    expect(chart.locator('[data-position-region^="part:"]')).to_have_count(count)
+                    if count == 0:
+                        expect(page.locator('#map-a-toggle')).to_be_disabled()
+                    else:
+                        for index in range(count):
+                            expect(chart.locator(f'[data-position-region="part:p{index}"]')).to_contain_text(f'自定部分{index}')
+            browser.close()
+
+    def test_dense_parts_keep_keyboard_targets_and_full_export_after_focusing(self):
+        from playwright.sync_api import expect
+        state = oracle_state()
+        state.update(material_status='current', history=[], bindings=[])
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for o in state['opinions']:
+            o['interpretation'] = '合成观点'
+            for f in o['facets']:
+                for item in f['outside']:
+                    item.update(evidence=[], reason='合成范围依据')
+        for relation in state['relations']:
+            relation.update(evidence=[])
+        state['themes'][1]['label'] = '样本来源'
+        parts = state['a_reference']['parts']
+        items = state['a_reference']['items']
+        part, item = parts[0], items[0]
+        for number in range(15-len(parts)):
+            ident = 'dense-'+str(number)
+            parts.append(dict(id=ident, label='合成第'+str(number)+'部分：'+'来源范围风险条件和限定'*5))
+            items.append(dict(item, id='item-'+ident, part_id=ident, text='完整条文 '+ident))
+        part['label'] = '数据与方法：'+'来源与限定条文'*6
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'dense.html'
+            path.write_text(render(state), encoding='utf-8')
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport={'width': 1366, 'height': 768})
+            errors = []
+            page.on('pageerror', lambda e: errors.append(str(e)))
+            page.goto(path.as_uri())
+            chart = page.locator('#attention-map')
+            for width in (1366, 320):
+                page.set_viewport_size({'width': width, 'height': 768})
+                expect(chart).to_contain_text('15 个部分')
+                expect(chart.locator('[data-position-region^="part:"]')).to_have_count(15)
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                bounds = chart.locator('svg').evaluate("""(svg) => {
+                    const width = svg.viewBox.baseVal.width;
+                    return [...svg.querySelectorAll('text')].every(t => {
+                        const r = t.getBBox(); return r.x >= 0 && r.x + r.width <= width + 1;
+                    });
+                }""")
+                self.assertTrue(bounds, f'SVG text clips at {width}px')
+                self.assertEqual(svg_text_collisions(chart), [], f'SVG labels overlap at {width}px')
+                evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+                if evidence:
+                    Path(evidence).mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(Path(evidence)/f'positions-dense-{width}.png'))
+            pick = page.locator('#map-part-select')
+            pick.focus()
+            pick.select_option('part:P1')
+            expect(pick).to_be_focused()
+            expect(page.locator('#map-scope')).to_contain_text('数据与方法')
+            expect(chart.locator('[data-position-region^="part:"]')).to_have_count(1)
+            expect(page.locator('#position-drill summary').filter(has_text='完整条文 dense-0')).to_have_count(0)
+            mark = chart.locator('[data-map-record="r2"][data-map-region="part:P1"]')
+            mark.press('Enter')
+            expect(mark).to_be_focused()
+            expect(chart.locator('[data-map-record="r2"][aria-current="true"]').first).to_be_visible()
+            toggle = page.locator('#map-a-toggle')
+            toggle.press('Space')
+            expect(toggle).not_to_be_checked()
+            expect(toggle).to_be_focused()
+            toggle.press('Space')
+            expect(toggle).to_be_checked()
+            theme = page.locator('#map-theme-select')
+            theme.focus()
+            theme.select_option('T1')
+            expect(theme).to_be_focused()
+            expect(page.locator('#map-scope')).to_contain_text('视图聚焦')
+            with page.expect_download() as download:
+                page.get_by_role('button', name='导出 SVG', exact=True).click()
+            exported = Path(download.value.path()).read_text(encoding='utf-8')
+            self.assertIn('15 个部分', exported)
+            self.assertIn('完整条文 dense-', exported)
+            self.assertIn('当前筛选 · 分母 4', exported)
+            self.assertEqual(errors, [])
+            browser.close()
+
+    def test_focus_distribution_opens_positions_and_marks_all_selected_record_regions(self):
+        from playwright.sync_api import expect
+        state = oracle_state()
+        state.update(material_status='current', history=[], relations=[])
+        state['themes'] = []
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for o in state['opinions']:
+            o['interpretation'] = '合成观点'
+            for f in o['facets']:
+                f['themes'] = []
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
+            path = Path(folder) / 'positions.html'
+            path.write_text(render(state), encoding='utf-8')
+            browser = p.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport={'width': 1440, 'height': 1000})
+            page.goto(path.as_uri())
+            page.get_by_role('button', name='关注分布', exact=True).click()
+            expect(page.locator('#view-positions')).to_be_visible()
+            before = page.locator('#view-version').inner_text()
+            self.assertIn('3/4 条记录', page.locator('#view-positions > p').first.inner_text())
+            selected = page.locator('#view-positions [data-position-region][aria-current="true"]')
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'part:P1', 'part:P2'})
+            for fid in ('f1', 'f2'):
+                self.assertGreater(page.locator('#view-positions a[aria-current="true"][href="#view-facet-'+fid+'"]').count(), 0)
+            output = os.environ.get('ATTENTION_REVIEW_FIX_EVIDENCE_DIR')
+            if output:
+                Path(output).mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(Path(output) / 'focus-distribution-1440.png'), full_page=True)
+            select_reading_record(page, 1)
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'part:P1', 'part:P2'})
+            expect(page.locator('#view-positions a[aria-current="true"][href="#view-facet-f1"]')).to_have_count(0)
+            expect(page.locator('#view-positions a[aria-current="true"][href="#view-facet-f3"]')).not_to_have_count(0)
+            self.assertEqual(page.locator('#view-version').inner_text(), before)
+            self.assertIn('3/4 条记录', page.locator('#view-positions > p').first.inner_text())
+            select_reading_record(page, 2)
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'part:P1', 'outside', 'pending', 'disposition'})
+            page.set_viewport_size({'width': 420, 'height': 1000})
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')),
+                {'part:P1', 'outside', 'pending', 'disposition'})
+            if output:
+                page.screenshot(path=str(Path(output) / 'focus-distribution-420.png'), full_page=True)
+            select_reading_record(page, 3)
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')), {'unprocessed'})
+            self.assertEqual(page.locator('#view-version').inner_text(), before)
+            open_panel(page, 'view-filters')
+            page.locator('#view-record').select_option('r4')
+            self.assertIn('0/1 条记录', page.locator('#view-positions > p').first.inner_text())
+            self.assertEqual(set(selected.evaluate_all('(es)=>es.map(e=>e.dataset.positionRegion)')), {'unprocessed'})
+            browser.close()
+
     def test_pending_suggestion_retains_target_without_becoming_confirmed_coverage(self):
         state = oracle_state()
         state['opinions'][0]['facets'][0]['status'] = 'needs_review'
@@ -79,19 +549,16 @@ class Positions(unittest.TestCase):
             open_panel(page, 'view-filters')
             region = page.locator('#view-positions')
             self.assertEqual(errors, [])
-            self.assertIn('B关注位置', region.inner_text())
-            page.locator('#view-positions a[href="#view-facet-f1"]').first.click()
-            self.assertTrue(page.locator('#view-record-r1').evaluate('(e)=>e.open'))
-            page.locator('[data-position-region="item:A1"]').focus()
-            page.keyboard.press('Enter')
-            self.assertIn('3/4', page.locator('#position-drill').inner_text())
-            page.locator('#position-drill a').first.click()
-            self.assertTrue(page.locator('#view-record-r1').evaluate('(e)=>e.open'))
-            self.assertIn('合成原话', page.locator('#view-facet-f1').inner_text())
-            self.assertIn('若有记录才补充', page.locator('#view-facet-f1').inner_text())
-            page.get_by_role('button', name='查看原话并修改').first.click()
+            self.assertIn('B关注分布', region.inner_text())
+            point = page.locator('#attention-map a[href="#view-facet-f1"]').first
+            point.focus(); page.keyboard.press('Enter')
+            self.assertIn('合成原话', page.locator('#focus-reading').inner_text())
+            self.assertIn('若有记录才补充', page.locator('#focus-reading').inner_text())
+            self.assertLess(page.locator('#focus-reading').bounding_box()['y'], 768)
+            page.get_by_role('button', name='修改解释', exact=True).click()
             self.assertEqual(page.locator('#facet').input_value(), 'f1')
             page.locator('#interpretation').fill('未暂存的文字')
+            open_panel(page, 'view-record-r1')
             page.get_by_role('button', name='查看原话并修改').nth(1).click()
             self.assertEqual(page.locator('#facet').input_value(), 'f2')
             self.assertEqual(page.locator('#interpretation').input_value(), '合成解释')
@@ -104,7 +571,7 @@ class Positions(unittest.TestCase):
             with self.assertRaises(Exception):
                 page.evaluate("AttentionPositions.setOverlay({analysis_id:'wrong',base_revision:7,a_version:'synthetic-A',placements:[]})")
             page.locator('#view-boiler').select_option('true')
-            self.assertIn('1/4', page.locator('#position-drill').inner_text())
+            self.assertIn('1/4', page.locator('#view-positions > p').first.inner_text())
             for width in (1440, 420):
                 page.set_viewport_size({'width': width, 'height': 1000})
                 region.scroll_into_view_if_needed()
@@ -128,11 +595,15 @@ class Positions(unittest.TestCase):
             page.goto(path.as_uri())
             open_panel(page, 'view-a-positions')
             open_panel(page, 'view-filters')
-            page.locator('[data-position-region="item:A1"] text').first.click()
-            self.assertIn('48/49', page.locator('#position-drill').inner_text())
-            self.assertEqual(page.locator('#position-drill li').count(), 20)
-            self.assertLessEqual(page.locator('#view-positions svg rect').count(), 12)
-            page.get_by_role('button', name='下一页', exact=True).click()
-            self.assertIn('显示 21–40 / 48', page.locator('#position-drill').inner_text())
+            self.assertIn('48/49', page.locator('#view-positions > p').first.inner_text())
+            self.assertEqual(page.locator('#attention-map [data-map-theme="T1"] [data-map-region="part:P1"]').count(), 8)
+            page.locator('#attention-map a[aria-label="T1 · 展开全部 47 条记录"]').click()
+            page.locator('.focus-cluster-records > summary').click()
+            self.assertEqual(page.locator('.focus-cluster-records button').count(),47)
+            with page.expect_download() as download:
+                page.get_by_role('button', name='导出 SVG', exact=True).click()
+            exported = Path(download.value.path()).read_text(encoding='utf-8')
+            self.assertIn('new-B-44', exported)
+            self.assertIn('分母 49', exported)
             self.assertEqual(errors, [])
             browser.close()

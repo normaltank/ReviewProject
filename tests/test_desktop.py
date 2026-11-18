@@ -15,6 +15,13 @@ from reviewproto.core import ReviewError
 
 
 class DesktopControllerTests(unittest.TestCase):
+    def doCleanups(self):
+        result = super().doCleanups()
+        import gc
+        gc.collect()
+        return result
+
+
     def test_powershell_host_prefers_pwsh_then_falls_back_and_missing_is_safe(self):
         from reviewproto.desktop import powershell_executable
         modern = str(Path('C:/Program Files/PowerShell/7/pwsh.exe').absolute())

@@ -27,49 +27,44 @@ def prepare(path):
 
 
 class CandidateWorkflow(unittest.TestCase):
-    def test_analysis_shows_next_actions_and_saves_without_audit_form_detour(self):
-        import tkinter as tk
-        import time
+
+
+    def test_generation_checks_the_actual_snapshot_and_frozen_fingerprints(self):
         from unittest.mock import patch
-        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
-        from reviewproto.desktop import Controller
+        from reviewproto import attention_candidates as candidates
+        from reviewproto.attention_candidate_service import CandidateSession
+        from reviewproto.attention_input import import_prepared_a
+        from reviewproto.core import ReviewError
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'analysis'
-            before, response = prepare(path)
-            controller = Controller(); controller.open_attention(path)
-            root = tk.Tk(); root.withdraw()
-            try:
-                window = AttentionCandidateWindow(root, controller,
-                    provider_factory=lambda **kwargs: ReplayProvider([response]))
-                root.update()
-                self.assertTrue(window.generate_button.winfo_ismapped())
-                self.assertFalse(window.preview_button.winfo_ismapped())
-                self.assertFalse(window.accept_button.winfo_ismapped())
-                self.assertFalse(window.open_button.winfo_ismapped())
-                window.generate_button.invoke()
-                deadline = time.monotonic() + 10
-                while window.busy and time.monotonic() < deadline:
-                    root.update(); time.sleep(.02)
-                self.assertFalse(window.busy, window.status.get())
-                self.assertTrue(window.preview_button.winfo_ismapped())
-                self.assertTrue(window.accept_button.winfo_ismapped())
-                with patch.object(controller, 'open_attention_report') as opened:
-                    window.accept_button.invoke()
-                    deadline = time.monotonic() + 10
-                    while window.busy and time.monotonic() < deadline:
-                        root.update(); time.sleep(.02)
-                    self.assertFalse(window.busy, window.status.get())
-                    opened.assert_called_once_with(path)
-                with closing(AttentionWorkspace(path)) as ws:
-                    saved = ws.state()
-                self.assertEqual(saved['revision'], 1)
-                self.assertEqual(saved['records'], before['records'])
-                self.assertEqual(saved['opinions'][0]['status'], 'needs_review')
-            finally:
-                root.destroy()
+            root = Path(tmp)
+            path = root / 'pack'
+            state, response = prepare(path)
+            session = CandidateSession(path)
+            hashes = candidates._adapter_hashes()
+            manifest = root / 'adapter-hashes.json'
+            manifest.write_text(json.dumps({'schema': 'attention-adapter-hashes/1', 'files': hashes}))
+            with patch.object(candidates.sys, 'frozen', True, create=True), patch.object(
+                    candidates, '__file__', str(root / 'attention_candidates.py')):
+                run = session.generate('frozen', ReplayProvider([response]))
+                self.assertEqual(run['adapter_hash'], hashes['attention_candidates.py'])
+                self.assertEqual(run['provider_adapter_hash'], hashes['attention_provider.py'])
+                self.assertEqual(run['semantic_adapter_hash'], hashes['attention_semantic.py'])
+                manifest.unlink()
+                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_ADAPTER_HASHES'):
+                    session.generate('missing-manifest', ReplayProvider([]))
+            with closing(AttentionWorkspace(path)) as ws:
+                import_prepared_a(ws, {'version': 'new', 'items': [
+                    {'id': 'a', 'text': '合成新A', 'locator': '第一项'}]}, '测试', '变更A')
+            provider = ReplayProvider([])
+            with patch.object(provider, 'complete') as complete:
+                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_TARGET'):
+                    session.generate('stale', provider)
+                complete.assert_not_called()
+            self.assertFalse((path / 'candidate-runs' / 'stale').exists())
+            self.assertEqual(run['snapshot']['revision'], state['revision'])
 
     def test_new_candidate_sessions_generate_and_preview_preserve_formal_file_bytes(self):
-        from reviewproto.attention_candidate_ui import CandidateSession
+        from reviewproto.attention_candidate_service import CandidateSession
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'pack';prepare(path)
             files=('attention.sqlite3','attention-state.json','attention.html','.gitignore')
@@ -100,7 +95,7 @@ class CandidateWorkflow(unittest.TestCase):
 
     def test_source_or_a_changes_during_generation_make_result_unacceptable(self):
         import threading
-        from reviewproto.attention_candidate_ui import CandidateSession
+        from reviewproto.attention_candidate_service import CandidateSession
         from reviewproto.core import ReviewError
         for change in ('source', 'a'):
             with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
@@ -137,46 +132,11 @@ class CandidateWorkflow(unittest.TestCase):
                 with closing(AttentionWorkspace(path)) as ws:
                     self.assertEqual(ws.state()['opinions'], [])
 
-    def test_ordinary_desktop_button_opens_candidate_window_for_current_package(self):
-        import subprocess
-        import sys
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'pack'; prepare(path)
-            script = '''import sys
-import tkinter as tk
-from unittest.mock import patch
-from reviewproto import desktop
-controller = desktop.Controller(); controller.open_attention(sys.argv[1])
-original = tk.Tk
-seen, errors = [], []
-def create_root():
-    root = original()
-    root.report_callback_exception = lambda *args: errors.append(args)
-    def inspect():
-        try:
-            def walk(widget):
-                for child in widget.winfo_children():
-                    yield child
-                    yield from walk(child)
-            button = next(w for w in walk(root) if w.winfo_class() == 'TButton' and
-                w.cget('text') == '分析评语')
-            button.invoke(); root.update()
-            seen.extend(w.title() for w in root.winfo_children() if isinstance(w, tk.Toplevel))
-        finally: root.destroy()
-    root.after(100, inspect)
-    return root
-with patch('tkinter.Tk', create_root), patch('reviewproto.desktop.Controller', return_value=controller):
-    desktop.main()
-assert seen == ['分析评语'], seen
-assert not errors, errors
-'''
-            result = subprocess.run([sys.executable, '-c', script, str(path)], capture_output=True, text=True, timeout=20)
-            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_service_ownership_keeps_launch_paths_and_stops_only_its_run(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        from reviewproto.attention_candidate_ui import CandidateModelService
+        from reviewproto.attention_candidate_service import CandidateModelService
         from reviewproto.desktop import ROOT
         from reviewproto.core import ReviewError
         service = CandidateModelService()
@@ -202,7 +162,7 @@ assert not errors, errors
     def test_failed_start_keeps_only_new_verified_receipt_for_stop(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        from reviewproto.attention_candidate_ui import CandidateModelService
+        from reviewproto.attention_candidate_service import CandidateModelService
         from reviewproto.desktop import ROOT
         from reviewproto.core import ReviewError
         with tempfile.TemporaryDirectory() as tmp:
@@ -223,42 +183,9 @@ assert not errors, errors
                         self.assertEqual(command.call_args.args[0][-1],run_id)
                         self.assertIsNone(service.owned)
 
-    def test_tk_failed_start_enables_stop_and_recovers_without_a_real_process(self):
-        import tkinter as tk
-        import time
-        from types import SimpleNamespace
-        from unittest.mock import patch
-        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
-        from reviewproto.desktop import ROOT, Controller
-        with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)/'pack';prepare(path)
-            controller=Controller();controller.open_attention(path)
-            root=tk.Tk();self.addCleanup(root.destroy)
-            window=AttentionCandidateWindow(root,controller)
-            window.provider.set('local');window.change_provider()
-            self.addCleanup(window.window.destroy)
-            runtime=Path(tmp)/'runtime';runtime.mkdir();run_id='d'*32
-            window.resource.set(tmp);window.runtime.set(str(runtime))
-            (runtime/'server-state.json').write_text(json.dumps(dict(pid=456,run_id=run_id,
-                repo_root=str(ROOT),owner='ReviewProject/scripts/local-model/v1')),encoding='utf-8')
-            def wait():
-                deadline=time.monotonic()+5
-                while window.busy and time.monotonic()<deadline:
-                    root.update();time.sleep(.02)
-                self.assertFalse(window.busy)
-            with patch('reviewproto.desktop.run_powershell') as command:
-                command.return_value=SimpleNamespace(returncode=1,stdout='Owned PID 456 RUN '+run_id)
-                window.start_button.invoke();wait()
-                self.assertIn('已保留此次进程身份',window.status.get())
-                self.assertFalse(window.stop_button.instate(['disabled']))
-                command.return_value=SimpleNamespace(returncode=0,stdout='')
-                window.stop_button.invoke();wait()
-                self.assertIn('已停止',window.status.get())
-                self.assertTrue(window.stop_button.instate(['disabled']))
-                self.assertEqual(command.call_args.args[0][-1],run_id)
 
     def test_frozen_target_generate_preview_accept_reopen(self):
-        from reviewproto.attention_candidate_ui import CandidateSession
+        from reviewproto.attention_candidate_service import CandidateSession
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'pack'
             initial, response = prepare(path)
@@ -279,7 +206,7 @@ assert not errors, errors
                 self.assertEqual(ws.state()['opinions'][0]['facets'][0]['status'], 'needs_review')
 
     def test_generation_uses_captured_identity_and_rejects_revision_change(self):
-        from reviewproto.attention_candidate_ui import CandidateSession
+        from reviewproto.attention_candidate_service import CandidateSession
         from reviewproto.core import ReviewError
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'pack'
@@ -293,7 +220,7 @@ assert not errors, errors
             self.assertFalse((path / 'candidate-runs' / 'late').exists())
 
     def test_empty_and_partial_runs_preview_unprocessed_scope_and_recovery(self):
-        from reviewproto.attention_candidate_ui import CandidateSession, candidate_message
+        from reviewproto.attention_candidate_service import CandidateSession, candidate_message
         from reviewproto.core import ReviewError
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'pack'; state, response = prepare(path)
@@ -317,83 +244,12 @@ assert not errors, errors
             self.assertEqual(session.accept('partial', actor='editor', reason='retry')['revision'], 1)
             self.assertEqual(session.runs(), ['empty', 'partial'])
 
-    def test_real_tk_generate_is_async_and_switch_does_not_accept_into_another_pack(self):
-        import tkinter as tk
-        import threading
-        import time
-        from reviewproto.attention_candidate_ui import AttentionCandidateWindow
-        from reviewproto.desktop import Controller
-        with tempfile.TemporaryDirectory() as tmp:
-            path, other = Path(tmp) / 'one', Path(tmp) / 'two'
-            state, response = prepare(path)
-            prepare(other)
-            started, finish = threading.Event(), threading.Event()
-            threads = []
-            class HeldReplay(ReplayProvider):
-                def complete(self, request):
-                    threads.append(threading.get_ident()); started.set()
-                    if not finish.wait(10):
-                        raise RuntimeError('engineering timeout')
-                    return super().complete(request)
-            root = tk.Tk(); root.withdraw()
-            callback_errors = []
-            root.report_callback_exception = lambda *args: callback_errors.append(args)
-            self.addCleanup(root.destroy)
-            controller = Controller(); controller.open_attention(path)
-            window = AttentionCandidateWindow(root, controller,
-                provider_factory=lambda **kwargs: HeldReplay([response]))
-            from unittest.mock import patch
-            opener = patch.object(window, '_open_file')
-            opener.start(); self.addCleanup(opener.stop)
-            self.addCleanup(lambda: window.window.destroy() if window.window.winfo_exists() else None)
-            window.generate_button.invoke()
-            self.assertTrue(started.wait(3))
-            root.update()
-            self.assertTrue(window.busy)
-            self.assertNotEqual(threads[0], threading.get_ident())
-            controller.open_attention(other)
-            finish.set()
-            deadline = time.monotonic() + 10
-            while window.busy and time.monotonic() < deadline:
-                root.update(); time.sleep(.02)
-            self.assertFalse(window.busy, window.status.get())
-            self.assertIn('工程回放', window.status.get())
-            import os
-            evidence = os.environ.get('ATTENTION_CANDIDATE_EVIDENCE_DIR')
-            for width, height in ((920, 760), (760, 640)):
-                window.window.geometry(f'{width}x{height}'); root.update()
-                for button in (window.preview_button, window.accept_button, window.options_button):
-                    self.assertTrue(button.winfo_ismapped())
-                    self.assertLessEqual(button.winfo_rootx() + button.winfo_width(), window.window.winfo_rootx() + width)
-                    self.assertLessEqual(button.winfo_rooty() + button.winfo_height(), window.window.winfo_rooty() + height)
-                if evidence:
-                    from PIL import ImageGrab
-                    Path(evidence).mkdir(parents=True, exist_ok=True)
-                    for tab in range(3):
-                        window.tabs.select(tab); root.update()
-                        x, y = window.window.winfo_rootx(), window.window.winfo_rooty()
-                        ImageGrab.grab(bbox=(x, y, x + width, y + height)).save(str(Path(evidence) / f'tk-candidates-{tab}-{width}.png'))
-            window.actor.set('editor'); window.reason.set('inspect')
-            window.accept_button.invoke(); root.update()
-            self.assertIn('目标已切换', window.status.get())
-            for target in (path, other):
-                with closing(AttentionWorkspace(target)) as ws:
-                    self.assertEqual(ws.state()['revision'], 0)
-            controller.open_attention(path)
-            window.accept_button.invoke()
-            deadline = time.monotonic() + 10
-            while window.busy and time.monotonic() < deadline:
-                root.update(); time.sleep(.02)
-            self.assertIn('分析已保存', window.status.get())
-            with closing(AttentionWorkspace(path)) as ws:
-                self.assertEqual(ws.state()['revision'], 1)
-            self.assertEqual(callback_errors, [])
 
     def test_chrome_preview_regions_evidence_and_accept_edit_apply_reopen(self):
         import copy
         import os
         from playwright.sync_api import sync_playwright
-        from reviewproto.attention_candidate_ui import CandidateSession
+        from reviewproto.attention_candidate_service import CandidateSession
         from reviewproto.attention_candidate_render import render_candidate_preview
         from reviewproto.desktop import Controller
         with tempfile.TemporaryDirectory() as tmp:
@@ -479,7 +335,10 @@ assert not errors, errors
                 controller = Controller(); controller.open_attention(path)
                 page.goto((path / 'attention.html').as_uri())
                 open_panel(page, 'view-a-positions')
-                page.locator('#position-drill a').first.click()
+                open_panel(page, 'position-drill')
+                saved_link = page.locator('#position-drill a').first
+                saved_link.locator('xpath=ancestor::details[1]').locator(':scope > summary').click()
+                saved_link.click()
                 page.get_by_role('button', name='查看原话并修改').first.click()
                 self.assertEqual(page.locator('#facet').input_value(), saved['opinions'][0]['facets'][0]['facet_id'])
                 open_panel(page, 'editor-audit')
@@ -495,7 +354,10 @@ assert not errors, errors
                 self.assertEqual(controller.recover_attention()['revision'], 2)
                 page.goto((path / 'attention.html').as_uri())
                 open_panel(page, 'view-a-positions')
-                page.locator('#position-drill a').first.click()
+                open_panel(page, 'position-drill')
+                saved_link = page.locator('#position-drill a').first
+                saved_link.locator('xpath=ancestor::details[1]').locator(':scope > summary').click()
+                saved_link.click()
                 self.assertIn('如有记录才补充图例', page.locator('#view-detail').inner_text())
                 self.assertEqual(errors, [])
                 browser.close()

@@ -10,7 +10,7 @@ from .attention_summary import summarize
 from .attention_candidates import request_audit
 
 
-def render_candidate_preview(run):
+def render_candidate_preview(run, *, workbench_url=None, result_url=None):
     saved = copy.deepcopy(run['snapshot'])
     projected = copy.deepcopy(saved)
     patch = run['patch']
@@ -24,8 +24,17 @@ def render_candidate_preview(run):
                    a_version=saved['a_reference']['version'], label=run['run_id'], placements=placements,
                    validity=run.get('validity'), accepted_revision=run.get('accepted_revision'))
     esc = lambda value: html.escape(str(value), quote=True)
-    acceptance = ('已在修订 ' + str(run['accepted_revision']) + ' 保存，仍需核对；这里保留生成时的待核结果。最新修改请重开分析页查看。'
-                  if run.get('accepted_revision') is not None else '结果尚未保存，全部待核。要保留，请回分析窗口点“保存分析”。')
+    if run.get('accepted_revision') is not None:
+        acceptance = '已在修订 ' + str(run['accepted_revision']) + ' 保存，仍需核对。此页保留生成时的候选。'
+    elif run.get('validity') != 'current':
+        acceptance = '候选已失效。此页保留生成时的记录。'
+    elif run['status'] in {'complete', 'partial'} and patch['edits']:
+        operation = '返回工作台点“显式接收此候选”' if workbench_url else '回分析窗口点“保存分析”'
+        acceptance = '结果尚未保存。核对后可' + operation + '。'
+    else:
+        acceptance = '本次运行没有可接收的候选。'
+    result_url = result_url or '../../attention.html'
+    result_label = '查看当前已保存结果' if workbench_url else '查看当前已保存结果（编辑请从桌面打开）'
     status = {'complete': '处理完成', 'partial': '部分处理', 'failed': '处理失败',
               'zero_candidates': '未生成候选', 'running': '未完成'}
     records = {r['record_id']: r for r in saved['records']}
@@ -38,12 +47,14 @@ def render_candidate_preview(run):
         progress += ' · 未完成范围 ' + str(len(run['unprocessed'])) + ' 项'
     out = ['<section id="candidate-preview"><h1>评语分析结果</h1>',
            '<p>' + acceptance + '</p><p id="page-draft" role="status"></p>',
+           ('<p><a href="' + esc(workbench_url) + '">返回工作台核对候选</a></p>') if workbench_url else '',
            '<p class="candidate-meta">' + progress + '</p>',
            '<nav aria-label="候选导航"><a href="#candidate-visualization">查看分布图</a><a href="#candidate-sources">查看原话与原分</a><a href="#candidate-audit">查看处理明细</a></nav>']
     if run['mode'] == 'replay':
         out.append('<p class="candidate-meta">工程回放（非实际推理）</p>')
-    if run.get('validity') != 'current':
-        out.append('<p class="reading-warning">输入或修订已变，须重新生成。以下仅供回查。</p>')
+    if run.get('validity') != 'current' and (not workbench_url or run.get('accepted_revision') is None):
+        recovery = '可在工作台重新生成。' if workbench_url else '须重新生成。以下仅供回查。'
+        out.append('<p class="reading-warning">输入或修订已变。' + recovery + '</p>')
     reading = out
     out = []
     audit=request_audit(run)
@@ -199,9 +210,10 @@ def render_candidate_preview(run):
     page = page.replace('<script>' + editor + '</script>', '')
     page = page.replace("node('button','查看原话并修改',", "if(document.getElementById('attention-editor'))node('button','查看原话并修改',")
     page = page.replace('<p id="page-draft" role="status"></p>', '')
+    page = page.replace('<a href="#attention-editor">材料</a>', '')
     page = page.replace('</style><body>', '</style><body>' + ''.join(out) +
-                        '<p><a href="../../attention.html">查看当前已保存结果（编辑请从桌面打开）</a></p>' +
+                        '<p><a href="' + esc(result_url) + '">' + result_label + '</a></p>' +
                         '<details id="candidate-saved"><summary>生成时的只读保存结果 · 修订 ' + str(saved['revision']) +
-                        '</summary><p>此处是历史快照。当前结果请从桌面打开。</p>', 1)
+                        '</summary>', 1)
     page = page.replace('<script id="attention-data"', '</details><script id="attention-data"', 1)
     return page.replace('</body>', script + '</body>')

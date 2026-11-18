@@ -16,7 +16,7 @@ RETIRED = ('run', 'review', 'export-template', 'apply', 'render', 'recover',
            'batch-apply', 'batch-recover', 'batch-refresh', 'batch-template',
            'batch-append-analysis', 'batch-discover', 'batch-retrieve',
            'extract-approved', 'replay-grounding')
-CURRENT = ('desktop', 'attention-build', 'attention-apply', 'attention-recover',
+CURRENT = ('desktop', 'workbench', 'attention-build', 'attention-apply', 'attention-recover',
            'attention-migrate', 'attention-import-a', 'attention-generate',
            'attention-preview', 'attention-accept')
 

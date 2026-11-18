@@ -78,6 +78,30 @@ class OrdinaryAttentionInput(unittest.TestCase):
                 self.assertNotIn('PRIVATE_NEVER_COPY', json.dumps(state))
             self.assertEqual(db.read_bytes(), before)
 
+    def test_selected_source_is_revalidated_at_actual_build_read(self):
+        from reviewproto.attention_input import AttentionInput, prepared_payload
+        from reviewproto.core import ReviewError
+        from legacy_source_fixture import create_legacy_workspace
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload = {'scores': [], 'sections': [
+                {'section_id': 'ordinary', 'label': '评审意见', 'text': '原来选中的原话'}]}
+            source = root / 'source'
+            create_legacy_workspace(source, payload)
+            draft = AttentionInput()
+            selection = draft.workspace_options(source)[0]
+            draft.add_workspace(source, 'ordinary', '材料甲', expected=selection['source_selection'])
+            prepared = prepared_payload(draft)
+            moved = root / 'previous'
+            source.rename(moved)
+            payload['sections'][0]['text'] = '同路径、同分区的新来源'
+            create_legacy_workspace(source, payload)
+            with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION'):
+                AttentionInput().add_workspace(source, 'ordinary', expected=selection['source_selection'])
+            with self.open(root / 'analysis') as ws:
+                with self.assertRaisesRegex(ReviewError, 'E_ATTENTION_REVALIDATION'):
+                    ws.build(prepared)
+
     def test_existing_file_and_nonempty_directory_never_overwritten(self):
         from reviewproto.attention_input import AttentionInput
         from reviewproto.core import ReviewError

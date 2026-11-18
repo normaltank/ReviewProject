@@ -1,4 +1,4 @@
-"""Small local launcher; Tk and model dependencies are loaded only on demand."""
+"""Reusable local controller and compatibility launcher for the browser workbench."""
 from contextlib import closing
 from pathlib import Path
 import os
@@ -133,54 +133,7 @@ class Controller:
         self._sessions.clear()
 
 
-def main():
-    try:
-        import tkinter as tk
-        from tkinter import filedialog, ttk
-    except ImportError:
-        raise ReviewError('E_DESKTOP_UNAVAILABLE') from None
-    root = tk.Tk()
-    root.title('ReviewProject · 评语分析')
-    root.geometry('800x540')
-    controller = Controller()
-    candidate_windows = []
-    status = tk.StringVar(value='新建分析，录入评语；或打开已有分析继续。')
-    location = tk.StringVar(value='尚未打开分析')
-    frame = ttk.Frame(root, padding=24); frame.pack(fill='both', expand=True)
-    ttk.Label(frame, text='评语分析', font=('',18)).pack(anchor='w', pady=(0,16))
-    ttk.Label(frame,textvariable=status,wraplength=720).pack(fill='x')
-    ttk.Label(frame,textvariable=location,wraplength=720).pack(fill='x',pady=16)
-    def result(value):
-        location.set(str(value['path'])+' · 已保存修订 '+str(value['revision']))
-        actions.pack(fill='x',pady=16)
-        status.set('输入已保存。分析评语，或查看并修改已有结果。')
-    def perform(action):
-        try:
-            value=action()
-            if isinstance(value,dict): result(value)
-        except Exception as exc: status.set(safe_message(exc))
-    def new_analysis():
-        from .attention_input_ui import AttentionInputWindow
-        AttentionInputWindow(root,controller,on_result=result)
-    def open_analysis():
-        path=filedialog.askdirectory(title='打开分析包（attention.sqlite3所在目录）')
-        if path: perform(lambda:controller.open_attention(path))
-    def analyze():
-        from .attention_candidate_ui import AttentionCandidateWindow
-        perform(lambda:candidate_windows.append(AttentionCandidateWindow(root,controller,on_result=result)))
-    def change_a():
-        from .attention_input_ui import AttentionInputWindow
-        AttentionInputWindow(root,controller,a_only=True,on_result=result)
-    ttk.Button(frame,text='新建分析',command=new_analysis).pack(anchor='w',pady=4)
-    ttk.Button(frame,text='打开已有分析',command=open_analysis).pack(anchor='w',pady=4)
-    actions=ttk.Frame(frame)
-    ttk.Button(actions,text='分析评语',command=analyze).pack(anchor='w',pady=4)
-    ttk.Button(actions,text='查看并修改结果',command=lambda:perform(controller.open_attention_report)).pack(anchor='w',pady=4)
-    ttk.Button(actions,text='修改A参照（可选）',command=change_a).pack(anchor='w',pady=4)
-    def close():
-        if any(w.window.winfo_exists() and (w.busy or w.service.owned) for w in candidate_windows):
-            status.set('请等待分析结束，并在分析设置中停止本窗口启动的模型，再关闭。');return
-        controller.close();root.destroy()
-    root.protocol('WM_DELETE_WINDOW',close)
-    root.mainloop()
-    return 0
+def main(argv=None):
+    """Compatibility entry; all interaction now takes place in the browser."""
+    from .workbench_launcher import main as launch
+    return launch([] if argv is None else argv)

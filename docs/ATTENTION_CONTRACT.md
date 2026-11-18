@@ -4,7 +4,7 @@
 
 ## 入口与恢复
 
-候选路径的普通操作见[候选生成与核对](ATTENTION_CANDIDATES.md)。`attention_candidates.generate/preview/accept`分别生成、读取和接收版本化候选运行；原始B先独立分析，再对照完整当前A。模型输出经短别名中间协议绑定为规范对象，来源、身份、待核状态与精确坐标由适配器核验。原话可以通过明确的已知分区/证据片段选择或唯一逐字片段绑定；重复片段必须明确消歧，错误显式坐标不自动纠正。
+候选路径的普通操作见[候选生成与核对](USER_GUIDE.md#开始分析与核对)。`attention_candidates.generate/preview/accept`分别生成、读取和接收版本化候选运行；原始B先独立分析，再对照完整当前A。模型输出经短别名中间协议绑定为规范对象，来源、身份、待核状态与精确坐标由适配器核验。原话可以通过明确的已知分区/证据片段选择或唯一逐字片段绑定；重复片段必须明确消歧，错误显式坐标不自动纠正。
 
 `candidate-runs/RUN_ID/run.json`保存输入/选择/绑定、原始请求响应、模式、协议/提示/适配器指纹、用量、错误/拒收/未完成范围及规范补丁。它与正式数据库分离，继承来源权限。局部处理状态只表示运行结果，不能自动确认语义。实际API、本机模式与显式工程回放分别标注；旧规范响应只作明确的兼容回放，不是实际模型协议回退。
 
@@ -14,16 +14,16 @@
 python -m reviewproto attention-build tests/fixtures/synthetic_attention_input.json --workspace work/attention-demo
 python -m reviewproto attention-apply PATH_TO_DOWNLOADED_DRAFT --workspace work/attention-demo
 python -m reviewproto attention-recover --workspace work/attention-demo
-python -m reviewproto desktop
+python -m reviewproto.workbench_launcher
 ```
 
-普通使用从桌面打开结果页，选择原话片段、填写解释并点击“保存修改”。一个按钮收集有效表单及草稿，调用已有apply事务，成功后打开当前修订。修改者声明和理由可按需修改默认值。直接打开静态`attention.html`仍可阅读、导出草稿，再用上述CLI应用和恢复；桌面不再提供旧审核或下载文件应用流程。
+普通使用从网页工作台打开结果页，选择原话片段、填写解释并点击“保存修改”。一个按钮收集有效表单及草稿，调用已有apply事务，成功后打开当前修订。修改者声明和理由可按需修改默认值。直接打开静态 `attention.html` 可阅读、导出草稿，再用上述 CLI 应用和恢复。
 
-普通录入无需JSON：桌面“准备A/B输入并建立独立分析”支持B逐字转录/任意原分或既有普通工作区选择、可选A版本/部分/完整条目及清单核对；“录入A参照并显式换版”支持已有包A接续。逐步操作见[输入与换批](ATTENTION_INPUT.md)。输入准备使用原引擎整份清单预检，新建独立包；B-only快照与各次A输入分离保存在包内，保护既有目录。无A初建修订0，初始含A通过显式导入到修订1。B更正或换批从同一入口另建包，旧观点不自动迁移。
+网页支持逐字录入 B 和原分、选择已有普通来源、录入可选 A 版本及条目，并为已打开的分析包显式换 A。操作见[使用指南](USER_GUIDE.md#用自己的材料)。输入准备使用原引擎整份清单预检，新建独立包；B-only快照与各次A输入分离保存在包内，保护既有目录。无A初建修订0，初始含A通过显式导入到修订1。B更正或换批从同一入口另建包，旧观点不自动迁移。
 
 `AttentionWorkspace(path)` 提供 `build(payload, base=...)` 或 `build(input_path=...)`、`state()`、`apply(patch)` 或 `apply(input_path=...)`、`recover()`、`close()`。新包目录必须为空；已有包从独立 `attention.sqlite3` 打开，旧 `review.sqlite3` 不迁移。SQLite是修订与历史的权威，JSON/HTML是可重建投影。CLI只输出安全状态码、修订及绑定状态，不输出原话/原分。
 
-桌面为每个结果页建立临时`127.0.0.1`会话，固定绑定一个分析包及其身份；更换桌面当前包不会重定向旧页面。写入只接受同源、有效会话凭据及有界JSON，经`AttentionWorkspace.apply`事务提交；不另建写入数据库。桌面关闭释放会话。静态投影不包含会话凭据，图形和阅读不依赖外部网络。
+工作台在 `127.0.0.1` 运行，结果页的地址与保存会话固定绑定一个分析包及其身份。写入只接受同源、有效会话凭据及有界JSON，经`AttentionWorkspace.apply`事务提交；不另建写入数据库。关闭工作台释放会话。静态投影不包含会话凭据，图形和阅读不依赖外部网络。
 
 切换记录或关联前收集有效输入，不完整必填内容阻止切换并提示；保存失败、冲突或会话关闭保留页面草稿。导出不表示已保存。`apply` 在一个SQLite事务中校验全部编辑，任一错误整批回滚；同一规范JSON指纹重放不增加修订。修改者是自报审计声明。`base_revision` 必须等于当前修订，同分析包身份绑定，旧修订返回 `E_ATTENTION_CONFLICT`。提交后输出失败返回 `E_ATTENTION_OUTPUT_RECOVER`；提交可能已经成功，运行recover并重开核对，不另造补丁重复修改。完全相同补丁可安全重放。
 
@@ -110,7 +110,7 @@ T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_ob
 
     python -m reviewproto attention-migrate WORKING_DRAFT_JSON --workspace NEW_EMPTY_DIRECTORY --actor 编辑声明 --reason 迁入理由
 
-显式旧工作稿可用`attention-migrate`迁入新目录，`AttentionWorkspace`提供`migrate_working_draft(input_path,actor=...,reason=...)`。普通桌面入口不再展示该历史迁入操作。仅接受working-attention-index-v1显式Adapter：校验各原话SHA及各方面/关系原始start/end/quote，不使用首个find定位，不采用旧coverage/denominator或confirmed身份。原稿作为只读文件绑定，改变/不可读触发待核。所有对象在建包事务提交前校验，坏稿不留下部分分析状态。
+显式旧工作稿可用`attention-migrate`迁入新目录，`AttentionWorkspace`提供`migrate_working_draft(input_path,actor=...,reason=...)`。此操作使用 CLI。仅接受working-attention-index-v1显式Adapter：校验各原话SHA及各方面/关系原始start/end/quote，不使用首个find定位，不采用旧coverage/denominator或confirmed身份。原稿作为只读文件绑定，改变/不可读触发待核。所有对象在建包事务提交前校验，坏稿不留下部分分析状态。
 
 旧记录ID作为转录anchor及旧别名保留；已给材料分组保存在record.locator.paper_id，T4可按这个显式字段筛选材料组，不从R编号/教师/文件名猜组。它表示给定论文材料组关系，不确认精确送审版、轮次或教师身份。普通评审可见性记visibility_unknown；记录expression_function只进入expression_note，不复制为各方面套话判断。每个旧方面先迁为一个工作观点/方面，再以有理由补丁调整。旧主题有持久随机ID；旧关系先保留范围/证据/工作读法，角色/方向明确待核，后续逐条纠正。新包legacy_aliases列出{kind,alias,id,disposition}，kind为record/facet/theme/relation；方面及主题另保留legacy_aliases。旧关系无ID时用旧record别名加:relation:原序号说明首次迁入位置；迁入后按持久relation_id编辑，不用序号重算身份。
 
@@ -124,7 +124,7 @@ T3接线位置是AttentionWorkspace.apply统一事务及attention_model.apply_ob
 python -m reviewproto attention-import-a A_INPUT_JSON --workspace EXISTING_ANALYSIS --actor 编辑声明 --reason 接续理由
 ```
 
-桌面先打开分析包，再点“修改A参照（可选）”；已有A文件可用上述CLI导入。`AttentionWorkspace`提供`import_a(input_path,actor=...,reason=...)`，与普通补丁共用`apply`事务、修订、历史及recover。`attention-a-input/1`包含`a_reference`和可选`source:{path,fingerprint}`；source路径相对清单或为绝对本地路径，fingerprint为原文件字节SHA-256。清单本身始终绑定字节指纹；可选source同时绑定原文，两者变化或不可读都保留旧快照并待核。
+工作台先打开分析包，再按[使用指南](USER_GUIDE.md#用自己的材料)采用新的 A 版本。已有 A 文件可用上述 CLI 导入。`AttentionWorkspace`提供`import_a(input_path,actor=...,reason=...)`，与普通补丁共用`apply`事务、修订、历史及recover。`attention-a-input/1`包含`a_reference`和可选`source:{path,fingerprint}`；source路径相对清单或为绝对本地路径，fingerprint为原文件字节SHA-256。清单本身始终绑定字节指纹；可选source同时绑定原文，两者变化或不可读都保留旧快照并待核。
 
 `a_reference`为`{version,parts:[{id,label}],items:[{id,text,locator,part_id}]}`；旧无分组参照可省parts/part_id，显示未分组，不猜新分组。完整条目包括原文限定、条件、例子和原字样，不按子句扩写新要求。所有ID唯一、part_id指向已知部分。同version下任何条目、文字、定位或分组变化均拒收；显式换版本保存旧参照与旧A绑定到`a_reference_history`，其中`replaced_at_revision`指向接续修订。原B身份及全部旧历史保持不变。内容完全相同的同版本可显式重绑到新文件，保留审计及旧绑定。
 
@@ -132,14 +132,14 @@ A来源失效时`a_material_status=needs_revalidation`，旧A关联和清单外�
 
 方面`a_links`严格使用`{a_item_id,version,kind,scope,reason,evidence,status}`；kind为explicit/partial/related/undetermined。前三类必须指向当前参照的已知条目；暂未定可指具体条目或null。`outside`严格使用`{scope,reason,evidence,status}`。范围与理由必填，证据使用所属记录的五字段逐字区间，状态为working/needs_review/confirmed/withdrawn。同方面可同时保存多个不同关系及清单外、未定范围。新关联不能仅凭版本字符串接受已变化的含义。
 
-普通表单先选择观点方面及原话片段，在“A对应与清单外内容”选择种类、A条目、范围、理由和状态，点“关联加入草稿”；已有项可纠正或移除。从桌面打开的结果页点击“保存修改”完成提交，静态导出则仍需CLI应用并重开。移除最后一条仍生成完整attention-patch/2，保留同观点其他方面及B关联。A完整条目、部分、定位、当前版本及旧版本快照可查；未出现项显示尚无当前采用的对应，不表示B不关注。明确、部分、相关和未定分别显示，不据通用认可点亮全部A。
+普通表单先选择观点方面及原话片段，在“A对应与清单外内容”选择种类、A条目、范围、理由和状态，点“关联加入草稿”；已有项可纠正或移除。从工作台打开的结果页点击“保存修改”完成提交，静态导出则仍需CLI应用并重开。移除最后一条仍生成完整attention-patch/2，保留同观点其他方面及B关联。A完整条目、部分、定位、当前版本及旧版本快照可查；未出现项显示尚无当前采用的对应，不表示B不关注。明确、部分、相关和未定分别显示，不据通用认可点亮全部A。
 
 真实本地A18及全部方面的工作解释接续保存在[受控工作包](LOCAL_MATERIALS.md#attention-delivery)；公开测试使用合成材料，集成、最终审查和用户本人体验分别见STATE与对应工作项。公开合成回归覆盖跨部分、同句在外与对应、数据年代、背景来源偏好、措辞与来源疑虑、通用认可六类结构；既有合成回归覆盖宽窄布局、草稿导出与应用；本轮新增实际浏览器直接保存和重开，并保留清空最后关联实际持久化的检查。
 
-## T5 保存结果视图
+## 保存结果视图
 
-主关注页在编辑器上方嵌入[已保存分布](ATTENTION_SUMMARY.md)，并提供记录/材料与表达属性即时筛选。记录或材料改变分母，表达筛选只改变命中；原话、原分、方面解释、A范围与关系角色均可在普通明细回查，点击数字或证据不改变分母。下方编辑区保留全材料，历史解释单独折叠。
+结果默认使用[已保存分布](ATTENTION_SUMMARY.md)绘制关注图，并提供记录、材料与表达属性筛选。记录或材料改变分母，表达筛选只改变命中；原话、原分、方面解释、A范围与关系角色均可在普通明细回查，点击数字或证据不改变分母。下方编辑区保留全材料，历史解释单独折叠。
 
 “显示记录×主题/A矩阵”和“显示局部关系图”默认关闭，可分别开启。矩阵允许重叠，A部分与条目按关系种类分列；清单外和无条目归属独立显示。局部原生SVG以观点、方面、关系组区分节点，成员归属与关系角色分线说明；没有推定方向箭头、距离含义或教师身份。局部记录选择只改变图的展开范围。
 
-三种查看只使用同一保存修订的完整贡献索引；A有效列沿用Python汇总判断。草稿不更新这些结果；apply成功后重开当前修订。桌面会话页直接调用本机事务，静态页仍可离线阅读；视图不请求外部网络，均继承可信编辑目录权限。
+图、阅读、矩阵及局部关系使用同一保存修订的完整贡献索引；A有效列沿用Python汇总判断。草稿不更新这些结果；apply成功后重开当前修订。工作台结果页调用本机事务，静态页仍可离线阅读；视图不请求外部网络，均继承可信编辑目录权限。

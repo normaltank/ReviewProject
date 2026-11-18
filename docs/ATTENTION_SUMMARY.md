@@ -32,13 +32,13 @@ A的五列为 `explicit/partial/related/undetermined/needs_review`。`working` �
 
 `details[record_id]` 保存完整原记录（分区、原分、定位）及当前命中方面、观点解释/状态。`revision/analysis_id/rules_version/summary_rules_version/a_version/material_status/a_material_status/b_material_status/filters` 与数字一起返回；`saved=True` 表示调用约定为已保存状态，并不检测调用者私改的字典。草稿应独立展示，不能传入并宣称已保存。
 
-## T5嵌入点与即时筛选
+## 即时筛选与图形
 
-`render_summary(result)` 返回带局部样式、无脚本、已转义的HTML `<section>`。可嵌入主页面已保存区；主题/A各列链接到同片段记录明细，键盘可展开原话与解释。同一页面只嵌入一次，避免重复锚点。主页面与即时筛选通过下述T5嵌入点使用本Interface。
+`render_summary(result)` 返回带局部样式、无脚本、已转义的HTML `<section>`。可嵌入主页面已保存区；主题/A各列链接到同片段记录明细，键盘可展开原话与解释。同一页面只嵌入一次，避免重复锚点。结果视图共用下述贡献索引。
 
 `contributions` 是逐方面贡献索引，每项带 `record_id/opinion_id/facet_id/kind/status/directions/expression/theme_ids/a_items/a_parts/a_unassigned/outside`。`theme_ids` 已展开父组，A条目以 `{id,kind,version}` 保留原对应版本和Python已经判定的有效列，A部分以 `{id,kind}` 给出。版本仅用于从当前/历史参照读取原条文，浏览器不得重新判定有效列或从文字猜类型。列表可有同列重复贡献，汇总时必须取记录集合。
 
-T5在离线页面使用无表达筛选的结果作为完整贡献索引：先按记录/材料选出分母记录，随后按表达属性筛选贡献，再对指定行的贡献取 `record_id` 并集。关系使用 `relation_details.endpoints[].facet_id` 检查全部端点是否保留。辅助观点/方面按各自ID去重。原始 `details` 足够展示原话/原分及命中依据。已筛选结果的贡献索引仅包含该次命中，不能据此撤销筛选恢复原数据。
+离线页面使用无表达筛选的结果作为完整贡献索引：先按记录/材料选出分母记录，随后按表达属性筛选贡献，再对指定行的贡献取 `record_id` 并集。关系使用 `relation_details.endpoints[].facet_id` 检查全部端点是否保留。辅助观点/方面按各自ID去重。原始 `details` 足够展示原话/原分及命中依据。已筛选结果的贡献索引仅包含该次命中，不能据此撤销筛选恢复原数据。
 
 数字只说明本批表达，不表示教师群体重要性、论文质量、A权重或专业结论正确。未知教师/轮次不妨碍记录统计；主题宽窄、重叠和工作状态需随展示保留。
 
@@ -46,6 +46,6 @@ T5在离线页面使用无表达筛选的结果作为完整贡献索引：先按
 
 `python -m unittest discover -s tests -p test_attention_summary.py -v` 使用独立四记录手算集合，覆盖并集、副本、多方面、失效引用、表达筛选、空N、处置/关系分列、贡献索引、转义及1440/420宽度键盘回查。`ATTENTION_SUMMARY_EVIDENCE_DIR` 可指定合成浏览器截图的本地输出目录。全套使用 `scripts/check.ps1 -Python python`，并设置真实Chrome的 `REVIEW_BROWSER_BINARY`。
 
-T5已将本Interface接入主关注页。`attention_views.js`从无筛选`summarize()`结果读取完整贡献索引，统一筛选后供无图数字/明细、矩阵与局部关系图使用；不重判A有效性。无脚本时保留`render_summary()`无图结果。交互及保存语义见[视图操作](ATTENTION_CONTRACT.md#t5-保存结果视图)。浏览器回归：`python -m unittest discover -s tests -p test_attention_views.py -v`。
+结果页从这一接口读取保存态贡献。`attention_views.js`从无筛选`summarize()`结果读取完整贡献索引，统一筛选后供关注图、数字明细、矩阵与局部关系图使用；不重判A有效性。无脚本时保留`render_summary()`无图结果。交互及保存语义见[视图操作](ATTENTION_CONTRACT.md#保存结果视图)。浏览器回归：`python -m unittest discover -s tests -p test_attention_views.py -v`。
 
-复用工具在保存结果区加入“当前关注概览”，显示实际修订、动态A结构、规模和可回查记录集合；无A/未整理/来源失效各有明确空态或提示。概览与下方各主题、A条目/部分、关系及可选图共用当前集合及分母，不生成无依据的解释性发现；下载草稿不改变保存概览。复用浏览器回归见`test_attention_overview.py`，普通输入跨批验收见[复用施工计划](plans/b-attention-reuse-construction.md)。
+复用工具在保存结果区加入“当前关注概览”，显示实际修订、动态A结构、规模和可回查记录集合；无A/未整理/来源失效各有明确空态或提示。概览与下方各主题、A条目/部分、关系及可选图共用当前集合及分母，不生成无依据的解释性发现；下载草稿不改变保存概览。复用浏览器回归见`test_attention_overview.py`，普通输入跨批验收见[网页交付规格](specs/web-workbench-trial.md#清理与验收)。

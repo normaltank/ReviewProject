@@ -59,15 +59,20 @@ class AttentionInputGroups(unittest.TestCase):
             try:
                 page = browser.new_page(offline=True)
                 page.goto((path / 'attention.html').as_uri())
+                page.locator('#focus-reading-mode').click()
                 open_panel(page, 'view-filters')
+                open_panel(page, 'reading-details')
                 choices = page.locator('#view-paper option').all_text_contents()
                 self.assertEqual(set(choices), {'全部', '材料甲', '材料乙', '未知材料组'})
                 for group, anchors in [('材料甲', {'甲一', '甲二'}), ('材料乙', {'乙'}), (None, {'未知'})]:
                     page.locator('#view-paper').select_option(json.dumps(group, ensure_ascii=False))
                     self.assertEqual(page.locator('#view-detail > details').count(), len(anchors))
                     self.assertIn('0/' + str(len(anchors)), page.locator('#view-hits').inner_text())
-                    for detail in page.locator('#view-detail > details').all():
-                        detail.locator(':scope > summary').click()
+                    for index in range(page.locator('#focus-list button').count()):
+                        page.locator('#focus-list button').nth(index).click()
+                        detail = page.locator('#view-detail > details:not([hidden])')
+                        if detail.get_attribute('open') is None:
+                            detail.locator(':scope > summary').click()
                         detail.locator('.record-source > summary').click()
                         self.assertIn('材料组：' + (group or '未知'), detail.inner_text())
                 context = browser.new_context(java_script_enabled=False, offline=True)
