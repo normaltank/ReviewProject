@@ -4,7 +4,7 @@
 
 ## 开始使用
 
-Windows 10/11 试用版解压整个 ZIP，双击 `ReviewProject.exe`，浏览器会打开本机工作台。先点**建立合成示例**看图和原话，也可点**新建分析**录入自己的评语。详见[使用指南](docs/USER_GUIDE.md)。
+Windows 10/11 试用版解压整个 ZIP，双击 `ReviewProject.exe`，浏览器会打开本机工作台。先点**建立合成示例**看图和原话，也可点**录入B原话和可选A**开始处理自己的材料。详见[使用指南](docs/USER_GUIDE.md)。
 
 从源码运行需要 Windows 与 Python 3.12。安装依赖后双击 `start-review.cmd`，或运行以下命令。
 
