@@ -116,7 +116,8 @@ class Positions(unittest.TestCase):
             page.on('pageerror', lambda e: errors.append(str(e)))
             page.goto(path.as_uri())
             self.assertTrue(page.locator('#attention-map').is_visible())
-            self.assertIn('分母 4', page.locator('#view-positions').inner_text())
+            self.assertIn('当前范围 4 条记录（分母）', page.locator('#view-version').inner_text())
+            self.assertEqual(page.locator('#map-scope').inner_text(), '当前筛选 · 3/4 条记录有解释')
             # ROOT is an aggregate parent, never another peer cluster.
             self.assertEqual(page.locator('[data-map-theme="ROOT"]').count(), 0)
             mixed = page.locator('[data-map-record="r2"][data-map-region="part:P1"]')
@@ -132,6 +133,88 @@ class Positions(unittest.TestCase):
             for text in ('分母 4', 'synthetic-A', '修订 7', '样本来源', '结论范围', '未处理'):
                 self.assertIn(text, exported)
             self.assertEqual(errors, [])
+            browser.close()
+
+    def test_map_and_export_legend_use_the_actual_record_shapes(self):
+        from playwright.sync_api import expect
+        from xml.etree import ElementTree
+
+        state = oracle_state()
+        state.update(material_status='current', history=[], bindings=[])
+        for record in state['records']:
+            record.update(anchor=record['record_id'], sections=[
+                dict(section_id=record['record_id'], text=record['text'], locator={})])
+        for opinion in state['opinions']:
+            opinion['interpretation'] = '合成观点'
+            for facet in opinion['facets']:
+                for outside in facet['outside']:
+                    outside.update(evidence=[], reason='合成范围依据')
+        for relation in state['relations']:
+            relation.update(evidence=[])
+        cases = (
+            ('r1', 'part:P1', 'item:A1', 'explicit', 'circle', False),
+            ('r2', 'part:P1', 'item:A1', 'related', 'circle', False),
+            ('r3', 'outside', 'outside', 'outside', 'polygon', False),
+            ('r3', 'pending', 'pending', 'pending', 'rect', True),
+        )
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'legend.html'
+            path.write_text(render(state), encoding='utf-8')
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(offline=True, viewport=dict(width=1366, height=768))
+            page.goto(path.as_uri())
+            chart = page.locator('#attention-map')
+            legend = chart.locator('[data-map-legend]')
+            expect(legend).to_contain_text('明确对应')
+            expect(legend).to_contain_text('部分、相关或混合')
+            expect(legend).to_contain_text('本版A未明示')
+            expect(legend).to_contain_text('对应未定')
+            expect(legend).to_contain_text('含待核')
+            for record, region, _, kind, tag, dashed in cases:
+                symbol = chart.locator(f'[data-map-record="{record}"][data-map-region="{region}"] [data-map-glyph]')
+                expect(symbol).to_have_attribute('data-map-glyph', kind)
+                self.assertEqual(symbol.evaluate('e=>e.localName'), tag)
+                self.assertEqual(symbol.get_attribute('stroke-dasharray') is not None, dashed)
+                legend_icon = legend.locator(f'[data-map-glyph="{kind}"]')
+                self.assertEqual(legend_icon.evaluate('e=>e.localName'), tag)
+                self.assertEqual(symbol.get_attribute('fill'), legend_icon.get_attribute('fill'))
+            expect(legend.locator('[data-map-glyph="review"]')).to_have_attribute('stroke-dasharray', '2 2')
+            outside = chart.locator('[data-map-record="r3"][data-map-region="outside"]')
+            outside.hover()
+            self.assertEqual(outside.locator('polygon').evaluate('e=>getComputedStyle(e).stroke'), 'rgb(255, 255, 255)')
+            outside.press('Enter')
+            expect(outside).to_be_focused()
+            expect(outside).to_have_attribute('aria-current', 'true')
+            self.assertEqual(outside.locator('polygon').evaluate('e=>getComputedStyle(e).strokeWidth'), '3px')
+            self.assertGreater(chart.locator('[data-map-record="r3"][aria-current="true"]').count(), 1)
+
+            with page.expect_download() as download:
+                page.locator('#export-map-svg').click()
+            root = ElementTree.parse(download.value.path()).getroot()
+            icons = [{entry.get('data-map-glyph') for entry in legend.iter() if entry.get('data-map-glyph')}
+                     for legend in root.findall('.//*[@data-map-legend]')]
+            self.assertEqual(len(icons), 2)
+            self.assertEqual(icons[0], icons[1])
+            for record, _, index_region, kind, tag, _ in cases:
+                links = [link for link in root.findall(f'.//*[@data-map-record="{record}"]')
+                         if link.get('data-map-region') == index_region]
+                self.assertTrue(any(entry.tag.endswith('}'+tag) and entry.get('data-map-glyph') == kind
+                                    for link in links for entry in link))
+
+            page.set_viewport_size(dict(width=320, height=768))
+            page.wait_for_function('Number(document.querySelector("#attention-map svg").getAttribute("width"))<320')
+            self.assertEqual(svg_text_collisions(chart), [])
+            self.assertTrue(legend.evaluate("""g=>[...g.querySelectorAll('text')].every(t=>{
+                const b=t.getBBox();return b.x>=0&&b.x+b.width<=g.ownerSVGElement.viewBox.baseVal.width;
+            })"""))
+            evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+            if evidence:
+                Path(evidence).mkdir(parents=True, exist_ok=True)
+                legend.scroll_into_view_if_needed()
+                page.screenshot(path=str(Path(evidence)/'positions-legend-320.png'))
+            page.locator('#map-a-toggle').press('Space')
+            expect(legend).to_contain_text('评语记录')
+            expect(legend.locator('[data-map-glyph="explicit"],[data-map-glyph="outside"]')).to_have_count(0)
             browser.close()
 
     def test_two_and_three_a_parts_keep_long_labels_and_shared_theme_markers_visible(self):

@@ -48,6 +48,54 @@ function model(value){
  return {groups:ordered,cs,ps};
 }
 function lines(text,limit){const chars=Array.from(text||''),result=[];for(let i=0;i<chars.length;i+=limit)result.push(chars.slice(i,i+limit).join(''));return result.length?result:[''];}
+const comparingA=()=>showA&&summary.a_reference.items.length>0;
+function markerMeaning(record,region){
+ const placements=record.placements;
+ const compare=comparingA();
+ const review=placements.some(p=>(compare?p.review_status:p.facet_status)==='needs_review');
+ if(!compare)return {kind:'record',review};
+ if(region==='outside'||region==='pending')return {kind:region,review};
+ if(region.startsWith('item:')||region.startsWith('part:')){
+  if(!placements.some(p=>p.review_status!=='needs_review'&&p.proposed_kind!=='undetermined'))return {kind:'pending',review};
+  const explicit=placements.every(p=>p.proposed_kind==='explicit'&&p.review_status!=='needs_review');
+  return {kind:explicit?'explicit':'related',review};
+ }
+ return {kind:'record',review};
+}
+function markerGlyph(parent,x,y,kind,review=false,selected=false){
+ const attrs={'data-map-glyph':kind,class:'map-marker',fill:kind==='explicit'?'#aeb9b8':'none',
+  stroke:selected?'#d5e8e2':'#aeb9b8','stroke-width':selected?2.4:1.6,
+  ...(review?{'stroke-dasharray':'2 2'}:{})};
+ if(kind==='outside')return svg('polygon',{...attrs,points:[x,y-6.7,x+6.7,y,x,y+6.7,x-6.7,y].join(' ')},parent);
+ if(kind==='pending')return svg('rect',{...attrs,x:x-4.8,y:y-4.8,width:9.6,height:9.6},parent);
+ if(kind==='record')return svg('line',{...attrs,x1:x-5.5,y1:y,x2:x+5.5,y2:y},parent);
+ return svg('circle',{...attrs,cx:x,cy:y,r:5.5},parent);
+}
+function recordMarker(parent,x,y,record,region,selected,hitRadius){
+ const {kind,review}=markerMeaning(record,region);
+ markerGlyph(parent,x,y,kind,review,selected);
+ if(selected)svg('circle',{cx:x,cy:y,r:hitRadius-1,fill:'none',stroke:'#d5e8e2'},parent);
+ svg('circle',{cx:x,cy:y,r:hitRadius,fill:'transparent'},parent);
+}
+function drawLegend(parent,width,y,index){
+ const assoc=comparingA(),entries=assoc?[
+  ['explicit','明确对应'],['related','部分、相关或混合'],
+  ['outside','本版A未明示'],['pending','对应未定']]:[];
+ const markers=index.flatMap(g=>g.rows.flatMap(row=>[...row.records.values()].map(r=>markerMeaning(r,g.id))));
+ if(!assoc||markers.some(m=>m.kind==='record'))entries.push(['record',assoc?'未作当前A对应':'评语记录']);
+ if(markers.some(m=>m.review))entries.push(['review','含待核']);
+ const legend=svg('g',{'data-map-legend':'',role:'group','aria-label':'标记含义'},parent);
+ const margin=18;
+ let x=margin;
+ for(const [kind,text] of entries){
+  const span=Array.from(text).length*13+23;
+  if(x+span>width-margin&&x>margin){x=margin;y+=22;}
+  markerGlyph(legend,x+6,y,kind,kind==='review');
+  svg('text',{x:x+19,y:y+4,fill:'#b0b7b9','font-size':13},legend,text);
+  x+=span+9;
+ }
+ return y+24;
+}
 function fullIndex(width, exporting=false){
  const narrow=width<620, pad=22, gap=26, hasA=groups.some(g=>g.kind==='item');
  const leftWidth=hasA&&!narrow?Math.round(width*.62):width;
@@ -85,9 +133,8 @@ function fullIndex(width, exporting=false){
    [...row.records.values()].forEach((r,index)=>{const px=x+pad+12+(index%perRow)*32,py=bottom+19+Math.floor(index/perRow)*34,states=unique(r.placements.map(state));
     const text=(r.facets.map(fid=>facet({record_id:r.record_id,facet_id:fid})?.interpretation).join('；')||words(r.record_id))+'；'+states.join('；')+'；原话：'+words(r.record_id);
     const a=svg('a',{href:r.facets.length?'#view-facet-'+encodeURIComponent(r.facets[0]):'#view-record-'+encodeURIComponent(r.record_id),'data-map-record':r.record_id,'data-map-region':g.id,'data-map-facets':r.facets.join(' '),'aria-label':text,...(selected===r.record_id?{'aria-current':'true'}:{})},rowGroup);
-    svg('title',{},a,text);svg('circle',{cx:px,cy:py,r:6,fill:r.placements.length&&r.placements.every(p=>p.proposed_kind==='explicit'&&p.review_status!=='needs_review')?'#aeb9b8':'#17191a',stroke:selected===r.record_id?'#d5e8e2':'#aeb9b8','stroke-width':selected===r.record_id?2.5:1.6,...(r.placements.some(p=>p.review_status==='needs_review')?{'stroke-dasharray':'2 2'}:{})},a);
-    if(selected===r.record_id)svg('circle',{cx:px,cy:py,r:11,fill:'none',stroke:'#d5e8e2','stroke-width':1},a);
-    svg('circle',{cx:px,cy:py,r:15,fill:'transparent'},a);
+    svg('title',{},a,text);
+    recordMarker(a,px,py,r,g.id,selected===r.record_id,15);
     if(!exporting)a.onclick=e=>{e.preventDefault();e.stopPropagation();document.dispatchEvent(new CustomEvent('attention-map-select',{detail:{record_id:r.record_id,facet_ids:r.facets,region_id:g.id,theme_id:row.theme}}));};
 
    });
@@ -103,8 +150,8 @@ function fullIndex(width, exporting=false){
  }
  let end=Math.max(ly,ry)+8;
  if(!selection.recordIds.length||!groups.some(g=>g.rows.some(r=>r.theme!=='@unprocessed'))){svg('text',{x:pad,y:end+15,fill:'#e4e7e8'},s,!selection.recordIds.length?'N=0 · 当前范围没有记录，无可计算比例':'当前条件零命中；分母仍为 '+selection.recordIds.length+' 条记录');end+=45;}
- const footer=['实心：明确对应；空心：其他或混合范围；虚线：含待核范围。具体关系与理由逐项见阅读区。',
-  'A区域仅按本版条目组织；主题父子不重复画作同级。位置、面积、距离不表示权重。',
+ end=drawLegend(s,width,end+10,groups);
+ const footer=['A区域仅按本版条目组织；主题父子不重复画作同级。位置、面积、距离不表示权重。',
   ...(filters.length?['筛选：'+filters.join('；')]:['范围：全部记录与材料；全部表达属性']),
   ...(!selection.recordIds.length?['N=0：无比例。']:[])];
  for(const text of footer)for(const line of lines(text,Math.max(12,Math.floor((width-pad*2)/14)))){svg('text',{x:pad,y:end+18,fill:'#b0b7b9'},s,line);end+=21;}
@@ -161,8 +208,7 @@ function overview(width, exporting=false, index=groups){
   shown.forEach((r,i)=>{const px=x-(cols-1)*spacing/2+(i%4)*spacing,py=baseY+Math.floor(i/4)*23,description=r.facets.map(fid=>facet({record_id:r.record_id,facet_id:fid})?.interpretation).join('；')||words(r.record_id);
    const a=svg('a',{href:r.facets.length?'#view-facet-'+encodeURIComponent(r.facets[0]):'#view-record-'+encodeURIComponent(r.record_id),'data-map-record':r.record_id,'data-map-region':region,'aria-label':description+'；'+unique(r.placements.map(state)).join('；'),...(selected===r.record_id?{'aria-current':'true'}:{})},g);
    svg('title',{},a,description+'；'+unique(r.placements.map(state)).join('；'));
-   svg('circle',{cx:px,cy:py,r:5.5,fill:r.placements.length&&r.placements.every(p=>p.proposed_kind==='explicit'&&p.review_status!=='needs_review')?'#aeb9b8':'#17191a',stroke:selected===r.record_id?'#d5e8e2':'#aeb9b8','stroke-width':selected===r.record_id?2.4:1.6,...(r.placements.some(p=>p.review_status==='needs_review')?{'stroke-dasharray':'2 2'}:{})},a);
-   if(selected===r.record_id)svg('circle',{cx:px,cy:py,r:9.5,fill:'none',stroke:'#d5e8e2'},a);svg('circle',{cx:px,cy:py,r:10.5,fill:'transparent'},a);
+   recordMarker(a,px,py,r,region,selected===r.record_id,10.5);
    if(!exporting)bindMapLink(a,[region,row.theme,r.record_id],()=>activate(row,region,r));
   });
   if(records.length>8){const a=svg('a',{href:'#focus-reading','aria-label':title+' · 展开全部 '+records.length+' 条记录'},g);svg('text',{x,y:baseY+48,'text-anchor':'middle',fill:'#d5e8e2','font-size':12},a,'查看全部 '+records.length+' 条');if(!exporting)bindMapLink(a,[region,row.theme,'all'],()=>activate(row,region,records[0]));}
@@ -258,8 +304,8 @@ function overview(width, exporting=false, index=groups){
   const message=!selection.recordIds.length?'N=0 · 无可计算比例':'当前条件零命中；分母仍为 '+selection.recordIds.length+' 条记录';
   for(const line of lines(message,Math.floor((width-36)/14))){svg('text',{x:18,y:end,fill:'#e4e7e8'},s,line);end+=20;}end+=8;
  }
- const notes=['每点一条记录 · 同源联动','实心：明确对应 · 空心：其他 · 虚线：含待核'];
- for(const note of notes)for(const line of lines(note,Math.max(15,Math.floor((width-36)/14)))){svg('text',{x:18,y:end,fill:'#b0b7b9','font-size':13},s,line);end+=20;}
+ svg('text',{x:18,y:end,fill:'#b0b7b9','font-size':13},s,'每个标记是一条评语 · 同源联动');
+ end=drawLegend(s,width,end+20,index);
  s.setAttribute('height',end+12);s.setAttribute('viewBox','0 0 '+width+' '+(end+12));
  if(exporting){const appendix=fullIndex(width,true),ah=Number(appendix.getAttribute('height'));const group=svg('g',{transform:'translate(0 '+(end+32)+')'},s);for(const child of [...appendix.children])if(child.tagName!=='rect')group.append(child);s.setAttribute('height',end+32+ah);s.setAttribute('viewBox','0 0 '+width+' '+(end+32+ah));}
  return s;
@@ -311,7 +357,7 @@ function render(value,root){
  const detailLabel=partChoices.find(p=>p.id===focusedPart)?.label;
  const scopeLabel=[detailLabel?'A部分 '+detailLabel:'',focusedTheme!=='*'?'主题 '+label(focusedTheme):''].filter(Boolean).join(' · ');
  const hits=unique(visible.flatMap(g=>g.rows.filter(r=>r.theme!=='@unprocessed').flatMap(r=>[...r.records.keys()]))).length;
- html('p',(scopeLabel?'视图聚焦 · '+scopeLabel:'当前筛选')+' · 分母 '+value.recordIds.length+' 条记录 · '+hits+'/'+value.recordIds.length+' 条记录有解释',root,{id:'map-scope'});
+ html('p',(scopeLabel?'视图聚焦 · '+scopeLabel:'当前筛选')+' · '+hits+'/'+value.recordIds.length+' 条记录有解释',root,{id:'map-scope'});
  const wrap=html('div',null,root,{id:'attention-map',tabindex:'0','aria-label':'关注图'});
  wrap.append(overview(Math.max(220,Math.floor(wrap.clientWidth||760)),false,visible));
  wrap.scrollTop=scroll;
