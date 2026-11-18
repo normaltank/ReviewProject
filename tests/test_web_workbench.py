@@ -300,6 +300,32 @@ class WebWorkbenchTests(unittest.TestCase):
             expect(page.locator('#project-meta')).to_contain_text('未保存的新版本')
             browser.close()
 
+    def test_main_actions_stay_above_fold_with_long_scope(self):
+        from playwright.sync_api import sync_playwright, expect
+        with tempfile.TemporaryDirectory() as tmp, Workbench(Path(tmp)/'data') as app, sync_playwright() as pw:
+            path = Path(tmp)/'pack'
+            post(app, '/api/create', {'path': str(path), 'records': [
+                {'anchor': '合成材料 '+str(i), 'text': '如果证据不足，可以保留原来的判断。\\n'*6}
+                for i in range(18)]})
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            page = browser.new_page(viewport={'width': 1366, 'height': 768})
+            page.goto(app.url)
+            page.locator('#open-path').fill(str(path))
+            page.locator('#open').click()
+            expect(page.locator('#scope input')).to_have_count(18)
+            for width, height in ((1366, 768), (1440, 900)):
+                page.set_viewport_size({'width': width, 'height': height})
+                for control in ('#result', '#generate', '#send-scope'):
+                    bounds = page.locator(control).bounding_box()
+                    self.assertLess(bounds['y']+bounds['height'], height)
+                self.assertTrue(page.locator('#scope').evaluate('e=>e.scrollHeight>e.clientHeight'))
+                expect(page.locator('#send-scope')).to_have_text('所选原话与当前 A 条文会发送给 DeepSeek')
+                evidence = os.environ.get('WEB_WORKBENCH_EVIDENCE_DIR')
+                if evidence:
+                    Path(evidence).mkdir(parents=True, exist_ok=True)
+                    page.screenshot(path=str(Path(evidence)/f'workbench-long-scope-{width}.png'))
+            browser.close()
+
     def test_create_reopen_preserves_input_and_rejects_foreign_origin(self):
         with tempfile.TemporaryDirectory() as tmp, Workbench(Path(tmp)/'data') as app:
             def post(route, data, origin=None):

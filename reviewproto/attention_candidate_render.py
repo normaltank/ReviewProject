@@ -25,7 +25,7 @@ def render_candidate_preview(run, *, workbench_url=None, result_url=None):
                    validity=run.get('validity'), accepted_revision=run.get('accepted_revision'))
     esc = lambda value: html.escape(str(value), quote=True)
     if run.get('accepted_revision') is not None:
-        acceptance = '已接收至修订 ' + str(run['accepted_revision']) + '。此页保留生成时的候选。'
+        acceptance = '已在修订 ' + str(run['accepted_revision']) + ' 保存，仍需核对。此页保留生成时的候选。'
     elif run.get('validity') != 'current':
         acceptance = '候选已失效。此页保留生成时的记录。'
     elif run['status'] in {'complete', 'partial'} and patch['edits']:
@@ -52,8 +52,9 @@ def render_candidate_preview(run, *, workbench_url=None, result_url=None):
            '<nav aria-label="候选导航"><a href="#candidate-visualization">查看分布图</a><a href="#candidate-sources">查看原话与原分</a><a href="#candidate-audit">查看处理明细</a></nav>']
     if run['mode'] == 'replay':
         out.append('<p class="candidate-meta">工程回放（非实际推理）</p>')
-    if run.get('validity') != 'current' and run.get('accepted_revision') is None:
-        out.append('<p class="reading-warning">输入或修订已变。可在工作台重新生成。</p>')
+    if run.get('validity') != 'current' and (not workbench_url or run.get('accepted_revision') is None):
+        recovery = '可在工作台重新生成。' if workbench_url else '须重新生成。以下仅供回查。'
+        out.append('<p class="reading-warning">输入或修订已变。' + recovery + '</p>')
     reading = out
     out = []
     audit=request_audit(run)
