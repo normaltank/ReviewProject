@@ -6,11 +6,21 @@ import unittest
 import os
 import tempfile
 from pathlib import Path
+from struct import unpack
 from playwright.sync_api import sync_playwright
 from reviewproto.attention_render import render
 from reviewproto.attention_summary import summarize
 from reviewproto.attention_positions import project_positions
 from test_attention_summary import oracle_state
+
+
+def png_size(path):
+    with Path(path).open('rb') as file:
+        header = file.read(33)
+    # PNG starts with its eight-byte signature and a 13-byte IHDR chunk, plus CRC.
+    if len(header) != 33 or header[:16] != b'\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR':
+        raise AssertionError('Browser export does not have a valid PNG header')
+    return unpack('>II', header[16:24])
 
 
 def svg_text_collisions(chart):
@@ -26,7 +36,6 @@ class Positions(unittest.TestCase):
     def test_map_preserves_multi_aspect_unicode_ranges_optional_a_and_empty_scopes(self):
         from contextlib import closing
         from reviewproto.attention import AttentionWorkspace
-        from PIL import Image
         with tempfile.TemporaryDirectory() as folder, sync_playwright() as p:
             with closing(AttentionWorkspace(Path(folder) / 'pack')) as ws:
                 state = ws.build(dict(schema='attention-input/1', records=[
@@ -79,8 +88,9 @@ class Positions(unittest.TestCase):
             self.assertIn('未处理记录',page.locator('#attention-map').inner_text())
             with page.expect_download() as download:
                 page.get_by_role('button', name='导出 PNG', exact=True).click()
-            with Image.open(download.value.path()) as png:
-                self.assertEqual(png.format,'PNG');self.assertEqual(png.width,1100);self.assertGreater(png.height,200)
+            width, height = png_size(download.value.path())
+            self.assertEqual(width, 1100)
+            self.assertGreater(height, 200)
             open_panel(page,'view-filters')
             page.locator('#view-record').select_option(r1['record_id'])
             page.locator('#view-function').select_option('其他表达')
@@ -303,15 +313,14 @@ class Positions(unittest.TestCase):
                 if width == 1366:
                     with page.expect_download() as download:
                         page.locator('#export-map-svg').click()
-                    from PIL import Image
                     from xml.etree import ElementTree
                     exported = ElementTree.parse(download.value.path()).getroot()
                     for part_id in part_labels:
                         self.assertIsNotNone(exported.find(f'.//*[@data-position-region="part:{part_id}"]'))
                     with page.expect_download() as download:
                         page.locator('#export-map-png').click()
-                    with Image.open(download.value.path()) as png:
-                        self.assertEqual(png.size, (int(exported.get('width')), int(exported.get('height'))))
+                    self.assertEqual(png_size(download.value.path()),
+                                     (int(exported.get('width')), int(exported.get('height'))))
                 page.locator('#map-a-toggle').press('Space')
                 expect(chart.locator('[data-position-region^="part:"]')).to_have_count(0)
                 expect(chart).to_contain_text('图表可读性')
