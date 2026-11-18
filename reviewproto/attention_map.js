@@ -171,38 +171,70 @@ function overview(width, exporting=false, index=groups){
  let end=top;
  if(hasA){
   const aggregate=parts.length>3||(parts.length>1&&leftWidth<350);
-  const split=parts.length>1&&!aggregate;
   const plotted=aggregate?[{id:'part:overview',label:parts.length+' 个A部分 · 合并概览',groups:index.filter(g=>g.kind==='item')}]:parts;
-  const subtitle=aggregate?'本版A工作参照 · '+parts.length+' 个部分':parts.length===1?'本版A工作参照 · 1 个部分':'本版A工作参照';
+  for(const part of plotted){
+   part.rows=combinedRows(part.groups).sort((a,b)=>Number(b.records.has(selection.selectedRecordId))-Number(a.records.has(selection.selectedRecordId))||b.records.size-a.records.size||label(a.theme).localeCompare(label(b.theme)));
+  }
+  const compact=radius>=170&&plotted.every(part=>Array.from(part.label).length<=7&&
+    part.rows.length<=1&&part.rows.every(row=>row.records.size<=4&&Array.from(label(row.theme)).length<=7));
+  const useBands=!aggregate&&(plotted.length===1?plotted[0].rows.length>1:!compact);
+  const split=plotted.length>1&&!useBands;
+  const subtitle='本版A工作参照'+(aggregate||useBands||parts.length===1?' · '+parts.length+' 个部分':'');
   svg('text',{x:cx,y:top-22,'text-anchor':'middle',fill:'#b0b7b9'},s,subtitle);
   const n=plotted.length,background=svg('g',{},s);
-  if(!split)svg('circle',{cx,cy,r:radius,fill:'#1d2223',stroke:'#454c4f'},background);
+  if(!split&&!useBands)svg('circle',{cx,cy,r:radius,fill:'#1d2223',stroke:'#454c4f'},background);
+  let bandTop=top;
   plotted.forEach((part,i)=>{
-   const start=-Math.PI/2+i*2*Math.PI/n,finish=start+2*Math.PI/n,mid=(start+finish)/2;
-   const rows=combinedRows(part.groups).sort((a,b)=>Number(b.records.has(selection.selectedRecordId))-Number(a.records.has(selection.selectedRecordId))||b.records.size-a.records.size||label(a.theme).localeCompare(label(b.theme)));
+   const {rows}=part;
    const region=svg('g',{'data-position-region':part.id,...(rows.some(r=>r.records.has(selection.selectedRecordId))?{'aria-current':'true'}:{})},s);
+   svg('title',{},region,part.label);
+   const empty=part.groups.every(g=>g.empty)?'尚无条目':'0 当前对应';
+   function showMore(x,y,slots){
+    const more=svg('a',{href:'#map-theme-select','aria-label':part.label+' · 查看其余 '+(rows.length-slots)+' 个主题'},region);
+    svg('text',{x,y,'text-anchor':'middle',fill:'#d5e8e2','font-size':12},more,'另 '+(rows.length-slots)+' 主题');
+    if(!exporting)bindMapLink(more,[part.id,'themes'],()=>document.getElementById('map-theme-select').focus());
+   }
+   if(useBands){
+    const bandWidth=leftWidth-38,pad=16,contentWidth=bandWidth-pad*2;
+    const title=lines(part.label,Math.floor(contentWidth/13));
+    title.forEach((text,j)=>svg('text',{x:18+pad,y:bandTop+28+j*19,fill:'#b0b7b9','font-size':13},region,text));
+    let y=bandTop+33+title.length*19;
+    const columns=Math.max(1,Math.min(rows.length,Math.floor(contentWidth/146)));
+    const columnWidth=contentWidth/columns,slots=columns*2;
+    const shown=rows.slice(0,slots);
+    for(let start=0;start<shown.length;start+=columns){
+     let bottom=y;
+     shown.slice(start,start+columns).forEach((row,col)=>{
+      const x=18+pad+(col+.5)*columnWidth;
+      bottom=Math.max(bottom,cluster(row,x,y,part.id,columnWidth-10));
+     });
+     y=bottom;
+    }
+    if(!rows.length){svg('text',{x:18+pad,y,fill:'#b0b7b9','font-size':12},region,empty);y+=18;}
+    if(rows.length>slots){showMore(cx,y,slots);y+=20;}
+    svg('rect',{x:18,y:bandTop,width:bandWidth,height:y-bandTop,rx:14,fill:'#1d2223',stroke:'#454c4f'},background);
+    bandTop=y+14;
+    return;
+   }
+   const start=-Math.PI/2+i*2*Math.PI/n,finish=start+2*Math.PI/n,mid=(start+finish)/2;
    if(split)svg('path',{d:'M '+cx+' '+cy+' L '+(cx+radius*Math.cos(start))+' '+(cy+radius*Math.sin(start))+' A '+radius+' '+radius+' 0 '+(finish-start>Math.PI?1:0)+' 1 '+(cx+radius*Math.cos(finish))+' '+(cy+radius*Math.sin(finish))+' Z',fill:'#1d2223',stroke:'#454c4f'},background);
-   const labelRadius=radius*.72;
-   const lx=split?cx+Math.cos(mid)*labelRadius:cx,ly=split?cy+Math.sin(mid)*labelRadius:top+42;
+   const lx=split?cx+Math.cos(mid)*radius*.54:cx;
+   const ly=split?cy+(n===3?(Math.sin(mid)>0?39:-74):-52):top+42;
    const lineLimit=split?8:Math.max(10,Math.floor((radius*1.55)/14));
    const partLabel=aggregate?'合并显示 A 条目中的主题':part.label;
-   svg('title',{},region,part.label);
-   lines(short(partLabel,lineLimit*2),lineLimit+1).slice(0,2).forEach((text,i)=>svg('text',{x:lx,y:ly+i*17,'text-anchor':'middle',fill:'#b0b7b9','font-size':13},region,text));
-   const rx=split?cx+Math.cos(mid)*radius*.44:cx,ry=split?cy+Math.sin(mid)*radius*.44-17:top+92;
+   lines(short(partLabel,lineLimit*2),lineLimit+1).slice(0,2).forEach((text,j)=>svg('text',{x:lx,y:ly+j*17,'text-anchor':'middle',fill:'#b0b7b9','font-size':13},region,text));
+   const ry=split?ly+31:top+92;
    const slots=aggregate&&radius>=166&&rows.length>1?2:1;
    let lastY=ry;
    rows.slice(0,slots).forEach((row,j)=>{
-    const x=rx+(slots===2?(j-.5)*radius:0);
+    const x=lx+(slots===2?(j-.5)*radius:0);
     lastY=Math.max(lastY,cluster(row,x,ry,part.id,slots===2?radius-10:split?116:Math.min(200,leftWidth-36)));
    });
-   if(!rows.length)svg('text',{x:rx,y:ry,'text-anchor':'middle',fill:'#b0b7b9','font-size':12},region,part.groups.every(g=>g.empty)?'尚无条目':'0 当前对应');
-   if(rows.length>slots){
-    const more=svg('a',{href:'#map-theme-select','aria-label':part.label+' · 查看其余 '+(rows.length-slots)+' 个主题'},region);
-    svg('text',{x:lx,y:split?ly+37:lastY-7,'text-anchor':'middle',fill:'#d5e8e2','font-size':12},more,'另 '+(rows.length-slots)+' 主题');
-    if(!exporting)bindMapLink(more,[part.id,'themes'],()=>document.getElementById('map-theme-select').focus());
-   }
+   if(!rows.length)svg('text',{x:lx,y:ry,'text-anchor':'middle',fill:'#b0b7b9','font-size':12},region,empty);
+   if(rows.length>slots)showMore(lx,lastY-7,slots);
   });
-  svg('circle',{cx,cy,r:radius,fill:'none',stroke:'#697376','pointer-events':'none'},s);end=cy+radius+28;
+  if(useBands)end=bandTop;
+  else{svg('circle',{cx,cy,r:radius,fill:'none',stroke:'#697376','pointer-events':'none'},s);end=cy+radius+28;}
  }
  let otherY=sideBySide?top:hasA?end+24:top;
  for(const group of index.filter(g=>g.kind!=='item')){

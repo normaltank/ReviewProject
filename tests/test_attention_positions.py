@@ -13,6 +13,15 @@ from reviewproto.attention_positions import project_positions
 from test_attention_summary import oracle_state
 
 
+def svg_text_collisions(chart):
+    return chart.locator('svg').evaluate("""(svg) => {
+        const labels = [...svg.querySelectorAll('text')].map(t => [t.textContent, t.getBBox()]);
+        return labels.flatMap(([text,a],i) => labels.slice(i+1).flatMap(([other,b]) =>
+            Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x)>2 &&
+            Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y)>2 ? [[text,other]] : []));
+    }""")
+
+
 class Positions(unittest.TestCase):
     def test_map_preserves_multi_aspect_unicode_ranges_optional_a_and_empty_scopes(self):
         from contextlib import closing
@@ -125,6 +134,60 @@ class Positions(unittest.TestCase):
             self.assertEqual(errors, [])
             browser.close()
 
+    def test_two_and_three_a_parts_keep_long_labels_and_shared_theme_markers_visible(self):
+        from playwright.sync_api import expect
+        state = oracle_state()
+        state.update(material_status='current', history=[], bindings=[])
+        for r in state['records']:
+            r.update(anchor=r['record_id'], sections=[dict(section_id=r['record_id'], text=r['text'], locator={})])
+        for o in state['opinions']:
+            o['interpretation'] = '合成观点'
+            for f in o['facets']:
+                for item in f['outside']:
+                    item.update(evidence=[], reason='合成范围依据')
+        for relation in state['relations']:
+            relation.update(evidence=[])
+        state['themes'][1]['label'] = '完整描述材料及样本的来源与边界'
+        state['themes'][2]['label'] = '必要时给出结论适用的条件与范围'
+        parts, items = state['a_reference']['parts'], state['a_reference']['items']
+        parts[0]['label'] = '材料与方法中需保留的具体限定'
+        parts[1]['label'] = '结果与结论中仍需核对的范围'
+        links = state['opinions'][0]['facets'][1]['a_links']
+        links.append(dict(links[0], a_item_id='A1'))
+        with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
+            path = Path(folder)/'parts.html'
+            browser = pw.chromium.launch(executable_path=os.environ['REVIEW_BROWSER_BINARY'], headless=True)
+            for count in (2, 3):
+                if count == 3:
+                    parts.append(dict(id='P3', label='引言与研究问题所依据的定义'))
+                    items.append(dict(items[0], id='A5', text='保留相关证据', part_id='P3'))
+                    links.append(dict(links[0], a_item_id='A5'))
+                path.write_text(render(state), encoding='utf-8')
+                for width, height in ((1366, 768), (1440, 900), (420, 768)):
+                    with self.subTest(a_parts=count, viewport=(width, height)):
+                        page = browser.new_page(offline=True, viewport=dict(width=width, height=height))
+                        page.goto(path.as_uri())
+                        page.evaluate('document.fonts.ready')
+                        chart = page.locator('#attention-map')
+                        self.assertEqual(svg_text_collisions(chart), [])
+                        for part in parts:
+                            expect(chart).to_contain_text(part['label'])
+                        marks = chart.locator('[data-map-region="part:P1"][data-map-record="r1"]')
+                        expect(marks).to_have_count(2)
+                        evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
+                        if evidence:
+                            Path(evidence).mkdir(parents=True, exist_ok=True)
+                            page.screenshot(path=str(Path(evidence)/f'positions-{count}-parts-{width}.png'))
+                        chart.locator('[data-map-region="part:P1"][data-map-record="r2"]').press('Enter')
+                        selected_marks = chart.locator('[data-map-region="part:P1"][data-map-record="r1"][aria-current="true"]')
+                        expect(selected_marks).to_have_count(0)
+                        second_theme = chart.locator('[data-map-theme="T2"] [data-map-region="part:P1"][data-map-record="r1"]')
+                        second_theme.press('Enter')
+                        expect(second_theme).to_be_focused()
+                        expect(selected_marks).to_have_count(2)
+                        page.close()
+            browser.close()
+
     def test_dense_parts_keep_keyboard_targets_and_full_export_after_focusing(self):
         from playwright.sync_api import expect
         state = oracle_state()
@@ -167,13 +230,7 @@ class Positions(unittest.TestCase):
                     });
                 }""")
                 self.assertTrue(bounds, f'SVG text clips at {width}px')
-                pairs = chart.locator('svg').evaluate("""(svg) => {
-                    const labels = [...svg.querySelectorAll('text')].map(t => [t.textContent, t.getBBox()]);
-                    return labels.flatMap(([text,a],i) => labels.slice(i+1).flatMap(([other,b]) =>
-                        Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x)>2 &&
-                        Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y)>2 ? [[text,other]] : []));
-                }""")
-                self.assertEqual(pairs, [], f'SVG labels overlap at {width}px')
+                self.assertEqual(svg_text_collisions(chart), [], f'SVG labels overlap at {width}px')
                 evidence = os.environ.get('ATTENTION_POSITION_EVIDENCE_DIR')
                 if evidence:
                     Path(evidence).mkdir(parents=True, exist_ok=True)
