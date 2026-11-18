@@ -335,7 +335,10 @@ class CandidateWorkflow(unittest.TestCase):
                 controller = Controller(); controller.open_attention(path)
                 page.goto((path / 'attention.html').as_uri())
                 open_panel(page, 'view-a-positions')
-                page.locator('#position-drill a').first.click()
+                open_panel(page, 'position-drill')
+                saved_link = page.locator('#position-drill a').first
+                saved_link.locator('xpath=ancestor::details[1]').locator(':scope > summary').click()
+                saved_link.click()
                 page.get_by_role('button', name='查看原话并修改').first.click()
                 self.assertEqual(page.locator('#facet').input_value(), saved['opinions'][0]['facets'][0]['facet_id'])
                 open_panel(page, 'editor-audit')
@@ -351,7 +354,10 @@ class CandidateWorkflow(unittest.TestCase):
                 self.assertEqual(controller.recover_attention()['revision'], 2)
                 page.goto((path / 'attention.html').as_uri())
                 open_panel(page, 'view-a-positions')
-                page.locator('#position-drill a').first.click()
+                open_panel(page, 'position-drill')
+                saved_link = page.locator('#position-drill a').first
+                saved_link.locator('xpath=ancestor::details[1]').locator(':scope > summary').click()
+                saved_link.click()
                 self.assertIn('如有记录才补充图例', page.locator('#view-detail').inner_text())
                 self.assertEqual(errors, [])
                 browser.close()
